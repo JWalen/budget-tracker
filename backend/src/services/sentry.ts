@@ -1,5 +1,5 @@
 import * as Sentry from '@sentry/node';
-import { ProfilingIntegration } from '@sentry/profiling-node';
+import { nodeProfilingIntegration } from '@sentry/profiling-node';
 
 export const initSentry = () => {
   if (process.env.NODE_ENV === 'production' && process.env.SENTRY_DSN) {
@@ -12,9 +12,9 @@ export const initSentry = () => {
       profilesSampleRate: 0.1, // 10% of transactions
       
       integrations: [
-        new ProfilingIntegration(),
-        new Sentry.Integrations.Http({ tracing: true }),
-        new Sentry.Integrations.Express({ app: true }),
+        nodeProfilingIntegration(),
+        Sentry.httpIntegration({ tracing: true }),
+        Sentry.expressIntegration(),
       ],
 
       // Error filtering

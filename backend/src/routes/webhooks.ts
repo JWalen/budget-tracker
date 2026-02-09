@@ -148,9 +148,9 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
       subscription.id,
       subscription.status,
       subscription.items.data[0].price.recurring?.interval || 'monthly',
-      new Date(subscription.current_period_start * 1000),
-      new Date(subscription.current_period_end * 1000),
-      subscription.trial_end ? new Date(subscription.trial_end * 1000) : null,
+      new Date((subscription.current_period_start as number) * 1000),
+      new Date((subscription.current_period_end as number) * 1000),
+      subscription.trial_end ? new Date((subscription.trial_end as number) * 1000) : null,
     ]
   );
 
@@ -171,8 +171,8 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
      WHERE stripe_subscription_id = $5`,
     [
       subscription.status,
-      new Date(subscription.current_period_start * 1000),
-      new Date(subscription.current_period_end * 1000),
+      new Date((subscription.current_period_start as number) * 1000),
+      new Date((subscription.current_period_end as number) * 1000),
       subscription.cancel_at_period_end,
       subscription.id,
     ]

@@ -1,5 +1,5 @@
 import { Response, NextFunction } from 'express';
-import { redisClient } from '../services/redis';
+import redisClient from '../services/redis';
 import { TenantRequest } from './tenant';
 import { LoggerClass } from '../services/logger';
 
@@ -44,8 +44,8 @@ export const cacheMiddleware = (ttl: number = DEFAULT_TTL, keyGenerator?: (req: 
       res.json = (data: any) => {
         // Cache the response
         redisClient.setex(cacheKey, ttl, JSON.stringify(data))
-          .catch((error) => {
-            logger.error('Cache write error', error as Error);
+          .catch((error: Error) => {
+            logger.error('Cache write error', error);
           });
 
         // Call original json method
