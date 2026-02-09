@@ -78,8 +78,14 @@ export default function Analytics() {
   };
 
   const exportToCSV = () => {
-    // TODO: Implement CSV export
-    alert('CSV export coming soon!');
+    const month = selectedMonth.getMonth() + 1;
+    const year = selectedMonth.getFullYear();
+    const type = 'summary'; // Can be changed to 'category-breakdown' or 'budget-performance'
+    
+    window.open(
+      `/api/analytics/export/csv?month=${month}&year=${year}&type=${type}`,
+      '_blank'
+    );
   };
 
   if (loading) {

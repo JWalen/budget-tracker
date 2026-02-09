@@ -328,4 +328,135 @@ router.get('/income-vs-expenses', async (req: AuthRequest, res: Response) => {
   }
 });
 
+/**
+ * @swagger
+ * /analytics/export/csv:
+ *   get:
+ *     summary: Export analytics data to CSV
+ *     tags: [Analytics]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get('/export/csv', async (req: AuthRequest, res: Response) => {
+  try {
+    const { month, year, type = 'summary' } = req.query;
+    const budgetUserId = (req as any).budgetUserId;
+
+    const m = month || new Date().getMonth() + 1;
+    const y = year || new Date().getFullYear();
+
+    let data: any[] = [];
+    let filename = '';
+    let headers: string[] = [];
+
+    if (type === 'summary') {
+      // Export comprehensive summary
+      const result = await query(
+        `SELECT 
+          DATE(t.date) as date,
+          t.type,
+          t.amount,
+          t.description,
+          c.name as category,
+          a.name as account
+         FROM transactions t
+         LEFT JOIN categories c ON t.category_id = c.id
+         LEFT JOIN bank_accounts a ON t.account_id = a.id
+         WHERE t.user_id = $1
+           AND EXTRACT(MONTH FROM t.date) = $2
+           AND EXTRACT(YEAR FROM t.date) = $3
+         ORDER BY t.date DESC`,
+        [budgetUserId, m, y]
+      );
+
+      data = result.rows;
+      headers = ['Date', 'Type', 'Amount', 'Description', 'Category', 'Account'];
+      filename = `transactions_${y}_${m}.csv`;
+    } else if (type === 'category-breakdown') {
+      const result = await query(
+        `SELECT 
+          c.name as category,
+          SUM(t.amount) as total,
+          COUNT(t.id) as transaction_count,
+          AVG(t.amount) as average_amount
+         FROM transactions t
+         JOIN categories c ON t.category_id = c.id
+         WHERE t.user_id = $1 
+           AND t.type = 'expense'
+           AND EXTRACT(MONTH FROM t.date) = $2
+           AND EXTRACT(YEAR FROM t.date) = $3
+         GROUP BY c.name
+         ORDER BY total DESC`,
+        [budgetUserId, m, y]
+      );
+
+      data = result.rows;
+      headers = ['Category', 'Total', 'Transaction Count', 'Average Amount'];
+      filename = `category_breakdown_${y}_${m}.csv`;
+    } else if (type === 'budget-performance') {
+      const result = await query(
+        `SELECT 
+          c.name as category,
+          b.amount_limit as budget,
+          COALESCE(SUM(t.amount), 0) as spent,
+          b.amount_limit - COALESCE(SUM(t.amount), 0) as remaining,
+          CASE 
+            WHEN b.amount_limit > 0 THEN 
+              ROUND((COALESCE(SUM(t.amount), 0) / b.amount_limit * 100)::numeric, 2)
+            ELSE 0 
+          END as percentage_used
+         FROM budgets b
+         JOIN categories c ON b.category_id = c.id
+         LEFT JOIN transactions t ON t.category_id = b.category_id
+           AND t.user_id = b.user_id
+           AND EXTRACT(MONTH FROM t.date) = b.month
+           AND EXTRACT(YEAR FROM t.date) = b.year
+           AND t.type = 'expense'
+         WHERE b.user_id = $1 
+           AND b.month = $2 
+           AND b.year = $3
+         GROUP BY b.id, b.amount_limit, c.name
+         ORDER BY percentage_used DESC`,
+        [budgetUserId, m, y]
+      );
+
+      data = result.rows;
+      headers = ['Category', 'Budget', 'Spent', 'Remaining', 'Percentage Used'];
+      filename = `budget_performance_${y}_${m}.csv`;
+    }
+
+    // Convert to CSV
+    const csvRows: string[] = [];
+    csvRows.push(headers.join(','));
+
+    data.forEach((row) => {
+      const values = headers.map((header) => {
+        const key = header.toLowerCase().replace(/ /g, '_');
+        let value = row[key];
+        
+        // Handle special formatting
+        if (value === null || value === undefined) {
+          value = '';
+        } else if (typeof value === 'number') {
+          value = value.toFixed(2);
+        } else {
+          value = String(value).replace(/"/g, '""'); // Escape quotes
+        }
+        
+        return `"${value}"`;
+      });
+      csvRows.push(values.join(','));
+    });
+
+    const csv = csvRows.join('\n');
+
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(csv);
+  } catch (error) {
+    logger.error('Export CSV error', error as Error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 export default router;
