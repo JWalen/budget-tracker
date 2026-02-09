@@ -36,6 +36,7 @@ import webhookRoutes from './routes/webhooks';
 import organizationRoutes from './routes/organizations';
 import analyticsRoutes from './routes/analytics';
 import receiptsRoutes from './routes/receipts';
+import budgetTemplatesRoutes from './routes/budgetTemplates';
 import { getUsageSummary } from './middleware/usageLimits';
 import { initStorage } from './services/storage';
 
@@ -157,6 +158,7 @@ app.use('/api/webhooks', webhookRoutes);
 app.use('/api/organizations', organizationRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/receipts', receiptsRoutes);
+app.use('/api/budget-templates', budgetTemplatesRoutes);
 
 // Serve uploaded files (for local storage only)
 app.use('/uploads', express.static(process.env.UPLOAD_DIR || './uploads'));
