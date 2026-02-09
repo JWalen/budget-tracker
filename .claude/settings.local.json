@@ -22,7 +22,11 @@
       "Bash(TOKEN=\"eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOjEsImlhdCI6MTc3MDUxMjU1OCwiZXhwIjoxNzcxMTE3MzU4fQ.E57Naqm54lojATNt5Fk6Aa2-SGPU5tOzq6pOrfu2_SQ\")",
       "Bash(node test_ai.js:*)",
       "Bash(git init:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(openssl rand:*)",
+      "Bash(dist)",
+      "Bash(tsconfig \")",
+      "Bash(grep:*)"
     ]
   }
 }

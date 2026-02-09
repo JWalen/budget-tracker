@@ -199,31 +199,6 @@ export const api = {
   getTrend: () =>
     fetch(`${API_URL}/dashboard/trend`, { headers: headers() }).then(handleResponse),
 
-  // Admin
-  getAdminStats: () =>
-    fetch(`${API_URL}/admin/stats`, { headers: headers() }).then(handleResponse),
-
-  getAdminUsers: (search = '') => {
-    const params = search ? `?search=${encodeURIComponent(search)}` : '';
-    return fetch(`${API_URL}/admin/users${params}`, { headers: headers() }).then(handleResponse);
-  },
-
-  deleteAdminUser: (id) =>
-    fetch(`${API_URL}/admin/users/${id}`, {
-      method: 'DELETE',
-      headers: headers(),
-    }).then(handleResponse),
-
-  resetAdminUserPassword: (id, password) =>
-    fetch(`${API_URL}/admin/users/${id}/reset-password`, {
-      method: 'POST',
-      headers: headers(),
-      body: JSON.stringify({ password }),
-    }).then(handleResponse),
-
-  getAdminActivity: () =>
-    fetch(`${API_URL}/admin/activity`, { headers: headers() }).then(handleResponse),
-
   // Debts
   getDebts: (params = {}) => {
     const query = new URLSearchParams(params).toString();

@@ -59,8 +59,8 @@ router.get('/stats', async (req: AuthRequest, res: Response) => {
       query(`
         SELECT
           COUNT(*) as total_shares,
-          COUNT(DISTINCT owner_user_id) as sharing_users,
-          COUNT(DISTINCT shared_with_user_id) as viewing_users
+          COUNT(DISTINCT owner_id) as sharing_users,
+          COUNT(DISTINCT shared_with_id) as viewing_users
         FROM budget_shares
       `),
       // System health
@@ -143,9 +143,9 @@ router.get('/users', async (req: AuthRequest, res: Response) => {
           COALESCE(SUM(DISTINCT a.balance), 0) as total_balance
         FROM users u
         LEFT JOIN transactions t ON t.user_id = u.id
-        LEFT JOIN budget_shares bs_owner ON bs_owner.owner_user_id = u.id
-        LEFT JOIN budget_shares bs_viewer ON bs_viewer.shared_with_user_id = u.id
-        LEFT JOIN accounts a ON a.user_id = u.id
+        LEFT JOIN budget_shares bs_owner ON bs_owner.owner_id = u.id
+        LEFT JOIN budget_shares bs_viewer ON bs_viewer.shared_with_id = u.id
+        LEFT JOIN bank_accounts a ON a.user_id = u.id
         WHERE u.name ILIKE $1 OR u.email ILIKE $1
         GROUP BY u.id
         ORDER BY u.created_at DESC
@@ -241,7 +241,7 @@ router.delete('/users/:id', async (req: AuthRequest, res: Response) => {
 
     res.json({ message: 'User deleted successfully' });
   } catch (error) {
-    console.error('Admin delete user error:', error);
+    logger.error('Admin delete user error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -266,7 +266,7 @@ router.post('/users/:id/reset-password', async (req: AuthRequest, res: Response)
 
     res.json({ message: 'Password reset successfully' });
   } catch (error) {
-    console.error('Admin reset password error:', error);
+    logger.error('Admin reset password error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -443,8 +443,8 @@ router.get('/shares', async (req: AuthRequest, res: Response) => {
         shared.email as shared_email,
         shared.name as shared_name
       FROM budget_shares bs
-      JOIN users owner ON owner.id = bs.owner_user_id
-      JOIN users shared ON shared.id = bs.shared_with_user_id
+      JOIN users owner ON owner.id = bs.owner_id
+      JOIN users shared ON shared.id = bs.shared_with_id
       ORDER BY bs.created_at DESC
     `);
 
@@ -496,7 +496,7 @@ router.get('/config', async (req: AuthRequest, res: Response) => {
       },
       security: {
         jwtConfigured: !!process.env.JWT_SECRET && !process.env.JWT_SECRET.includes('change_this'),
-        refreshConfigured: !!process.env.REFRESH_SECRET && !process.env.REFRESH_SECRET.includes('change_this'),
+        refreshConfigured: !!process.env.JWT_REFRESH_SECRET && !process.env.JWT_REFRESH_SECRET.includes('change_this'),
         encryptionConfigured: !!process.env.ENCRYPTION_KEY && !process.env.ENCRYPTION_KEY.includes('change_this'),
         mfaEncryptionConfigured: !!process.env.MFA_ENCRYPTION_KEY && !process.env.MFA_ENCRYPTION_KEY.includes('change_this'),
         corsOrigin: process.env.CORS_ORIGIN || '*',
@@ -525,19 +525,45 @@ router.post('/backup', async (req: AuthRequest, res: Response) => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const filename = `backup-${timestamp}.sql`;
     const backupsDir = path.join(process.cwd(), 'backups');
-    const filepath = path.join(backupsDir, filename);
+    // Validate filename to prevent path traversal
+    const safeFilename = path.basename(filename);
+    const filepath = path.join(backupsDir, safeFilename);
 
     // Create backups directory if it doesn't exist
     await fs.mkdir(backupsDir, { recursive: true });
 
-    // Use pg_dump to create backup
-    const dbUrl = `postgresql://${process.env.DB_USER}:${process.env.DB_PASS}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`;
+    // Use pg_dump to create backup (spawn is safer than exec for this)
+    const dbUrl = process.env.DATABASE_URL || `postgresql://${process.env.DB_USER}:${process.env.DB_PASSWORD}@${process.env.DB_HOST}:${process.env.DB_PORT}/${process.env.DB_NAME}`;
 
     try {
-      await execAsync(`pg_dump "${dbUrl}" > "${filepath}"`);
+      // Use spawn instead of exec for better security
+      const { spawn } = require('child_process');
+      await new Promise<void>((resolve, reject) => {
+        const child = spawn('pg_dump', [dbUrl], {
+          stdio: ['ignore', 'pipe', 'pipe']
+        });
+        
+        const writeStream = require('fs').createWriteStream(filepath);
+        child.stdout.pipe(writeStream);
+        
+        let stderr = '';
+        child.stderr.on('data', (data: Buffer) => {
+          stderr += data.toString();
+        });
+        
+        child.on('close', (code: number) => {
+          if (code === 0) {
+            resolve();
+          } else {
+            reject(new Error(`pg_dump failed: ${stderr}`));
+          }
+        });
+        
+        child.on('error', reject);
+      });
     } catch (error) {
       // If pg_dump is not available, create a simple SQL export
-      const tables = ['users', 'transactions', 'categories', 'budgets', 'accounts', 'budget_shares'];
+      const tables = ['users', 'transactions', 'categories', 'budgets', 'bank_accounts', 'budget_shares'];
       let sqlContent = '-- Budget Tracker Database Backup\n';
       sqlContent += `-- Created: ${new Date().toISOString()}\n\n`;
 
@@ -765,8 +791,9 @@ router.post('/cleanup', async (req: AuthRequest, res: Response) => {
         // Clean old login attempts
         const loginResult = await query(
           `DELETE FROM login_attempts
-           WHERE created_at < NOW() - INTERVAL '${days} days'
-           RETURNING id`
+           WHERE created_at < NOW() - MAKE_INTERVAL(days => $1)
+           RETURNING id`,
+          [days]
         );
         result = { message: `Cleaned ${loginResult.rowCount} old login attempts` };
         break;

@@ -115,8 +115,12 @@ const USER_TABLES = [
 // All tables for admin backup (in FK order)
 const ALL_TABLES = [
   'users',
+  'refresh_tokens',
   'login_attempts',
   'categories',
+  'bank_accounts',
+  'account_balances',
+  'family_members',
   'transactions',
   'budgets',
   'recurring_transactions',
@@ -125,6 +129,16 @@ const ALL_TABLES = [
   'bill_payments',
   'match_rules',
   'budget_shares',
+  'pay_periods',
+  'pay_period_bills',
+  'spending_limits',
+  'spending_alerts',
+  'approval_requests',
+  'allowance_transactions',
+  'email_config',
+  'backup_config',
+  'backup_schedules',
+  'backup_history',
 ];
 
 // ── Router setup ─────────────────────────────────────────────────────────────

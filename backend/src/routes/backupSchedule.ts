@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { requireEditAccess } from '../middleware/sharing';
+import { LoggerClass } from '../services/logger';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import { exec } from 'child_process';
@@ -9,6 +10,7 @@ import { promisify } from 'util';
 
 const router = Router();
 const execAsync = promisify(exec);
+const logger = new LoggerClass('BackupSchedule');
 
 router.use(authMiddleware);
 
@@ -47,7 +49,7 @@ router.get('/history', async (req: AuthRequest, res: Response) => {
 
     res.json(backups);
   } catch (error) {
-    console.error('Get backup history error:', error);
+    logger.error('Get backup history error:', error as Error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -66,7 +68,7 @@ router.get('/schedules', async (req: AuthRequest, res: Response) => {
 
     res.json(result.rows);
   } catch (error) {
-    console.error('Get backup schedules error:', error);
+    logger.error('Get backup schedules error:', error as Error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -90,7 +92,7 @@ router.post('/schedules', requireEditAccess, async (req: AuthRequest, res: Respo
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    console.error('Create backup schedule error:', error);
+    logger.error('Create backup schedule error:', error as Error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -116,7 +118,7 @@ router.put('/schedules/:id', requireEditAccess, async (req: AuthRequest, res: Re
 
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Update backup schedule error:', error);
+    logger.error('Update backup schedule error:', error as Error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -138,7 +140,7 @@ router.delete('/schedules/:id', requireEditAccess, async (req: AuthRequest, res:
 
     res.json({ message: 'Schedule deleted' });
   } catch (error) {
-    console.error('Delete backup schedule error:', error);
+    logger.error('Delete backup schedule error:', error as Error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -176,7 +178,7 @@ router.get('/config', async (req: AuthRequest, res: Response) => {
 
     res.json(sanitizedConfig);
   } catch (error) {
-    console.error('Get backup config error:', error);
+    logger.error('Get backup config error:', error as Error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -202,7 +204,7 @@ router.post('/config', requireEditAccess, async (req: AuthRequest, res: Response
 
     res.json({ message: 'Configuration saved' });
   } catch (error) {
-    console.error('Save backup config error:', error);
+    logger.error('Save backup config error:', error as Error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -237,7 +239,7 @@ router.post('/download-now', async (req: AuthRequest, res: Response) => {
       data: backupData,
     });
   } catch (error) {
-    console.error('Download backup error:', error);
+    logger.error('Download backup error:', error as Error);
     res.status(500).json({ error: 'Failed to create backup' });
   }
 });
@@ -309,7 +311,7 @@ router.post('/create', requireEditAccess, async (req: AuthRequest, res: Response
       throw error;
     }
   } catch (error) {
-    console.error('Create backup error:', error);
+    logger.error('Create backup error:', error as Error);
     res.status(500).json({ error: 'Backup failed' });
   }
 });
@@ -361,6 +363,8 @@ async function createUserBackup(userId: number): Promise<any> {
   // Tables with direct user_id
   const directTables = [
     'categories',
+    'bank_accounts',
+    'family_members',
     'transactions',
     'recurring_transactions',
     'budgets',
@@ -396,6 +400,49 @@ async function createUserBackup(userId: number): Promise<any> {
   );
   backup.data.pay_period_bills = payPeriodBillsResult.rows;
 
+  // Account balances - join through bank_accounts
+  const accountBalancesResult = await query(
+    `SELECT ab.* FROM account_balances ab
+     JOIN bank_accounts ba ON ab.account_id = ba.id
+     WHERE ba.user_id = $1`,
+    [userId]
+  );
+  backup.data.account_balances = accountBalancesResult.rows;
+
+  // Spending limits - join through family_members
+  const spendingLimitsResult = await query(
+    `SELECT sl.* FROM spending_limits sl
+     JOIN family_members fm ON sl.member_id = fm.id
+     WHERE fm.user_id = $1`,
+    [userId]
+  );
+  backup.data.spending_limits = spendingLimitsResult.rows;
+
+  // Spending alerts
+  const spendingAlertsResult = await query(
+    `SELECT * FROM spending_alerts WHERE user_id = $1`,
+    [userId]
+  );
+  backup.data.spending_alerts = spendingAlertsResult.rows;
+
+  // Approval requests - join through family_members
+  const approvalRequestsResult = await query(
+    `SELECT ar.* FROM approval_requests ar
+     JOIN family_members fm ON ar.member_id = fm.id
+     WHERE fm.user_id = $1`,
+    [userId]
+  );
+  backup.data.approval_requests = approvalRequestsResult.rows;
+
+  // Allowance transactions - join through family_members
+  const allowanceTransactionsResult = await query(
+    `SELECT at.* FROM allowance_transactions at
+     JOIN family_members fm ON at.member_id = fm.id
+     WHERE fm.user_id = $1`,
+    [userId]
+  );
+  backup.data.allowance_transactions = allowanceTransactionsResult.rows;
+
   return backup;
 }
 
@@ -404,6 +451,9 @@ async function createFullBackup(): Promise<any> {
   const tables = [
     'users',
     'categories',
+    'bank_accounts',
+    'account_balances',
+    'family_members',
     'transactions',
     'recurring_transactions',
     'budgets',
@@ -413,7 +463,11 @@ async function createFullBackup(): Promise<any> {
     'pay_periods',
     'pay_period_bills',
     'match_rules',
-    'budget_shares'
+    'budget_shares',
+    'spending_limits',
+    'spending_alerts',
+    'approval_requests',
+    'allowance_transactions'
   ];
 
   const backup: any = {
@@ -574,7 +628,7 @@ router.post('/restore', requireEditAccess, async (req: AuthRequest, res: Respons
       throw error;
     }
   } catch (error) {
-    console.error('Restore backup error:', error);
+    logger.error('Restore backup error:', error as Error);
     res.status(500).json({ error: 'Failed to restore backup' });
   }
 });
