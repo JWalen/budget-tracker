@@ -23,7 +23,7 @@ export default function Organizations() {
         loadMembers(data[0].id);
       }
     } catch (error) {
-      console.error('Failed to load organizations:', error);
+      console.error('Failed to load households:', error);
     } finally {
       setLoading(false);
     }
@@ -64,9 +64,9 @@ export default function Organizations() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Organizations</h1>
+        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Households</h1>
         <p className="text-gray-600 dark:text-gray-400 mt-1">
-          Manage team collaboration and permissions
+          Manage household collaboration and permissions
         </p>
       </div>
 
@@ -74,13 +74,13 @@ export default function Organizations() {
         <div className="card text-center py-12">
           <Building2 className="w-16 h-16 mx-auto text-gray-400 mb-4" />
           <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-2">
-            No Organizations Yet
+            No Households Yet
           </h3>
           <p className="text-gray-600 dark:text-gray-400 mb-4">
-            Create an organization to collaborate with your team
+            Create a household to collaborate with your family or roommates
           </p>
           <button className="btn btn-primary">
-            Create Organization
+            Create Household
           </button>
         </div>
       ) : (
@@ -105,7 +105,7 @@ export default function Organizations() {
 
               <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
                 <h3 className="text-sm font-semibold text-gray-900 dark:text-gray-100 mb-3">
-                  Invite Team Member
+                  Invite Household Member
                 </h3>
                 <form onSubmit={handleInvite} className="flex gap-2">
                   <input
@@ -136,7 +136,7 @@ export default function Organizations() {
 
           <div className="card">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
-              Team Members
+              Household Members
             </h3>
             <div className="space-y-2">
               {members.map((member) => (

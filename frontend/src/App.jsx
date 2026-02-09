@@ -27,6 +27,7 @@ import AdminUsers from './pages/Admin/AdminUsers';
 import AdminLogs from './pages/Admin/AdminLogs';
 import AdminBackup from './pages/Admin/AdminBackup';
 import InviteAccept from './pages/InviteAccept';
+import FamilyMembers from './pages/FamilyMembers';
 
 // New Feature Pages
 import Analytics from './pages/Analytics';
@@ -108,6 +109,7 @@ const AppRoutes = () => {
         <Route path="currency" element={<Currency />} />
         <Route path="sharing" element={<Sharing />} />
         <Route path="organizations" element={<Organizations />} />
+        <Route path="family" element={<FamilyMembers />} />
         <Route path="notifications" element={<Notifications />} />
         <Route path="settings" element={<Settings />} />
         <Route path="help" element={<Help />} />

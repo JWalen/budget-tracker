@@ -60,6 +60,7 @@ const navGroups = [
     { to: '/currency', icon: DollarSign, label: 'Currency' },
     { to: '/debts', icon: Landmark, label: 'Debts' },
     { to: '/bills', icon: FileText, label: 'Bills' },
+    { to: '/family', icon: Users, label: 'Family Members' },
   ]},
   { label: 'TOOLS', items: [
     { to: '/import', icon: Upload, label: 'Import' },
@@ -68,7 +69,7 @@ const navGroups = [
     { to: '/backups', icon: HardDrive, label: 'Backups' },
   ]},
   { label: 'ACCOUNT', items: [
-    { to: '/organizations', icon: Building2, label: 'Organizations' },
+    { to: '/organizations', icon: Building2, label: 'Households' },
     { to: '/notifications', icon: Bell, label: 'Notifications' },
     { to: '/settings', icon: Settings, label: 'Settings' },
     { to: '/help', icon: HelpCircle, label: 'Help' },
