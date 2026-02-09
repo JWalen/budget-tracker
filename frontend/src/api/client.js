@@ -829,6 +829,154 @@ export const api = {
     fetch(`${API_URL}/analytics/income-vs-expenses?months=${months}`, {
       headers: headers(),
     }).then(handleResponse),
+
+  // Subscriptions
+  getSubscriptionPlans: () =>
+    fetch(`${API_URL}/subscriptions/plans`, {
+      headers: headers(),
+    }).then(handleResponse),
+
+  getCurrentSubscription: () =>
+    fetch(`${API_URL}/subscriptions/current`, {
+      headers: headers(),
+    }).then(handleResponse),
+
+  createCheckoutSession: (planId) =>
+    fetch(`${API_URL}/subscriptions/checkout`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ planId }),
+    }).then(handleResponse),
+
+  getBillingPortal: () =>
+    fetch(`${API_URL}/subscriptions/portal`, {
+      method: 'POST',
+      headers: headers(),
+    }).then(handleResponse),
+
+  cancelSubscription: () =>
+    fetch(`${API_URL}/subscriptions/cancel`, {
+      method: 'POST',
+      headers: headers(),
+    }).then(handleResponse),
+
+  getUsage: () =>
+    fetch(`${API_URL}/subscriptions/usage`, {
+      headers: headers(),
+    }).then(handleResponse),
+
+  // Organizations
+  getOrganizations: () =>
+    fetch(`${API_URL}/organizations`, {
+      headers: headers(),
+    }).then(handleResponse),
+
+  createOrganization: (name) =>
+    fetch(`${API_URL}/organizations`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ name }),
+    }).then(handleResponse),
+
+  getOrganizationMembers: (orgId) =>
+    fetch(`${API_URL}/organizations/${orgId}/members`, {
+      headers: headers(),
+    }).then(handleResponse),
+
+  inviteOrganizationMember: (orgId, email, role) =>
+    fetch(`${API_URL}/organizations/${orgId}/invite`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ email, role }),
+    }).then(handleResponse),
+
+  removeOrganizationMember: (orgId, memberId) =>
+    fetch(`${API_URL}/organizations/${orgId}/members/${memberId}`, {
+      method: 'DELETE',
+      headers: headers(),
+    }).then(handleResponse),
+
+  // Receipts
+  getReceipts: () =>
+    fetch(`${API_URL}/receipts`, {
+      headers: headers(),
+    }).then(handleResponse),
+
+  uploadReceipt: (formData) =>
+    fetch(`${API_URL}/receipts/upload`, {
+      method: 'POST',
+      headers: {
+        ...(getToken() && { Authorization: `Bearer ${getToken()}` }),
+        ...(getBudgetOwnerId() && { 'X-Budget-Owner': getBudgetOwnerId() }),
+      },
+      body: formData,
+    }).then(handleResponse),
+
+  deleteReceipt: (id) =>
+    fetch(`${API_URL}/receipts/${id}`, {
+      method: 'DELETE',
+      headers: headers(),
+    }).then(handleResponse),
+
+  // Budget Templates
+  getBudgetTemplates: () =>
+    fetch(`${API_URL}/budget-templates`, {
+      headers: headers(),
+    }).then(handleResponse),
+
+  applyBudgetTemplate: (templateId) =>
+    fetch(`${API_URL}/budget-templates/${templateId}/apply`, {
+      method: 'POST',
+      headers: headers(),
+    }).then(handleResponse),
+
+  // Currency
+  getCurrencies: () =>
+    fetch(`${API_URL}/currency/supported`, {
+      headers: headers(),
+    }).then(handleResponse),
+
+  getUserCurrency: () =>
+    fetch(`${API_URL}/currency/user`, {
+      headers: headers(),
+    }).then(handleResponse),
+
+  setUserCurrency: (currencyCode) =>
+    fetch(`${API_URL}/currency/user`, {
+      method: 'PUT',
+      headers: headers(),
+      body: JSON.stringify({ currency_code: currencyCode }),
+    }).then(handleResponse),
+
+  // Notifications
+  getNotifications: () =>
+    fetch(`${API_URL}/notifications`, {
+      headers: headers(),
+    }).then(handleResponse),
+
+  markNotificationAsRead: (id) =>
+    fetch(`${API_URL}/notifications/${id}/read`, {
+      method: 'PUT',
+      headers: headers(),
+    }).then(handleResponse),
+
+  markAllNotificationsAsRead: () =>
+    fetch(`${API_URL}/notifications/read-all`, {
+      method: 'PUT',
+      headers: headers(),
+    }).then(handleResponse),
+
+  getNotificationPreferences: () =>
+    fetch(`${API_URL}/notifications/preferences`, {
+      headers: headers(),
+    }).then(handleResponse),
+
+  updateNotificationPreferences: (preferences) =>
+    fetch(`${API_URL}/notifications/preferences`, {
+      method: 'PUT',
+      headers: headers(),
+      body: JSON.stringify(preferences),
+    }).then(handleResponse),
 };
 
 export default api;
