@@ -34,6 +34,7 @@ import aiRoutes from './routes/ai';
 import subscriptionRoutes from './routes/subscriptions';
 import webhookRoutes from './routes/webhooks';
 import organizationRoutes from './routes/organizations';
+import { getUsageSummary } from './middleware/usageLimits';
 
 // Swagger API documentation
 import swaggerUi from 'swagger-ui-express';
@@ -209,6 +210,37 @@ app.get('/api/ready', async (req, res) => {
   } catch (error) {
     logger.error('Readiness check failed', error as Error);
     res.status(503).json({ ready: false, error: 'Database not ready' });
+  }
+});
+
+// Usage summary endpoint
+app.get('/api/usage', authMiddleware, async (req: any, res: Response) => {
+  try {
+    const userId = req.userId;
+    const organizationId = req.headers['x-organization-id'] 
+      ? parseInt(req.headers['x-organization-id'] as string, 10)
+      : null;
+    
+    if (!organizationId) {
+      // Get user's default organization
+      const orgResult = await query(
+        'SELECT organization_id FROM organization_members WHERE user_id = $1 LIMIT 1',
+        [userId]
+      );
+      
+      if (orgResult.rows.length === 0) {
+        return res.status(404).json({ error: 'No organization found' });
+      }
+      
+      const summary = await getUsageSummary(userId, orgResult.rows[0].organization_id);
+      return res.json(summary);
+    }
+    
+    const summary = await getUsageSummary(userId, organizationId);
+    res.json(summary);
+  } catch (error) {
+    logger.error('Get usage summary error', error as Error);
+    res.status(500).json({ error: 'Server error' });
   }
 });
 

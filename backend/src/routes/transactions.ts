@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
+import { checkResourceLimit, trackUsage } from '../middleware/usageLimits';
 
 const router = Router();
 
@@ -64,7 +65,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 });
 
 // Create transaction
-router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
+router.post('/', requireEditAccess, checkResourceLimit('transactions_per_month'), trackUsage('transactions_per_month'), async (req: AuthRequest, res: Response) => {
   try {
     const { category_id, account_id, amount, description, date, type } = req.body;
     const budgetUserId = (req as any).budgetUserId;
