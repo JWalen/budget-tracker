@@ -35,7 +35,7 @@ export default function Receipts() {
       await loadReceipts();
     } catch (error) {
       console.error('Failed to upload receipt:', error);
-      alert('Failed to upload receipt. Make sure you have a Pro or Business plan.');
+      alert('Failed to upload receipt.');
     } finally {
       setUploading(false);
     }
@@ -81,7 +81,7 @@ export default function Receipts() {
             Upload receipt images to keep track of your expenses
           </p>
           <p className="text-sm text-gray-500 dark:text-gray-500">
-            Pro plan: 10 receipts/month • Business plan: 100 receipts/month
+            Upload receipt images to keep track of your expenses
           </p>
         </div>
       ) : (

@@ -28,9 +28,8 @@ import AdminLogs from './pages/Admin/AdminLogs';
 import AdminBackup from './pages/Admin/AdminBackup';
 import InviteAccept from './pages/InviteAccept';
 
-// New SaaS Feature Pages
+// New Feature Pages
 import Analytics from './pages/Analytics';
-import Subscriptions from './pages/Subscriptions';
 import Organizations from './pages/Organizations';
 import Receipts from './pages/Receipts';
 import BudgetTemplates from './pages/BudgetTemplates';
@@ -109,7 +108,6 @@ const AppRoutes = () => {
         <Route path="currency" element={<Currency />} />
         <Route path="sharing" element={<Sharing />} />
         <Route path="organizations" element={<Organizations />} />
-        <Route path="subscriptions" element={<Subscriptions />} />
         <Route path="notifications" element={<Notifications />} />
         <Route path="settings" element={<Settings />} />
         <Route path="help" element={<Help />} />

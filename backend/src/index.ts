@@ -35,8 +35,6 @@ import accountsRoutes from './routes/accounts';
 import adminEmailRoutes from './routes/adminEmail';
 import familyRoutes from './routes/family';
 import aiRoutes from './routes/ai';
-import subscriptionRoutes from './routes/subscriptions';
-import webhookRoutes from './routes/webhooks';
 import organizationRoutes from './routes/organizations';
 import analyticsRoutes from './routes/analytics';
 import receiptsRoutes from './routes/receipts';
@@ -128,10 +126,7 @@ app.use(cookieParser());
 app.use(setCsrfToken);
 
 // Body parsing with reasonable limits
-// Stripe webhooks need raw body - register BEFORE json parser
-app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
-
-app.use(express.json({ limit: '5mb' })); // Reduced from 50mb
+app.use(express.json({ limit: '5mb' }));
 app.use(express.urlencoded({ limit: '5mb', extended: true }));
 
 // Request logging
@@ -155,15 +150,13 @@ app.use('/api/debts', debtRoutes);
 app.use('/api/bills', billRoutes);
 app.use('/api/import', importRoutes);
 app.use('/api/sharing', sharingRoutes);
-app.use('/api/backup', backupScheduleRoutes);  // Updated to use new backup system
+app.use('/api/backup', backupScheduleRoutes);
 app.use('/api/pay-periods', payPeriodRoutes);
 app.use('/api/reports', reportsRoutes);
 app.use('/api/accounts', accountsRoutes);
 app.use('/api/admin/email', adminEmailRoutes);
 app.use('/api/family', familyRoutes);
 app.use('/api/ai', aiRoutes);
-app.use('/api/subscriptions', subscriptionRoutes);
-app.use('/api/webhooks', webhookRoutes);
 app.use('/api/organizations', organizationRoutes);
 app.use('/api/analytics', analyticsRoutes);
 app.use('/api/receipts', uploadLimiter, receiptsRoutes); // Rate limit file uploads

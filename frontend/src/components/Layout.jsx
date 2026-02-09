@@ -44,20 +44,20 @@ import { APP_VERSION } from '../version';
 const navGroups = [
   { items: [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-    { to: '/analytics', icon: TrendingUp, label: 'Analytics', badge: 'New' },
+    { to: '/analytics', icon: TrendingUp, label: 'Analytics' },
   ]},
   { label: 'FINANCES', items: [
     { to: '/transactions', icon: ArrowLeftRight, label: 'Transactions' },
     { to: '/accounts', icon: Wallet, label: 'Accounts' },
     { to: '/budgets', icon: Target, label: 'Budgets' },
-    { to: '/budget-templates', icon: Sparkles, label: 'Templates', badge: 'Pro' },
+    { to: '/budget-templates', icon: Sparkles, label: 'Templates' },
     { to: '/recurring', icon: RefreshCw, label: 'Recurring' },
     { to: '/pay-periods', icon: Calendar, label: 'Pay Periods' },
-    { to: '/receipts', icon: Receipt, label: 'Receipts', badge: 'Pro' },
+    { to: '/receipts', icon: Receipt, label: 'Receipts' },
   ]},
   { label: 'MANAGE', items: [
     { to: '/categories', icon: Tags, label: 'Categories' },
-    { to: '/currency', icon: DollarSign, label: 'Currency', badge: 'Pro' },
+    { to: '/currency', icon: DollarSign, label: 'Currency' },
     { to: '/debts', icon: Landmark, label: 'Debts' },
     { to: '/bills', icon: FileText, label: 'Bills' },
   ]},
@@ -68,8 +68,7 @@ const navGroups = [
     { to: '/backups', icon: HardDrive, label: 'Backups' },
   ]},
   { label: 'ACCOUNT', items: [
-    { to: '/subscriptions', icon: CreditCard, label: 'Subscription', badge: 'SaaS' },
-    { to: '/organizations', icon: Building2, label: 'Organizations', badge: 'Business' },
+    { to: '/organizations', icon: Building2, label: 'Organizations' },
     { to: '/notifications', icon: Bell, label: 'Notifications' },
     { to: '/settings', icon: Settings, label: 'Settings' },
     { to: '/help', icon: HelpCircle, label: 'Help' },
@@ -191,7 +190,7 @@ export default function Layout() {
                   <p className="px-4 py-1 text-xs font-semibold text-gray-400 uppercase">{group.label}</p>
                 </>
               )}
-              {group.items.map(({ to, icon: Icon, label, badge }) => (
+              {group.items.map(({ to, icon: Icon, label }) => (
                 <NavLink
                   key={to}
                   to={to}
@@ -207,16 +206,6 @@ export default function Layout() {
                 >
                   <Icon size={20} />
                   <span className="flex-1">{label}</span>
-                  {badge && (
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                      badge === 'New' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
-                      badge === 'Pro' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' :
-                      badge === 'Business' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300' :
-                      'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
-                    }`}>
-                      {badge}
-                    </span>
-                  )}
                 </NavLink>
               ))}
             </div>

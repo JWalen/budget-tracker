@@ -3,7 +3,6 @@ import multer from 'multer';
 import { query } from '../config/database';
 import { authMiddleware } from '../middleware/auth';
 import { tenantMiddleware, requireWriteAccess, TenantRequest } from '../middleware/tenant';
-import { checkResourceLimit, trackUsage } from '../middleware/usageLimits';
 import { uploadFile, deleteFile, getFileUrl, isUsingLocalStorage } from '../services/storage';
 import { LoggerClass } from '../services/logger';
 
@@ -131,8 +130,6 @@ router.get('/', async (req: TenantRequest, res: Response) => {
 router.post(
   '/upload',
   requireWriteAccess,
-  checkResourceLimit('receipts_per_month'),
-  trackUsage('receipts_per_month'),
   upload.single('receipt'),
   async (req: TenantRequest, res: Response) => {
     try {

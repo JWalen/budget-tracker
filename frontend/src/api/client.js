@@ -830,41 +830,6 @@ export const api = {
       headers: headers(),
     }).then(handleResponse),
 
-  // Subscriptions
-  getSubscriptionPlans: () =>
-    fetch(`${API_URL}/subscriptions/plans`, {
-      headers: headers(),
-    }).then(handleResponse),
-
-  getCurrentSubscription: () =>
-    fetch(`${API_URL}/subscriptions/current`, {
-      headers: headers(),
-    }).then(handleResponse),
-
-  createCheckoutSession: (planId) =>
-    fetch(`${API_URL}/subscriptions/checkout`, {
-      method: 'POST',
-      headers: headers(),
-      body: JSON.stringify({ planId }),
-    }).then(handleResponse),
-
-  getBillingPortal: () =>
-    fetch(`${API_URL}/subscriptions/portal`, {
-      method: 'POST',
-      headers: headers(),
-    }).then(handleResponse),
-
-  cancelSubscription: () =>
-    fetch(`${API_URL}/subscriptions/cancel`, {
-      method: 'POST',
-      headers: headers(),
-    }).then(handleResponse),
-
-  getUsage: () =>
-    fetch(`${API_URL}/subscriptions/usage`, {
-      headers: headers(),
-    }).then(handleResponse),
-
   // Organizations
   getOrganizations: () =>
     fetch(`${API_URL}/organizations`, {
