@@ -35,7 +35,9 @@ import subscriptionRoutes from './routes/subscriptions';
 import webhookRoutes from './routes/webhooks';
 import organizationRoutes from './routes/organizations';
 import analyticsRoutes from './routes/analytics';
+import receiptsRoutes from './routes/receipts';
 import { getUsageSummary } from './middleware/usageLimits';
+import { initStorage } from './services/storage';
 
 // Swagger API documentation
 import swaggerUi from 'swagger-ui-express';
@@ -154,6 +156,10 @@ app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/organizations', organizationRoutes);
 app.use('/api/analytics', analyticsRoutes);
+app.use('/api/receipts', receiptsRoutes);
+
+// Serve uploaded files (for local storage only)
+app.use('/uploads', express.static(process.env.UPLOAD_DIR || './uploads'));
 
 // API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
