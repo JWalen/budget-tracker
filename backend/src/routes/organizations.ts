@@ -8,8 +8,8 @@ import crypto from 'crypto';
 const router = Router();
 const logger = new LoggerClass('Organizations');
 
+// Apply auth to all routes
 router.use(authMiddleware);
-router.use(tenantMiddleware);
 
 /**
  * @swagger
@@ -20,7 +20,7 @@ router.use(tenantMiddleware);
  *     security:
  *       - bearerAuth: []
  */
-router.get('/', async (req: TenantRequest, res: Response) => {
+router.get('/', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId!;
 
@@ -52,7 +52,7 @@ router.get('/', async (req: TenantRequest, res: Response) => {
  *     security:
  *       - bearerAuth: []
  */
-router.get('/:id', async (req: TenantRequest, res: Response) => {
+router.get('/:id', tenantMiddleware, async (req: TenantRequest, res: Response) => {
   try {
     const orgId = parseInt(req.params.id, 10);
     const userId = req.userId!;
@@ -96,7 +96,7 @@ router.get('/:id', async (req: TenantRequest, res: Response) => {
  *     security:
  *       - bearerAuth: []
  */
-router.post('/', async (req: TenantRequest, res: Response) => {
+router.post('/', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId!;
     const { name } = req.body;
@@ -147,7 +147,7 @@ router.post('/', async (req: TenantRequest, res: Response) => {
  *     security:
  *       - bearerAuth: []
  */
-router.patch('/:id', requireOwner, async (req: TenantRequest, res: Response) => {
+router.patch('/:id', tenantMiddleware, requireOwner, async (req: TenantRequest, res: Response) => {
   try {
     const orgId = parseInt(req.params.id, 10);
     const { name, settings } = req.body;
@@ -189,6 +189,47 @@ router.patch('/:id', requireOwner, async (req: TenantRequest, res: Response) => 
 
 /**
  * @swagger
+ * /organizations/{id}/members:
+ *   get:
+ *     summary: Get organization members
+ *     tags: [Organizations]
+ *     security:
+ *       - bearerAuth: []
+ */
+router.get('/:id/members', tenantMiddleware, async (req: TenantRequest, res: Response) => {
+  try {
+    const orgId = parseInt(req.params.id, 10);
+    const userId = req.userId!;
+
+    // Verify user has access to this organization
+    const accessCheck = await query(
+      'SELECT role FROM organization_members WHERE organization_id = $1 AND user_id = $2',
+      [orgId, userId]
+    );
+
+    if (accessCheck.rows.length === 0) {
+      return res.status(403).json({ error: 'No access to this organization' });
+    }
+
+    // Get all members
+    const result = await query(
+      `SELECT u.id, u.name, u.email, om.role, om.joined_at
+       FROM organization_members om
+       JOIN users u ON om.user_id = u.id
+       WHERE om.organization_id = $1
+       ORDER BY om.joined_at ASC`,
+      [orgId]
+    );
+
+    res.json(result.rows);
+  } catch (error) {
+    logger.error('Get organization members error', error as Error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+/**
+ * @swagger
  * /organizations/{id}/invite:
  *   post:
  *     summary: Invite user to organization
@@ -196,7 +237,7 @@ router.patch('/:id', requireOwner, async (req: TenantRequest, res: Response) => 
  *     security:
  *       - bearerAuth: []
  */
-router.post('/:id/invite', requireWriteAccess, async (req: TenantRequest, res: Response) => {
+router.post('/:id/invite', tenantMiddleware, requireWriteAccess, async (req: TenantRequest, res: Response) => {
   try {
     const orgId = parseInt(req.params.id, 10);
     const userId = req.userId!;
@@ -260,7 +301,7 @@ router.post('/:id/invite', requireWriteAccess, async (req: TenantRequest, res: R
  *     security:
  *       - bearerAuth: []
  */
-router.delete('/:id/members/:userId', requireWriteAccess, async (req: TenantRequest, res: Response) => {
+router.delete('/:id/members/:userId', tenantMiddleware, requireWriteAccess, async (req: TenantRequest, res: Response) => {
   try {
     const orgId = parseInt(req.params.id, 10);
     const removeUserId = parseInt(req.params.userId, 10);
@@ -298,7 +339,7 @@ router.delete('/:id/members/:userId', requireWriteAccess, async (req: TenantRequ
  *     security:
  *       - bearerAuth: []
  */
-router.post('/accept-invite/:token', async (req: TenantRequest, res: Response) => {
+router.post('/accept-invite/:token', async (req: AuthRequest, res: Response) => {
   try {
     const { token } = req.params;
     const userId = req.userId!;

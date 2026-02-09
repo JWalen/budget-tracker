@@ -321,7 +321,7 @@ k6 run load-tests/stress-test.js    # Stress test (400 users)
 - ✅ **SQL Injection Prevention** - Parameterized queries
 - ✅ **XSS Protection** - React auto-escaping
 - ✅ **CORS Configuration** - Controlled cross-origin access
-- ✅ **Webhook Verification** - Stripe signature validation
+- ✅ **Session Management** - Secure JWT token handling
 
 ### Production Security Checklist
 
@@ -412,8 +412,8 @@ docker compose -f docker-compose.prod.yml up -d --scale backend=3
 #### Heroku
 - **Web Dynos:** Auto-scaling
 - **Heroku Postgres:** Add-on
-- **Heroku Redis:** Add-on
-- **Add-ons:** Stripe, Sentry
+- **Heroku Redis:** Add-on (optional)
+- **Add-ons:** Sentry (optional for error tracking)
 
 ---
 
