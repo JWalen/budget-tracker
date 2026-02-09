@@ -830,3 +830,5 @@ export const api = {
       headers: headers(),
     }).then(handleResponse),
 };
+
+export default api;
