@@ -2,6 +2,7 @@ import { Router, Response } from 'express';
 import { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
+import { checkResourceLimit } from '../middleware/usageLimits';
 
 const router = Router();
 
@@ -42,7 +43,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 });
 
 // Create or update budget
-router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
+router.post('/', requireEditAccess, checkResourceLimit('budgets'), async (req: AuthRequest, res: Response) => {
   try {
     const { category_id, amount_limit, month, year } = req.body;
     const budgetUserId = (req as any).budgetUserId;
