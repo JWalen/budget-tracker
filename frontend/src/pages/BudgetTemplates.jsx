@@ -95,7 +95,7 @@ export default function BudgetTemplates() {
             No Templates Available
           </h3>
           <p className="text-gray-600 dark:text-gray-400">
-            Budget templates are available on Pro and Business plans
+            No templates available yet
           </p>
         </div>
       )}

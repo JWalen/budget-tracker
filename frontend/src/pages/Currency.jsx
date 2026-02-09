@@ -87,7 +87,7 @@ export default function Currency() {
             Multi-Currency Not Available
           </h3>
           <p className="text-gray-600 dark:text-gray-400">
-            Multi-currency support is available on Pro and Business plans
+            No currencies configured yet
           </p>
         </div>
       )}

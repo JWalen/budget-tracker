@@ -1,5 +1,24 @@
 export const changelog = [
   {
+    version: '2.1.0',
+    date: '2026-02-09',
+    changes: [
+      '🎉 NOW FULLY OPEN SOURCE - All features completely free!',
+      '❌ Removed subscription system - No payment barriers',
+      '✅ All premium features now available to everyone',
+      '📊 Analytics - Free for all users',
+      '🏢 Organizations - Team collaboration for everyone',
+      '🧾 Receipts - Unlimited uploads',
+      '✨ Budget Templates - All templates available',
+      '💱 Multi-Currency - Full support for 20 currencies',
+      '🔔 Notifications - Real-time alerts for all',
+      '🚀 Self-host your own instance',
+      '🌟 No usage limits or restrictions',
+      '📝 Simplified navigation - removed feature badges',
+      '🔓 100% free and open source budget tracker',
+    ],
+  },
+  {
     version: '2.0.0',
     date: '2026-02-09',
     changes: [

@@ -77,10 +77,10 @@ export default function Organizations() {
             No Organizations Yet
           </h3>
           <p className="text-gray-600 dark:text-gray-400 mb-4">
-            Organizations are available on the Business plan
+            Create an organization to collaborate with your team
           </p>
           <button className="btn btn-primary">
-            Upgrade to Business
+            Create Organization
           </button>
         </div>
       ) : (
