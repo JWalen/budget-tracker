@@ -1,0 +1,154 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Build & Run Commands
+
+```bash
+# Full stack
+docker compose up --build        # Start all services (postgres, backend, frontend)
+docker compose build frontend    # Verify frontend compiles (quick check after changes)
+docker compose build backend     # Verify backend compiles
+
+# Frontend only (from frontend/)
+npm run dev                      # Vite dev server on :3000 (proxies /api to backend:5000)
+npm run build                    # Production build to dist/
+
+# Backend only (from backend/)
+npm run dev                      # ts-node-dev with hot-reload
+npm run build                    # TypeScript compile to dist/
+npm start                        # Run compiled JS (dist/index.js)
+```
+
+**Docker ports (host:container):** Frontend → 3456:80, Backend API → 5050:5000, PostgreSQL → 5433:5432
+
+## Architecture
+
+### Three-service Docker Compose app
+
+**Frontend** (React 18 + Vite + Tailwind) → Nginx in production, proxies `/api` to backend
+**Backend** (Express + TypeScript) → Direct SQL via `pg` pool, no ORM
+**Database** (PostgreSQL 15) → Schema in `database/init.sql`
+
+### Backend structure
+
+All routes in `backend/src/routes/` use a shared middleware chain:
+1. `authMiddleware` — extracts `userId` from JWT Bearer token
+2. `sharingMiddleware` — resolves `budgetUserId` (the actual data owner, which differs from `userId` when viewing a shared budget) and sets `shareRole`
+3. `requireEditAccess` — blocks writes when `shareRole === 'view'`
+
+**Critical pattern:** Route handlers must use `const budgetUserId = (req as any).budgetUserId` for all data queries — never `req.userId` directly — so shared budget viewing works correctly.
+
+Database queries use parameterized SQL directly: `query('SELECT * FROM users WHERE id = $1', [userId])`. Connection pool configured in `backend/src/config/database.ts`.
+
+Auth: JWT (7-day expiry), bcryptjs (cost 12), optional TOTP MFA via otplib.
+
+### Frontend structure
+
+**State management** via three React Context providers (nested in App.jsx):
+- `ThemeContext` — dark/light mode, persisted to localStorage
+- `AuthContext` — user object, JWT token in localStorage, login/logout/register
+- `BudgetContext` — active budget owner (for shared budget viewing), shared budgets list, read-only flag
+
+**API client** (`frontend/src/api/client.js`) — centralized fetch wrapper with ~45 endpoints. Automatically attaches JWT Bearer token and `X-Budget-Owner` header for shared budgets.
+
+**Layout** (`frontend/src/components/Layout.jsx`) — sidebar with nav groups (`navGroups` array), mobile responsive menu, budget switcher dropdown, user avatar menu in top bar.
+
+### Key data flow for shared budgets
+
+When a user views someone else's budget, `BudgetContext` sets `activeBudgetOwner`. The API client sends the owner's ID via `X-Budget-Owner` header. Backend `sharingMiddleware` verifies access and sets `budgetUserId` on the request, so all route handlers query against the correct user's data.
+
+### Adding a new page (3-step checklist)
+
+1. Create route file in `backend/src/routes/` and register in `backend/src/index.ts`
+2. Add API methods to `frontend/src/api/client.js`
+3. Create page in `frontend/src/pages/`, add to `navGroups` in `Layout.jsx`, add `<Route>` in `App.jsx`
+
+### Database changes
+
+No migration system — schema lives in `database/init.sql` (used on fresh `docker compose up`). For existing databases, run ALTER TABLE statements manually via psql or a one-off script.
+
+**Important:** When adding new tables/columns that appear in `database/init.sql`, existing databases won't have them. You must create a migration script and run it:
+
+```bash
+# Example: Adding pay_periods tables to existing database
+docker exec -i budget-db psql -U budget_user -d budget_db < database/add_pay_periods.sql
+```
+
+Common issues:
+- **"relation does not exist" errors** — The table is missing from your existing database. Check if it's defined in `init.sql` but not in your running database, then create a migration script.
+- **Database credentials:** User = `budget_user`, Password = `budget_pass`, Database = `budget_db`
+
+## Versioning
+
+- Version lives in three places — keep all in sync:
+  - `frontend/src/version.js` (`APP_VERSION` constant)
+  - `frontend/src/changelog.js` (in-app changelog array)
+  - `CHANGELOG.md` (project root)
+- When a feature is added or a significant change is made, bump the version and update all three files
+- **Patch** (x.x.1): bug fixes — **Minor** (x.1.0): new features — **Major** (1.0.0): breaking changes
+
+## Conventions
+
+- Pages go in `frontend/src/pages/` using the pattern: `<div className="space-y-6">`, h1 heading, `.card` containers, Tailwind dark mode classes
+- Icons from `lucide-react`
+- Sidebar nav groups defined in `Layout.jsx` (`navGroups` array) — add new pages there and in `App.jsx` routes
+- Tailwind dark mode is class-based — always include `dark:` variants for colors/backgrounds
+- Custom primary color palette is sky blue (#0ea5e9), referenced as `primary-*` in Tailwind classes
+- Income categories can have `exclude_from_income: true` — dashboard queries must filter these out when summing income
+
+## Security Considerations
+
+### Preventing Unauthorized Admin Access
+
+The current development setup exposes several security vulnerabilities that should be addressed before production deployment:
+
+**Current vulnerabilities:**
+1. **Database port exposed** (5433:5432) — Anyone with network access can connect directly to PostgreSQL
+2. **Default credentials** — Using simple passwords like `budget_pass`
+3. **No database audit logging** — Admin changes aren't tracked
+
+**Production security measures to implement:**
+
+1. **Remove database port exposure** from `docker-compose.yml`:
+   ```yaml
+   # Remove or comment out this line in production:
+   # ports:
+   #   - "5433:5432"
+   ```
+
+2. **Use environment variables** for credentials:
+   ```yaml
+   environment:
+     POSTGRES_PASSWORD: ${DB_PASSWORD}  # Use .env file
+   ```
+
+3. **Implement audit logging** for admin actions:
+   - Create an `admin_audit_log` table to track all admin privilege changes
+   - Add backend middleware to log when admin endpoints are accessed
+   - Monitor for suspicious patterns (multiple failed admin attempts, etc.)
+
+4. **Add rate limiting** on sensitive endpoints:
+   - Limit login attempts to prevent brute force
+   - Restrict admin API calls to prevent abuse
+
+5. **Implement proper admin management**:
+   - Add a "super admin" role that's the only one who can grant admin privileges
+   - Add two-factor authentication requirement for admin accounts
+   - Create an admin panel UI for managing admin privileges (instead of direct DB access)
+
+6. **Database security**:
+   - Use strong, randomly generated passwords (minimum 20 characters)
+   - Enable SSL/TLS for database connections
+   - Implement row-level security policies in PostgreSQL
+   - Regular automated backups with encryption
+
+7. **Network isolation**:
+   - Keep database in a private network, only accessible by the backend
+   - Use a firewall to restrict access
+   - Consider using a bastion host for emergency DB access
+
+**Emergency admin recovery** (for legitimate scenarios):
+- Keep a secure, offline record of the database root password
+- Document a clear process for admin recovery that requires multiple approvals
+- Consider implementing a "break glass" emergency access system with full audit trails
