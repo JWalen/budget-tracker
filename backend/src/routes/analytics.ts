@@ -212,8 +212,8 @@ router.get('/summary', async (req: AuthRequest, res: Response) => {
     );
 
     // Get previous month stats for comparison
-    const prevMonth = m === 1 ? 12 : m - 1;
-    const prevYear = m === 1 ? y - 1 : y;
+    const prevMonth = m === 1 ? 12 : (m - 1);
+    const prevYear = m === 1 ? (y - 1) : y;
 
     const previousMonth = await query(
       `SELECT 
