@@ -9,6 +9,8 @@ export default function Organizations() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('member');
   const [loading, setLoading] = useState(true);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [newOrgName, setNewOrgName] = useState('');
 
   useEffect(() => {
     loadOrganizations();
@@ -35,6 +37,21 @@ export default function Organizations() {
       setMembers(data);
     } catch (error) {
       console.error('Failed to load members:', error);
+    }
+  };
+
+  const handleCreateOrg = async (e) => {
+    e.preventDefault();
+    if (!newOrgName.trim()) return;
+
+    try {
+      await api.createOrganization(newOrgName);
+      setShowCreateModal(false);
+      setNewOrgName('');
+      await loadOrganizations();
+    } catch (error) {
+      console.error('Failed to create household:', error);
+      alert('Failed to create household');
     }
   };
 
@@ -79,7 +96,7 @@ export default function Organizations() {
           <p className="text-gray-600 dark:text-gray-400 mb-4">
             Create a household to collaborate with your family or roommates
           </p>
-          <button className="btn btn-primary">
+          <button onClick={() => setShowCreateModal(true)} className="btn btn-primary">
             Create Household
           </button>
         </div>
@@ -177,6 +194,45 @@ export default function Organizations() {
             </div>
           </div>
         </>
+      )}
+
+      {/* Create Household Modal */}
+      {showCreateModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white dark:bg-gray-800 rounded-lg p-6 w-full max-w-md">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">
+              Create Household
+            </h3>
+            <form onSubmit={handleCreateOrg}>
+              <div className="mb-4">
+                <label className="label">Household Name</label>
+                <input
+                  type="text"
+                  value={newOrgName}
+                  onChange={(e) => setNewOrgName(e.target.value)}
+                  className="input w-full"
+                  placeholder="e.g., Smith Family, Home Budget"
+                  required
+                />
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowCreateModal(false);
+                    setNewOrgName('');
+                  }}
+                  className="btn btn-secondary flex-1"
+                >
+                  Cancel
+                </button>
+                <button type="submit" className="btn btn-primary flex-1">
+                  Create
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
       )}
     </div>
   );
