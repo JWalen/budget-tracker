@@ -2,10 +2,13 @@ import { Router, Response } from 'express';
 import { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
+import { LoggerClass } from '../services/logger';
 import multer from 'multer';
 import { parse } from 'csv-parse/sync';
+import { uploadRateLimiter } from '../middleware/security';
 
 const router = Router();
+const logger = new LoggerClass('Import');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 
 router.use(authMiddleware);
@@ -42,7 +45,7 @@ function parseOFX(content: string): Array<{ date: string; amount: number; descri
 }
 
 // Upload and parse file, return preview with match suggestions
-router.post('/upload', requireEditAccess, upload.single('file'), async (req: AuthRequest, res: Response) => {
+router.post('/upload', uploadRateLimiter, requireEditAccess, upload.single('file'), async (req: AuthRequest, res: Response) => {
   try {
     if (!req.file) {
       return res.status(400).json({ error: 'No file uploaded' });
@@ -217,7 +220,7 @@ router.post('/upload', requireEditAccess, upload.single('file'), async (req: Aut
 
     res.json({ transactions: preview });
   } catch (error) {
-    console.error('Import upload error:', error);
+    logger.error('Import upload error:', error as Error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -274,7 +277,7 @@ router.post('/confirm', requireEditAccess, async (req: AuthRequest, res: Respons
 
     res.json({ imported, billsMatched, debtPayments, skipped });
   } catch (error) {
-    console.error('Import confirm error:', error);
+    logger.error('Import confirm error:', error as Error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -289,7 +292,7 @@ router.get('/rules', async (req: AuthRequest, res: Response) => {
     );
     res.json(result.rows);
   } catch (error) {
-    console.error('Get rules error:', error);
+    logger.error('Get rules error:', error as Error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -308,7 +311,7 @@ router.post('/rules', requireEditAccess, async (req: AuthRequest, res: Response)
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    console.error('Create rule error:', error);
+    logger.error('Create rule error:', error as Error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -334,7 +337,7 @@ router.put('/rules/:id', requireEditAccess, async (req: AuthRequest, res: Respon
 
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Update rule error:', error);
+    logger.error('Update rule error:', error as Error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -356,7 +359,7 @@ router.delete('/rules/:id', requireEditAccess, async (req: AuthRequest, res: Res
 
     res.json({ message: 'Rule deleted' });
   } catch (error) {
-    console.error('Delete rule error:', error);
+    logger.error('Delete rule error:', error as Error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -460,7 +463,7 @@ router.post('/apply-rules', requireEditAccess, async (req: AuthRequest, res: Res
       message: `Successfully categorized ${updatedCount} transaction(s)`
     });
   } catch (error) {
-    console.error('Apply rules error:', error);
+    logger.error('Apply rules error:', error as Error);
     res.status(500).json({ error: 'Server error' });
   }
 });

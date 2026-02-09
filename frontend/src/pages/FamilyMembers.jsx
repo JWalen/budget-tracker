@@ -16,7 +16,7 @@ import {
   TrendingUp,
   Eye
 } from 'lucide-react';
-import api from '../api/client';
+import { api } from '../api/client';
 
 export default function FamilyMembers() {
   const [members, setMembers] = useState([]);

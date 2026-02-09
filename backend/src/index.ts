@@ -11,6 +11,7 @@ import {
   securityHeaders
 } from './middleware/security';
 import { LoggerClass, requestLogger } from './services/logger';
+import { query } from './config/database';
 import authRoutes from './routes/auth';
 import transactionRoutes from './routes/transactions';
 import budgetRoutes from './routes/budgets';
@@ -34,9 +35,60 @@ import aiRoutes from './routes/ai';
 // Load environment variables
 dotenv.config();
 
-const app = express();
-const PORT = process.env.PORT || 5000;
 const logger = new LoggerClass('Server');
+
+// Validate required environment variables
+function validateEnvironment() {
+  const required = {
+    JWT_SECRET: process.env.JWT_SECRET,
+    JWT_REFRESH_SECRET: process.env.JWT_REFRESH_SECRET,
+    DATABASE_URL: process.env.DATABASE_URL,
+    ENCRYPTION_KEY: process.env.ENCRYPTION_KEY,
+  };
+
+  const missing = Object.entries(required)
+    .filter(([, value]) => !value)
+    .map(([key]) => key);
+
+  if (missing.length > 0) {
+    logger.error(`❌ FATAL: Missing required environment variables: ${missing.join(', ')}`);
+    logger.error('Please set these variables in your .env file or environment');
+    process.exit(1);
+  }
+
+  // Check for insecure development defaults in production
+  if (process.env.NODE_ENV === 'production') {
+    const insecurePatterns = ['dev-', 'change_this', 'change-this', 'do-not-use-in-production'];
+    const insecure = Object.entries(required)
+      .filter(([, value]) => insecurePatterns.some(pattern => value?.includes(pattern)))
+      .map(([key]) => key);
+
+    if (insecure.length > 0) {
+      logger.error(`❌ FATAL: Insecure development defaults detected in production: ${insecure.join(', ')}`);
+      logger.error('Please generate proper production secrets');
+      process.exit(1);
+    }
+
+    // Validate secret strength (minimum 32 characters for production)
+    const weakSecrets = Object.entries(required)
+      .filter(([, value]) => value && value.length < 32)
+      .map(([key]) => key);
+
+    if (weakSecrets.length > 0) {
+      logger.error(`❌ FATAL: Weak secrets detected in production (< 32 chars): ${weakSecrets.join(', ')}`);
+      logger.error('Generate strong secrets using: openssl rand -hex 32');
+      process.exit(1);
+    }
+  }
+
+  logger.info('✅ Environment validation passed');
+}
+
+validateEnvironment();
+
+const app = express();
+app.set('trust proxy', 1);
+const PORT = process.env.PORT || 5000;
 
 // Security middleware (order matters!)
 app.use(enforceHTTPS); // Check HTTPS first
@@ -80,8 +132,57 @@ app.use('/api/family', familyRoutes);
 app.use('/api/ai', aiRoutes);
 
 // Health check
-app.get('/api/health', (req, res) => {
-  res.json({ status: 'ok' });
+app.get('/api/health', async (req, res) => {
+  const checks: any = {
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    uptime: process.uptime(),
+    environment: process.env.NODE_ENV,
+    database: 'unknown',
+    ollama: 'unknown',
+  };
+
+  try {
+    // Check database connectivity
+    const dbStart = Date.now();
+    await query('SELECT 1');
+    checks.database = 'connected';
+    checks.databaseResponseTime = `${Date.now() - dbStart}ms`;
+  } catch (error) {
+    checks.database = 'disconnected';
+    checks.status = 'degraded';
+    logger.error('Health check: Database connection failed', error as Error);
+  }
+
+  // Check Ollama (if AI features enabled)
+  if (process.env.AI_ENABLED !== 'false') {
+    try {
+      const ollamaUrl = process.env.OLLAMA_BASE_URL || 'http://ollama:11434';
+      const response = await fetch(`${ollamaUrl}/api/version`, { 
+        signal: AbortSignal.timeout(5000) 
+      });
+      checks.ollama = response.ok ? 'connected' : 'disconnected';
+    } catch (error) {
+      checks.ollama = 'disconnected';
+      // Ollama failure is not critical, don't degrade status
+    }
+  } else {
+    checks.ollama = 'disabled';
+  }
+
+  const statusCode = checks.status === 'ok' ? 200 : 503;
+  res.status(statusCode).json(checks);
+});
+
+// Readiness probe for Kubernetes/container orchestration
+app.get('/api/ready', async (req, res) => {
+  try {
+    await query('SELECT 1');
+    res.status(200).json({ ready: true });
+  } catch (error) {
+    logger.error('Readiness check failed', error as Error);
+    res.status(503).json({ ready: false, error: 'Database not ready' });
+  }
 });
 
 // Global error handler

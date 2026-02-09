@@ -68,10 +68,9 @@ export const sanitizeInput = (req: Request, res: Response, next: NextFunction) =
   // Recursively sanitize all string inputs
   const sanitize = (obj: any): any => {
     if (typeof obj === 'string') {
-      // Remove any script tags and SQL keywords
+      // Remove any script tags (SQL injection is prevented by parameterized queries)
       return obj
-        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '')
-        .replace(/(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|EXECUTE|UNION|FROM|WHERE)\b)/gi, '');
+        .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, '');
     } else if (Array.isArray(obj)) {
       return obj.map(sanitize);
     } else if (obj !== null && typeof obj === 'object') {
