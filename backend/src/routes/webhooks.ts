@@ -148,8 +148,8 @@ async function handleSubscriptionCreated(subscription: Stripe.Subscription) {
       subscription.id,
       subscription.status,
       subscription.items.data[0].price.recurring?.interval || 'monthly',
-      new Date((subscription.current_period_start as number) * 1000),
-      new Date((subscription.current_period_end as number) * 1000),
+      new Date(((subscription as any).current_period_start as number) * 1000),
+      new Date(((subscription as any).current_period_end as number) * 1000),
       subscription.trial_end ? new Date((subscription.trial_end as number) * 1000) : null,
     ]
   );
@@ -171,8 +171,8 @@ async function handleSubscriptionUpdated(subscription: Stripe.Subscription) {
      WHERE stripe_subscription_id = $5`,
     [
       subscription.status,
-      new Date((subscription.current_period_start as number) * 1000),
-      new Date((subscription.current_period_end as number) * 1000),
+      new Date(((subscription as any).current_period_start as number) * 1000),
+      new Date(((subscription as any).current_period_end as number) * 1000),
       subscription.cancel_at_period_end,
       subscription.id,
     ]
@@ -221,7 +221,7 @@ async function handleSubscriptionDeleted(subscription: Stripe.Subscription) {
 }
 
 // Payment succeeded
-async function handlePaymentSucceeded(invoice: Stripe.Invoice) {
+async function handlePaymentSucceeded(invoice: any) {
   logger.info('Payment succeeded', { invoiceId: invoice.id });
 
   const customerId = invoice.customer as string;
@@ -265,7 +265,7 @@ async function handlePaymentSucceeded(invoice: Stripe.Invoice) {
 }
 
 // Payment failed
-async function handlePaymentFailed(invoice: Stripe.Invoice) {
+async function handlePaymentFailed(invoice: any) {
   logger.error('Payment failed', { invoiceId: invoice.id });
 
   const customerId = invoice.customer as string;

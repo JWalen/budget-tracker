@@ -1,5 +1,8 @@
-import express from 'express';
+import express, { Request, Response, NextFunction } from 'express';
+import cors from 'cors';
 import dotenv from 'dotenv';
+import helmet from 'helmet';
+import compression from 'compression';
 import cookieParser from 'cookie-parser';
 import {
   corsConfig,
@@ -12,6 +15,7 @@ import {
 } from './middleware/security';
 import { LoggerClass, requestLogger } from './services/logger';
 import { query } from './config/database';
+import { authMiddleware } from './middleware/auth';
 import authRoutes from './routes/auth';
 import transactionRoutes from './routes/transactions';
 import budgetRoutes from './routes/budgets';
