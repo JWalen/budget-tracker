@@ -31,6 +31,11 @@ import accountsRoutes from './routes/accounts';
 import adminEmailRoutes from './routes/adminEmail';
 import familyRoutes from './routes/family';
 import aiRoutes from './routes/ai';
+import subscriptionRoutes from './routes/subscriptions';
+
+// Swagger API documentation
+import swaggerUi from 'swagger-ui-express';
+import { swaggerSpec } from './config/swagger';
 
 // Load environment variables
 dotenv.config();
@@ -138,6 +143,13 @@ app.use('/api/accounts', accountsRoutes);
 app.use('/api/admin/email', adminEmailRoutes);
 app.use('/api/family', familyRoutes);
 app.use('/api/ai', aiRoutes);
+app.use('/api/subscriptions', subscriptionRoutes);
+
+// API Documentation
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+  customCss: '.swagger-ui .topbar { display: none }',
+  customSiteTitle: 'Budget Tracker API Docs',
+}));
 
 // Health check
 app.get('/api/health', async (req, res) => {
