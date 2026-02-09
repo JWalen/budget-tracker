@@ -38,6 +38,7 @@ import analyticsRoutes from './routes/analytics';
 import receiptsRoutes from './routes/receipts';
 import budgetTemplatesRoutes from './routes/budgetTemplates';
 import currencyRoutes from './routes/currency';
+import notificationsRoutes from './routes/notifications';
 import { getUsageSummary } from './middleware/usageLimits';
 import { initStorage } from './services/storage';
 
@@ -161,6 +162,7 @@ app.use('/api/analytics', analyticsRoutes);
 app.use('/api/receipts', receiptsRoutes);
 app.use('/api/budget-templates', budgetTemplatesRoutes);
 app.use('/api/currency', currencyRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 // Serve uploaded files (for local storage only)
 app.use('/uploads', express.static(process.env.UPLOAD_DIR || './uploads'));
