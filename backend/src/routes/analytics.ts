@@ -191,11 +191,12 @@ router.get('/cash-flow', async (req: AuthRequest, res: Response) => {
  */
 router.get('/summary', async (req: AuthRequest, res: Response) => {
   try {
-    const { month, year } = req.query;
+    const month = req.query.month ? parseInt(req.query.month as string, 10) : undefined;
+    const year = req.query.year ? parseInt(req.query.year as string, 10) : undefined;
     const budgetUserId = (req as any).budgetUserId;
 
-    const m = month || new Date().getMonth() + 1;
-    const y = year || new Date().getFullYear();
+    const m: number = month || new Date().getMonth() + 1;
+    const y: number = year || new Date().getFullYear();
 
     // Get current month stats
     const currentMonth = await query(
@@ -212,8 +213,8 @@ router.get('/summary', async (req: AuthRequest, res: Response) => {
     );
 
     // Get previous month stats for comparison
-    const prevMonth = m === 1 ? 12 : (m - 1);
-    const prevYear = m === 1 ? (y - 1) : y;
+    const prevMonth: number = m === 1 ? 12 : (m - 1);
+    const prevYear: number = m === 1 ? (y - 1) : y;
 
     const previousMonth = await query(
       `SELECT 

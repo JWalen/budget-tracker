@@ -43,10 +43,12 @@ export const cacheMiddleware = (ttl: number = DEFAULT_TTL, keyGenerator?: (req: 
       // Override json method to cache response
       res.json = (data: any) => {
         // Cache the response
-        redisClient.setex(cacheKey, ttl, JSON.stringify(data))
-          .catch((error: Error) => {
-            logger.error('Cache write error', error);
-          });
+        if (redisClient) {
+          redisClient.setex(cacheKey, ttl, JSON.stringify(data))
+            .catch((error: Error) => {
+              logger.error('Cache write error', error);
+            });
+        }
 
         // Call original json method
         return originalJson(data);

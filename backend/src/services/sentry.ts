@@ -13,7 +13,7 @@ export const initSentry = () => {
       
       integrations: [
         nodeProfilingIntegration(),
-        Sentry.httpIntegration({ tracing: true }),
+        Sentry.httpIntegration(),
         Sentry.expressIntegration(),
       ],
 
