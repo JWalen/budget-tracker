@@ -45,13 +45,15 @@ export default function Organizations() {
     if (!newOrgName.trim()) return;
 
     try {
-      await api.createOrganization(newOrgName);
+      console.log('Creating household:', newOrgName);
+      const result = await api.createOrganization(newOrgName);
+      console.log('Household created:', result);
       setShowCreateModal(false);
       setNewOrgName('');
       await loadOrganizations();
     } catch (error) {
       console.error('Failed to create household:', error);
-      alert('Failed to create household');
+      alert(`Failed to create household: ${error.message || 'Unknown error'}`);
     }
   };
 
@@ -80,11 +82,17 @@ export default function Organizations() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Households</h1>
-        <p className="text-gray-600 dark:text-gray-400 mt-1">
-          Manage household collaboration and permissions
-        </p>
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Households</h1>
+          <p className="text-gray-600 dark:text-gray-400 mt-1">
+            Manage household collaboration and permissions
+          </p>
+        </div>
+        <button onClick={() => setShowCreateModal(true)} className="btn btn-primary">
+          <Building2 size={18} />
+          Create Household
+        </button>
       </div>
 
       {organizations.length === 0 ? (
