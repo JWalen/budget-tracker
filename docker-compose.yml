@@ -1,0 +1,85 @@
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: budget-db
+    environment:
+      POSTGRES_USER: ${DB_USER:-budget_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-budget_pass}
+      POSTGRES_DB: ${DB_NAME:-budget_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "${DB_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-budget_user} -d ${DB_NAME:-budget_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: budget-ollama
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_MODELS=${OLLAMA_MODELS:-/root/.ollama/models}
+    # Uncomment for GPU support on Linux (requires nvidia-docker)
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/version || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  backend:
+    build: ./backend
+    container_name: budget-api
+    environment:
+      DATABASE_URL: postgres://${DB_USER:-budget_user}:${DB_PASSWORD:-budget_pass}@postgres:5432/${DB_NAME:-budget_db}
+      JWT_SECRET: ${JWT_SECRET}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 5000
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-mistral}
+      EMAIL_HOST: ${EMAIL_HOST}
+      EMAIL_PORT: ${EMAIL_PORT}
+      EMAIL_USER: ${EMAIL_USER}
+      EMAIL_PASS: ${EMAIL_PASS}
+      EMAIL_FROM: ${EMAIL_FROM}
+      EMAIL_SECURE: ${EMAIL_SECURE}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3456}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY}
+    ports:
+      - "${BACKEND_PORT:-5050}:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    volumes:
+      - ./backend/src:/app/src
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+
+  frontend:
+    build: ./frontend
+    container_name: budget-ui
+    ports:
+      - "${FRONTEND_PORT:-3456}:80"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
+  ollama_data:
