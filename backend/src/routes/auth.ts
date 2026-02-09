@@ -58,13 +58,17 @@ router.post('/register', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Email already registered' });
     }
 
+    // Check if this is the first user (should become admin)
+    const userCount = await query('SELECT COUNT(*) as count FROM users');
+    const isFirstUser = parseInt(userCount.rows[0].count) === 0;
+
     // Hash password with cost factor 12
     const passwordHash = await bcrypt.hash(password, 12);
 
-    // Create user
+    // Create user (first user becomes admin)
     const result = await query(
-      'INSERT INTO users (email, password_hash, name) VALUES ($1, $2, $3) RETURNING id, email, name, mfa_enabled, is_admin',
-      [email, passwordHash, name]
+      'INSERT INTO users (email, password_hash, name, is_admin) VALUES ($1, $2, $3, $4) RETURNING id, email, name, mfa_enabled, is_admin',
+      [email, passwordHash, name, isFirstUser]
     );
 
     const user = result.rows[0];
