@@ -30,6 +30,13 @@ import {
   Zap,
   HardDrive,
   BarChart2,
+  TrendingUp,
+  CreditCard,
+  Building2,
+  FileText,
+  DollarSign,
+  Bell,
+  Sparkles,
 } from 'lucide-react';
 import { useState } from 'react';
 import { APP_VERSION } from '../version';
@@ -37,24 +44,33 @@ import { APP_VERSION } from '../version';
 const navGroups = [
   { items: [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
+    { to: '/analytics', icon: TrendingUp, label: 'Analytics', badge: 'New' },
   ]},
   { label: 'FINANCES', items: [
     { to: '/transactions', icon: ArrowLeftRight, label: 'Transactions' },
     { to: '/accounts', icon: Wallet, label: 'Accounts' },
     { to: '/budgets', icon: Target, label: 'Budgets' },
+    { to: '/budget-templates', icon: Sparkles, label: 'Templates', badge: 'Pro' },
     { to: '/recurring', icon: RefreshCw, label: 'Recurring' },
     { to: '/pay-periods', icon: Calendar, label: 'Pay Periods' },
+    { to: '/receipts', icon: Receipt, label: 'Receipts', badge: 'Pro' },
   ]},
   { label: 'MANAGE', items: [
     { to: '/categories', icon: Tags, label: 'Categories' },
+    { to: '/currency', icon: DollarSign, label: 'Currency', badge: 'Pro' },
     { to: '/debts', icon: Landmark, label: 'Debts' },
-    { to: '/bills', icon: Receipt, label: 'Bills' },
+    { to: '/bills', icon: FileText, label: 'Bills' },
   ]},
   { label: 'TOOLS', items: [
     { to: '/import', icon: Upload, label: 'Import' },
     { to: '/match-rules', icon: Zap, label: 'Auto-Categorize' },
     { to: '/reports', icon: BarChart2, label: 'Reports' },
     { to: '/backups', icon: HardDrive, label: 'Backups' },
+  ]},
+  { label: 'ACCOUNT', items: [
+    { to: '/subscriptions', icon: CreditCard, label: 'Subscription', badge: 'SaaS' },
+    { to: '/organizations', icon: Building2, label: 'Organizations', badge: 'Business' },
+    { to: '/notifications', icon: Bell, label: 'Notifications' },
     { to: '/settings', icon: Settings, label: 'Settings' },
     { to: '/help', icon: HelpCircle, label: 'Help' },
   ]},
@@ -175,7 +191,7 @@ export default function Layout() {
                   <p className="px-4 py-1 text-xs font-semibold text-gray-400 uppercase">{group.label}</p>
                 </>
               )}
-              {group.items.map(({ to, icon: Icon, label }) => (
+              {group.items.map(({ to, icon: Icon, label, badge }) => (
                 <NavLink
                   key={to}
                   to={to}
@@ -190,7 +206,17 @@ export default function Layout() {
                   end={to === '/'}
                 >
                   <Icon size={20} />
-                  <span>{label}</span>
+                  <span className="flex-1">{label}</span>
+                  {badge && (
+                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                      badge === 'New' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-300' :
+                      badge === 'Pro' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-300' :
+                      badge === 'Business' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-300' :
+                      'bg-yellow-100 text-yellow-700 dark:bg-yellow-900 dark:text-yellow-300'
+                    }`}>
+                      {badge}
+                    </span>
+                  )}
                 </NavLink>
               ))}
             </div>
