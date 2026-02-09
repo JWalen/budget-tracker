@@ -37,6 +37,14 @@ dotenv.config();
 
 const logger = new LoggerClass('Server');
 
+// Initialize Sentry for error tracking
+import { initSentry } from './services/sentry';
+initSentry();
+
+// Initialize Redis for caching
+import { initRedis } from './services/redis';
+initRedis();
+
 // Validate required environment variables
 function validateEnvironment() {
   const required = {
