@@ -798,4 +798,35 @@ export const api = {
       headers: headers(),
       body: JSON.stringify({ type, days }),
     }).then(handleResponse),
+
+  // Analytics
+  getAnalyticsSummary: (month, year) =>
+    fetch(`${API_URL}/analytics/summary?month=${month}&year=${year}`, {
+      headers: headers(),
+    }).then(handleResponse),
+
+  getSpendingTrends: (months = 6) =>
+    fetch(`${API_URL}/analytics/spending-trends?months=${months}`, {
+      headers: headers(),
+    }).then(handleResponse),
+
+  getCategoryBreakdown: (month, year) =>
+    fetch(`${API_URL}/analytics/category-breakdown?month=${month}&year=${year}`, {
+      headers: headers(),
+    }).then(handleResponse),
+
+  getBudgetVariance: (month, year) =>
+    fetch(`${API_URL}/analytics/budget-variance?month=${month}&year=${year}`, {
+      headers: headers(),
+    }).then(handleResponse),
+
+  getCashFlow: (month, year) =>
+    fetch(`${API_URL}/analytics/cash-flow?month=${month}&year=${year}`, {
+      headers: headers(),
+    }).then(handleResponse),
+
+  getIncomeVsExpenses: (months = 12) =>
+    fetch(`${API_URL}/analytics/income-vs-expenses?months=${months}`, {
+      headers: headers(),
+    }).then(handleResponse),
 };
