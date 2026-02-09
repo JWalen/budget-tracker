@@ -40,6 +40,7 @@ import budgetTemplatesRoutes from './routes/budgetTemplates';
 import currencyRoutes from './routes/currency';
 import notificationsRoutes from './routes/notifications';
 import { getUsageSummary } from './middleware/usageLimits';
+import { apiLimiter, authLimiter, transactionLimiter, uploadLimiter, exportLimiter } from './middleware/rateLimiter';
 import { initStorage } from './services/storage';
 
 // Swagger API documentation
@@ -113,6 +114,8 @@ app.set('trust proxy', 1);
 const PORT = process.env.PORT || 5000;
 
 // Security middleware (order matters!)
+app.use(helmet()); // Security headers
+app.use(compression()); // Gzip compression
 app.use(enforceHTTPS); // Check HTTPS first
 app.use(helmetConfig);
 app.use(securityHeaders); // Additional security headers
@@ -159,7 +162,7 @@ app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/organizations', organizationRoutes);
 app.use('/api/analytics', analyticsRoutes);
-app.use('/api/receipts', receiptsRoutes);
+app.use('/api/receipts', uploadLimiter, receiptsRoutes); // Rate limit file uploads
 app.use('/api/budget-templates', budgetTemplatesRoutes);
 app.use('/api/currency', currencyRoutes);
 app.use('/api/notifications', notificationsRoutes);
