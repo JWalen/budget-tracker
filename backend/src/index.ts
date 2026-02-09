@@ -32,6 +32,8 @@ import adminEmailRoutes from './routes/adminEmail';
 import familyRoutes from './routes/family';
 import aiRoutes from './routes/ai';
 import subscriptionRoutes from './routes/subscriptions';
+import webhookRoutes from './routes/webhooks';
+import organizationRoutes from './routes/organizations';
 
 // Swagger API documentation
 import swaggerUi from 'swagger-ui-express';
@@ -112,6 +114,9 @@ app.use(cookieParser());
 app.use(setCsrfToken);
 
 // Body parsing with reasonable limits
+// Stripe webhooks need raw body - register BEFORE json parser
+app.use('/api/webhooks/stripe', express.raw({ type: 'application/json' }));
+
 app.use(express.json({ limit: '5mb' })); // Reduced from 50mb
 app.use(express.urlencoded({ limit: '5mb', extended: true }));
 
@@ -144,6 +149,8 @@ app.use('/api/admin/email', adminEmailRoutes);
 app.use('/api/family', familyRoutes);
 app.use('/api/ai', aiRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
+app.use('/api/webhooks', webhookRoutes);
+app.use('/api/organizations', organizationRoutes);
 
 // API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
