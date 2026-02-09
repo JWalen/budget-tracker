@@ -34,6 +34,7 @@ import aiRoutes from './routes/ai';
 import subscriptionRoutes from './routes/subscriptions';
 import webhookRoutes from './routes/webhooks';
 import organizationRoutes from './routes/organizations';
+import analyticsRoutes from './routes/analytics';
 import { getUsageSummary } from './middleware/usageLimits';
 
 // Swagger API documentation
@@ -152,6 +153,7 @@ app.use('/api/ai', aiRoutes);
 app.use('/api/subscriptions', subscriptionRoutes);
 app.use('/api/webhooks', webhookRoutes);
 app.use('/api/organizations', organizationRoutes);
+app.use('/api/analytics', analyticsRoutes);
 
 // API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
