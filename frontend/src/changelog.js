@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.1.7',
+    date: '2026-02-13',
+    changes: [
+      'Fixed update check logic to reliably detect current version',
+    ],
+  },
+  {
     version: '2.1.6',
     date: '2026-02-13',
     changes: [

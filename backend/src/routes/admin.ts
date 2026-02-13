@@ -948,8 +948,11 @@ router.post('/ai/pull-model', async (req: AuthRequest, res: Response) => {
 // GET /api/admin/system/updates — Check for application updates
 router.get('/system/updates', async (req: AuthRequest, res: Response) => {
   try {
-    const currentVersion = process.env.npm_package_version || '1.0.0';
-    const repo = process.env.GITHUB_REPO || 'jwalen/budget-tracker'; // Default or from env
+    // Read package.json explicitly instead of relying on process.env.npm_package_version
+    // which might be stale or missing in Docker/compiled envs
+    const packageJson = require('../../package.json');
+    const currentVersion = packageJson.version || '1.0.0';
+    const repo = 'JWalen/budget-tracker'; // Hardcoded correct repo
     
     // Fetch latest release from GitHub
     const response = await axios.get(`https://api.github.com/repos/${repo}/releases/latest`, {
@@ -961,6 +964,8 @@ router.get('/system/updates', async (req: AuthRequest, res: Response) => {
     });
     
     const latestVersion = response.data.tag_name.replace(/^v/, '');
+    
+    // Simple semver comparison
     const hasUpdate = latestVersion !== currentVersion;
     
     res.json({
@@ -972,10 +977,14 @@ router.get('/system/updates', async (req: AuthRequest, res: Response) => {
       publishedAt: response.data.published_at
     });
   } catch (error) {
+    // Read package.json for fallback
+    const packageJson = require('../../package.json');
+    const currentVersion = packageJson.version || '1.0.0';
+
     logger.error('Check updates error:', error);
     // Return current version even if check fails
     res.json({
-      currentVersion: process.env.npm_package_version || '1.0.0',
+      currentVersion,
       hasUpdate: false,
       error: 'Failed to check for updates'
     });

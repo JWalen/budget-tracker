@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.1.7] - 2026-02-13
+
+### Fixed
+- Fixed update checking logic to reliably detect the running version (reads package.json directly)
+
 ## [2.1.6] - 2026-02-13
 
 ### Fixed
