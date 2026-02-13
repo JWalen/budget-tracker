@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.1.6',
+    date: '2026-02-13',
+    changes: [
+      'Hardcoded lowercase repository owner for Docker images',
+    ],
+  },
+  {
     version: '2.1.5',
     date: '2026-02-13',
     changes: [

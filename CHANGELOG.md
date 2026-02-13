@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.1.6] - 2026-02-13
+
+### Fixed
+- Fixed Docker image naming by hardcoding lowercase repository owner in workflow
+
 ## [2.1.5] - 2026-02-13
 
 ### Fixed
