@@ -417,3 +417,21 @@ BEGIN
     );
 END;
 $$ LANGUAGE plpgsql;
+
+-- Budget shares for family/team access
+CREATE TABLE budget_shares (
+    id SERIAL PRIMARY KEY,
+    owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+    shared_with_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    shared_with_email VARCHAR(255) NOT NULL,
+    role VARCHAR(50) NOT NULL DEFAULT 'view',
+    status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    CONSTRAINT unique_share UNIQUE (owner_id, shared_with_email)
+);
+
+CREATE INDEX idx_budget_shares_owner_id ON budget_shares(owner_id);
+CREATE INDEX idx_budget_shares_shared_with_id ON budget_shares(shared_with_id);
+CREATE INDEX idx_budget_shares_shared_with_email ON budget_shares(shared_with_email);
+

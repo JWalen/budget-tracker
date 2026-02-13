@@ -1,4 +1,4 @@
-import { query } from '../../src/config/database';
+import { query } from '../src/config/database';
 import bcrypt from 'bcryptjs';
 
 export const testUser = {

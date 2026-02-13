@@ -24,6 +24,7 @@ import Receipts from './pages/Receipts';
 import BudgetTemplates from './pages/BudgetTemplates';
 import Currency from './pages/Currency';
 import Notifications from './pages/Notifications';
+import AIAssistant from './pages/AIAssistant';
 import PayPeriods from './pages/PayPeriods';
 import Accounts from './pages/Accounts';
 import MatchRules from './pages/MatchRules';
@@ -34,6 +35,7 @@ import AdminUsers from './pages/Admin/AdminUsers';
 import AdminLogs from './pages/Admin/AdminLogs';
 import AdminBackup from './pages/Admin/AdminBackup';
 import AdminAISettings from './pages/Admin/AdminAISettings';
+import AdminEmailSettings from './pages/Admin/AdminEmailSettings';
 import FamilyMembers from './pages/FamilyMembers';
 
 const ProtectedRoute = ({ children }) => {
@@ -108,13 +110,10 @@ const AppRoutes = () => {
         <Route path="organizations" element={<Organizations />} />
         <Route path="family" element={<FamilyMembers />} />
         <Route path="notifications" element={<Notifications />} />
+        <Route path="ai-assistant" element={<AIAssistant />} />
         <Route path="settings" element={<Settings />} />
         <Route path="help" element={<Help />} />
         <Route path="admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
-        <Route path="admin/users" element={<AdminRoute><AdminUsers /></AdminRoute>} />
-        <Route path="admin/logs" element={<AdminRoute><AdminLogs /></AdminRoute>} />
-        <Route path="admin/backup" element={<AdminRoute><AdminBackup /></AdminRoute>} />
-        <Route path="admin/ai-settings" element={<AdminRoute><AdminAISettings /></AdminRoute>} />
       </Route>
     </Routes>
   );
