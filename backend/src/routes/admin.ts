@@ -843,4 +843,98 @@ router.post('/users/:id/impersonate', async (req: AuthRequest, res: Response) =>
   }
 });
 
+import AIAssistant from '../services/aiAssistant';
+
+// GET /api/admin/ai/settings — Get AI configuration
+router.get('/ai/settings', async (req: AuthRequest, res: Response) => {
+  try {
+    const settings = await query('SELECT * FROM system_settings WHERE key LIKE \'ai_%\'');
+    const capabilities = await AIAssistant.detectSystemCapabilities();
+    
+    // Convert rows to object
+    const config: any = {};
+    settings.rows.forEach(row => {
+      config[row.key] = row.value;
+    });
+
+    res.json({
+      config,
+      capabilities,
+      isOllamaRunning: await AIAssistant.isAvailable()
+    });
+  } catch (error) {
+    logger.error('Get AI settings error', error as Error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/admin/ai/settings — Update AI configuration
+router.post('/ai/settings', async (req: AuthRequest, res: Response) => {
+  try {
+    const { ai_enabled, ai_model, ai_auto_gpu } = req.body;
+
+    await query('BEGIN');
+    
+    if (ai_enabled !== undefined) {
+      await query(
+        'INSERT INTO system_settings (key, value, type) VALUES ($1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = $2',
+        ['ai_enabled', String(ai_enabled), 'boolean']
+      );
+    }
+    
+    if (ai_model !== undefined) {
+      await query(
+        'INSERT INTO system_settings (key, value, type) VALUES ($1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = $2',
+        ['ai_model', ai_model, 'string']
+      );
+    }
+
+    if (ai_auto_gpu !== undefined) {
+      await query(
+        'INSERT INTO system_settings (key, value, type) VALUES ($1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = $2',
+        ['ai_auto_gpu', String(ai_auto_gpu), 'boolean']
+      );
+    }
+    
+    await query('COMMIT');
+    res.json({ success: true });
+  } catch (error) {
+    await query('ROLLBACK');
+    logger.error('Update AI settings error', error as Error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// GET /api/admin/ai/models — List available models
+router.get('/ai/models', async (req: AuthRequest, res: Response) => {
+  try {
+    const models = await AIAssistant.listModels();
+    res.json(models);
+  } catch (error) {
+    logger.error('List models error', error as Error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/admin/ai/pull-model — Pull a new model
+router.post('/ai/pull-model', async (req: AuthRequest, res: Response) => {
+  try {
+    const { model } = req.body;
+    if (!model) return res.status(400).json({ error: 'Model name required' });
+
+    // This is a long running operation - in a real app should be async
+    // For now we await it (timeout risk) or fire and forget
+    const success = await AIAssistant.pullModel(model);
+    
+    if (success) {
+      res.json({ success: true, message: `Model ${model} pulled successfully` });
+    } else {
+      res.status(500).json({ error: 'Failed to pull model' });
+    }
+  } catch (error) {
+    logger.error('Pull model error', error as Error);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
 export default router;

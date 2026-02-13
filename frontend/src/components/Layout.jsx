@@ -22,7 +22,6 @@ import {
   Landmark,
   Receipt,
   Upload,
-  Share2,
   ChevronDown,
   Eye,
   HelpCircle,
@@ -128,7 +127,7 @@ export default function Layout() {
             <CalendarDays size={20} />
           </NavLink>
           <NavLink
-            to="/sharing"
+            to="/notifications"
             className={({ isActive }) =>
               `p-2 rounded-lg transition-colors ${
                 isActive
@@ -136,9 +135,9 @@ export default function Layout() {
                   : 'text-gray-600 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700'
               }`
             }
-            title="Sharing"
+            title="Notifications"
           >
-            <Share2 size={20} />
+            <Bell size={20} />
           </NavLink>
           <button
             onClick={toggleTheme}

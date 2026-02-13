@@ -15,8 +15,15 @@ import Debts from './pages/Debts';
 import Bills from './pages/Bills';
 import Import from './pages/Import';
 import Calendar from './pages/Calendar';
-import Sharing from './pages/Sharing';
 import Help from './pages/Help';
+
+// New Feature Pages
+import Analytics from './pages/Analytics';
+import Organizations from './pages/Organizations';
+import Receipts from './pages/Receipts';
+import BudgetTemplates from './pages/BudgetTemplates';
+import Currency from './pages/Currency';
+import Notifications from './pages/Notifications';
 import PayPeriods from './pages/PayPeriods';
 import Accounts from './pages/Accounts';
 import MatchRules from './pages/MatchRules';
@@ -26,16 +33,8 @@ import AdminDashboard from './pages/Admin/AdminDashboard';
 import AdminUsers from './pages/Admin/AdminUsers';
 import AdminLogs from './pages/Admin/AdminLogs';
 import AdminBackup from './pages/Admin/AdminBackup';
-import InviteAccept from './pages/InviteAccept';
+import AdminAISettings from './pages/Admin/AdminAISettings';
 import FamilyMembers from './pages/FamilyMembers';
-
-// New Feature Pages
-import Analytics from './pages/Analytics';
-import Organizations from './pages/Organizations';
-import Receipts from './pages/Receipts';
-import BudgetTemplates from './pages/BudgetTemplates';
-import Currency from './pages/Currency';
-import Notifications from './pages/Notifications';
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -80,7 +79,6 @@ const AppRoutes = () => {
     <Routes>
       <Route path="/login" element={user ? <Navigate to="/" replace /> : <Login />} />
       <Route path="/register" element={user ? <Navigate to="/" replace /> : <Register />} />
-      <Route path="/invite/:token" element={<InviteAccept />} />
       <Route
         path="/"
         element={
@@ -107,7 +105,6 @@ const AppRoutes = () => {
         <Route path="backups" element={<Backups />} />
         <Route path="reports" element={<Reports />} />
         <Route path="currency" element={<Currency />} />
-        <Route path="sharing" element={<Sharing />} />
         <Route path="organizations" element={<Organizations />} />
         <Route path="family" element={<FamilyMembers />} />
         <Route path="notifications" element={<Notifications />} />
@@ -117,6 +114,7 @@ const AppRoutes = () => {
         <Route path="admin/users" element={<AdminRoute><AdminUsers /></AdminRoute>} />
         <Route path="admin/logs" element={<AdminRoute><AdminLogs /></AdminRoute>} />
         <Route path="admin/backup" element={<AdminRoute><AdminBackup /></AdminRoute>} />
+        <Route path="admin/ai-settings" element={<AdminRoute><AdminAISettings /></AdminRoute>} />
       </Route>
     </Routes>
   );
