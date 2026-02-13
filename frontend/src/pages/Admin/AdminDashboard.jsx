@@ -4,8 +4,8 @@ import { useAuth } from '../../context/AuthContext';
 import { formatCurrency } from '../../utils/format';
 import {
   Activity, Users, Database, Shield, TrendingUp, AlertTriangle,
-  Server, HardDrive, Lock, Mail, Share2, DollarSign, Clock,
-  CheckCircle, XCircle, AlertCircle, RefreshCw, Download
+  Server, HardDrive, Lock, Mail, DollarSign, Clock,
+  CheckCircle, XCircle, AlertCircle, RefreshCw, Download, Cpu
 } from 'lucide-react';
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
@@ -374,28 +374,6 @@ export default function AdminDashboard() {
             </div>
           </div>
         </div>
-
-        {/* Sharing Status */}
-        <div className="card p-6">
-          <div className="flex items-center space-x-3 mb-4">
-            <Share2 className="w-6 h-6 text-purple-500" />
-            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Sharing</h3>
-          </div>
-          <div className="space-y-2">
-            <div className="flex justify-between">
-              <span className="text-gray-600 dark:text-gray-400">Total Shares</span>
-              <span className="font-medium text-gray-900 dark:text-white">
-                {stats.sharing.totalShares}
-              </span>
-            </div>
-            <div className="flex justify-between">
-              <span className="text-gray-600 dark:text-gray-400">Sharing Users</span>
-              <span className="font-medium text-gray-900 dark:text-white">
-                {stats.sharing.sharingUsers}
-              </span>
-            </div>
-          </div>
-        </div>
       </div>
 
       {/* Quick Actions */}
@@ -429,6 +407,13 @@ export default function AdminDashboard() {
           >
             <Server className="w-8 h-8 text-purple-500 mb-2" />
             <span className="text-sm font-medium text-gray-900 dark:text-white">Configuration</span>
+          </button>
+          <button
+            onClick={() => window.location.href = '/admin/ai-settings'}
+            className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
+          >
+            <Cpu className="w-8 h-8 text-orange-500 mb-2" />
+            <span className="text-sm font-medium text-gray-900 dark:text-white">AI Settings</span>
           </button>
         </div>
       </div>

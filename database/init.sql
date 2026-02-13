@@ -214,21 +214,6 @@ CREATE TABLE match_rules (
 
 CREATE INDEX idx_match_rules_user ON match_rules(user_id);
 
--- Budget sharing table
-CREATE TABLE budget_shares (
-    id SERIAL PRIMARY KEY,
-    owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-    shared_with_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    shared_with_email VARCHAR(255) NOT NULL,
-    role VARCHAR(10) NOT NULL CHECK (role IN ('edit', 'view')),
-    status VARCHAR(10) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted')),
-    invite_token VARCHAR(64) UNIQUE NOT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    UNIQUE(owner_id, shared_with_email)
-);
-
-CREATE INDEX idx_budget_shares_shared ON budget_shares(shared_with_id, status);
-
 -- Pay periods (income buckets for bill assignment)
 CREATE TABLE pay_periods (
     id SERIAL PRIMARY KEY,

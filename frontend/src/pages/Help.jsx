@@ -18,7 +18,6 @@ import {
   Clock,
   Target,
   PieChart,
-  Share2,
   ArrowLeft
 } from 'lucide-react';
 
@@ -377,39 +376,6 @@ Turn your data into insights.
 2. Adjust budgets
 3. Review debt progress
 4. Update financial goals
-    `
-  },
-  {
-    id: 'sharing',
-    title: 'Budget Sharing',
-    icon: Share2,
-    content: `
-Share your budget with family or advisors.
-
-### Sharing Levels
-
-**View Only:**
-- Can see all financial data
-- Cannot make changes
-- Perfect for: Accountant, financial advisor
-
-**Edit Access:**
-- Can add/edit transactions
-- Can manage bills and budgets
-- Perfect for: Spouse managing together
-
-### How to Share
-1. Go to Settings → Sharing
-2. Enter email address
-3. Choose permission level
-4. They receive invitation
-5. Once accepted, they can switch between budgets
-
-### Managing Access
-- **Revoke** anytime instantly
-- **Change** permissions as needed
-- **See** all shared users
-- **Control** what each person can do
     `
   },
   {

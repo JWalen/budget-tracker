@@ -144,6 +144,12 @@ export class AIAssistant {
   // Check if Ollama is available and get optimal model
   static async isAvailable(): Promise<boolean> {
     try {
+      // Check if AI is enabled in settings
+      const settings = await query('SELECT value FROM system_settings WHERE key = $1', ['ai_enabled']);
+      if (settings.rows.length > 0 && settings.rows[0].value !== 'true') {
+        return false;
+      }
+
       const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`);
       if (!response.ok) return false;
 
@@ -168,6 +174,38 @@ export class AIAssistant {
     } catch (error) {
       console.log('Ollama is not available:', error);
       return false;
+    }
+  }
+
+  // Pull a model from Ollama library
+  static async pullModel(modelName: string): Promise<boolean> {
+    try {
+      if (!await this.isAvailable()) return false;
+
+      const response = await fetch(`${OLLAMA_BASE_URL}/api/pull`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: modelName, stream: false })
+      });
+
+      return response.ok;
+    } catch (error) {
+      console.error('Model pull error:', error);
+      return false;
+    }
+  }
+
+  // List available models
+  static async listModels(): Promise<string[]> {
+    try {
+      if (!await this.isAvailable()) return [];
+
+      const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`);
+      const data = await response.json() as any;
+      return data.models?.map((m: any) => m.name) || [];
+    } catch (error) {
+      console.error('List models error:', error);
+      return [];
     }
   }
 

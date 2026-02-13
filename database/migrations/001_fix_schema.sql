@@ -100,7 +100,6 @@ CREATE INDEX IF NOT EXISTS idx_transactions_user_date ON transactions(user_id, d
 CREATE INDEX IF NOT EXISTS idx_transactions_category ON transactions(category_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_account ON transactions(account_id);
 CREATE INDEX IF NOT EXISTS idx_transactions_member ON transactions(member_id);
-CREATE INDEX IF NOT EXISTS idx_budget_shares_shared ON budget_shares(shared_with_id, status);
 CREATE INDEX IF NOT EXISTS idx_categories_user_type ON categories(user_id, type);
 CREATE INDEX IF NOT EXISTS idx_budgets_user_month ON budgets(user_id, month, year);
 CREATE INDEX IF NOT EXISTS idx_spending_alerts_user ON spending_alerts(user_id, is_read);
