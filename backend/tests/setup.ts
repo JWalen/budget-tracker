@@ -8,7 +8,7 @@ process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'test-jwt-secret-for-testing-only-do-not-use-in-production';
 process.env.JWT_REFRESH_SECRET = 'test-refresh-secret-for-testing-only-do-not-use-in-production';
 process.env.ENCRYPTION_KEY = 'test-encryption-key-for-testing-only-do-not-use-in-prod';
-process.env.DATABASE_URL = process.env.TEST_DATABASE_URL || 'postgresql://budget_user:budget_pass@localhost:5433/budget_test';
+process.env.DATABASE_URL = process.env.DATABASE_URL || process.env.TEST_DATABASE_URL || 'postgresql://budget_user:budget_pass@localhost:5432/budget_test';
 
 // Disable logging during tests
 process.env.LOG_TO_CONSOLE = 'false';

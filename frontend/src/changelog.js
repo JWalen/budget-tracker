@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.1.3',
+    date: '2026-02-13',
+    changes: [
+      'Fixed incorrect test database port configuration',
+    ],
+  },
+  {
     version: '2.1.2',
     date: '2026-02-13',
     changes: [
