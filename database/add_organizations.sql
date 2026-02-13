@@ -6,7 +6,6 @@ CREATE TABLE organizations (
     name VARCHAR(255) NOT NULL,
     slug VARCHAR(100) UNIQUE NOT NULL,
     owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    subscription_id INTEGER REFERENCES subscriptions(id) ON DELETE SET NULL,
     settings JSONB DEFAULT '{}',
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
@@ -73,8 +72,8 @@ ALTER TABLE budget_allocations ADD COLUMN organization_id INTEGER REFERENCES org
 CREATE INDEX idx_budget_allocations_organization ON budget_allocations(organization_id);
 
 -- Update subscription to track organization-level subscriptions
-ALTER TABLE subscriptions ADD COLUMN organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE;
-CREATE INDEX idx_subscriptions_organization ON subscriptions(organization_id);
+-- ALTER TABLE subscriptions ADD COLUMN organization_id INTEGER REFERENCES organizations(id) ON DELETE CASCADE;
+-- CREATE INDEX idx_subscriptions_organization ON subscriptions(organization_id);
 
 -- Migration helper: Create default personal organization for existing users
 -- This will run after the schema is applied
@@ -111,7 +110,7 @@ BEGIN
         WHERE budget_id IN (SELECT id FROM budgets WHERE user_id = user_record.id);
         
         -- Move subscription to organization
-        UPDATE subscriptions SET organization_id = new_org_id WHERE user_id = user_record.id;
+        -- UPDATE subscriptions SET organization_id = new_org_id WHERE user_id = user_record.id;
     END LOOP;
 END $$;
 

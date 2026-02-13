@@ -1,8 +1,39 @@
 # Changelog
 
+## [2.1.0] - 2026-02-13
+
+### 🎉 MAJOR UPDATE: Complete Open Source Transformation
+
+#### Free & Unlimited Access (NEW)
+- Removed all subscription paywalls and tiered limits
+- All features now free for everyone (Pro/Business features unlocked)
+- Removed Stripe payment integration
+- Removed usage tracking limits
+
+#### Enhanced Features (Unlocked)
+- **Households (Organizations):** Create unlimited households for family collaboration
+- **Advanced Analytics:** Full access to all 6 chart types and CSV exports
+- **Budget Templates:** Use all pre-built strategies (50/30/20, Zero-based, etc.)
+- **Multi-Currency:** Support for 20+ currencies with live rates
+- **Receipt Management:** Unlimited receipt uploads
+- **Notifications:** Real-time alerts for all users
+
+#### UI/UX Improvements
+- **Registration:** Added password confirmation field for security
+- **Admin Access:** First registered user automatically becomes Admin
+- **Households:** Fixed "Create Household" flow with new modal UI
+- **Navigation:** Cleaned up sidebar, removed "Upgrade" badges
+- **Mobile:** Improved responsive layout for small screens
+
+#### Technical Changes
+- Removed `subscriptions` table and related database migrations
+- Removed Stripe dependency to reduce build size
+- Fixed tenant middleware to allow new user onboarding without errors
+- optimized API routes for performance
+
 ## [2.0.0] - 2026-02-09
 
-### 🎉 MAJOR RELEASE: Complete SaaS Platform Transformation
+### Feature Complete Release (Legacy SaaS Foundation)
 
 #### UI Integration (NEW)
 - Complete UI integration for all SaaS features
