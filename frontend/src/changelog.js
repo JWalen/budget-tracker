@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.1.4',
+    date: '2026-02-13',
+    changes: [
+      'Fixed release pipeline trigger to run on tag pushes',
+    ],
+  },
+  {
     version: '2.1.3',
     date: '2026-02-13',
     changes: [

@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.1.4] - 2026-02-13
+
+### Fixed
+- Fixed GitHub Actions workflow to correctly trigger on tag pushes for releases
+
 ## [2.1.3] - 2026-02-13
 
 ### Fixed
