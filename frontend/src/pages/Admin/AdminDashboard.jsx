@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
-import { LayoutDashboard, Users, FileText, Database, Bot, Mail, Shield, RefreshCw } from 'lucide-react';
+import { LayoutDashboard, Users, FileText, Database, Bot, Mail, Shield } from 'lucide-react';
 import { api } from '../../api/client';
 import DashboardStats from './DashboardStats';
 import AdminUsers from './AdminUsers';
@@ -11,7 +11,6 @@ import AdminEmailSettings from './AdminEmailSettings';
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('overview');
-  const [checkingUpdate, setCheckingUpdate] = useState(false);
   const location = useLocation();
   const navigate = useNavigate();
 
@@ -24,25 +23,6 @@ export default function AdminDashboard() {
     // The user asked to "encompass all the settings needed for admin with tabs"
     // So a single page with tabs is what they want.
   }, []);
-
-  const handleCheckUpdate = async () => {
-    setCheckingUpdate(true);
-    try {
-      const data = await api.checkUpdates();
-      if (data.hasUpdate) {
-        if (confirm(`Update available: v${data.latestVersion}\n\nClick OK to view release notes.`)) {
-          if (data.releaseUrl) window.open(data.releaseUrl, '_blank');
-        }
-      } else {
-        alert(`You are on the latest version (v${data.currentVersion})`);
-      }
-    } catch (err) {
-      console.error(err);
-      alert('Failed to check for updates');
-    } finally {
-      setCheckingUpdate(false);
-    }
-  };
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard, component: DashboardStats },
@@ -60,14 +40,6 @@ export default function AdminDashboard() {
           <Shield className="w-8 h-8 text-primary-600" />
           Admin Console
         </h1>
-        <button
-          onClick={handleCheckUpdate}
-          disabled={checkingUpdate}
-          className="px-4 py-2 bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-200 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-sm font-medium transition-colors flex items-center gap-2"
-        >
-          <RefreshCw className={`w-4 h-4 ${checkingUpdate ? 'animate-spin' : ''}`} />
-          {checkingUpdate ? 'Checking...' : 'Check Updates'}
-        </button>
       </div>
 
       {/* Tabs Navigation */}
