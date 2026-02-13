@@ -132,7 +132,7 @@ describe('Transactions API', () => {
 
     it('should not return other users transactions', async () => {
       // Create another user with transactions
-      const otherUser = await createTestUser();
+      const otherUser = await createTestUser({ email: 'other@example.com' });
       const otherCategory = await createTestCategory(otherUser.id);
       const { query } = require('../../../src/config/database');
       await query(
@@ -175,7 +175,7 @@ describe('Transactions API', () => {
     });
 
     it('should not update other users transaction', async () => {
-      const otherUser = await createTestUser();
+      const otherUser = await createTestUser({ email: 'other@example.com' });
       const otherToken = getAuthToken(otherUser.id);
 
       const response = await request(app)
@@ -213,7 +213,7 @@ describe('Transactions API', () => {
     });
 
     it('should not delete other users transaction', async () => {
-      const otherUser = await createTestUser();
+      const otherUser = await createTestUser({ email: 'other@example.com' });
       const otherToken = getAuthToken(otherUser.id);
 
       const response = await request(app)

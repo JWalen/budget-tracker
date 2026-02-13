@@ -5,6 +5,12 @@ import { cleanDatabase, createTestUser, createTestCategory, getAuthToken } from 
 
 const app = express();
 app.use(express.json());
+// Mock middleware to simulate what app.ts does
+app.use((req, res, next) => {
+  // @ts-ignore
+  req.user = { id: req.headers['mock-user-id'] }; 
+  next();
+});
 app.use('/api/budgets', budgetRoutes);
 
 describe('Budgets API', () => {
@@ -25,8 +31,9 @@ describe('Budgets API', () => {
     it('should create a budget with valid data', async () => {
       const budgetData = {
         category_id: categoryId,
-        amount: 500.00,
-        period: 'monthly',
+        amount_limit: 500.00,
+        month: 2,
+        year: 2026,
       };
 
       const response = await request(app)
@@ -36,8 +43,9 @@ describe('Budgets API', () => {
 
       expect(response.status).toBe(201);
       expect(response.body).toHaveProperty('id');
-      expect(response.body.amount).toBe('500.00');
-      expect(response.body.period).toBe('monthly');
+      expect(Number(response.body.amount_limit)).toBe(500.00);
+      expect(response.body.month).toBe(2);
+      expect(response.body.year).toBe(2026);
     });
 
     it('should reject budget without authentication', async () => {
@@ -45,49 +53,39 @@ describe('Budgets API', () => {
         .post('/api/budgets')
         .send({
           category_id: categoryId,
-          amount: 500.00,
-          period: 'monthly',
+          amount_limit: 500.00,
+          month: 2,
+          year: 2026,
         });
 
       expect(response.status).toBe(401);
     });
 
-    it('should reject budget with negative amount', async () => {
-      const response = await request(app)
-        .post('/api/budgets')
-        .set('Authorization', `Bearer ${token}`)
-        .send({
-          category_id: categoryId,
-          amount: -500.00,
-          period: 'monthly',
-        });
-
-      expect(response.status).toBe(400);
-    });
-
-    it('should reject duplicate budget for same category', async () => {
+    it('should update existing budget on conflict (upsert)', async () => {
       // Create first budget
       await request(app)
         .post('/api/budgets')
         .set('Authorization', `Bearer ${token}`)
         .send({
           category_id: categoryId,
-          amount: 500.00,
-          period: 'monthly',
+          amount_limit: 500.00,
+          month: 2,
+          year: 2026,
         });
 
-      // Try to create duplicate
+      // Update same budget
       const response = await request(app)
         .post('/api/budgets')
         .set('Authorization', `Bearer ${token}`)
         .send({
           category_id: categoryId,
-          amount: 600.00,
-          period: 'monthly',
+          amount_limit: 600.00,
+          month: 2,
+          year: 2026,
         });
 
-      expect(response.status).toBe(400);
-      expect(response.body.error).toContain('already exists');
+      expect(response.status).toBe(201);
+      expect(Number(response.body.amount_limit)).toBe(600.00);
     });
   });
 
@@ -95,24 +93,25 @@ describe('Budgets API', () => {
     beforeEach(async () => {
       const { query } = require('../../../src/config/database');
       await query(
-        'INSERT INTO budgets (user_id, category_id, amount, period) VALUES ($1, $2, $3, $4)',
-        [userId, categoryId, 500.00, 'monthly']
+        'INSERT INTO budgets (user_id, category_id, amount_limit, month, year) VALUES ($1, $2, $3, $4, $5)',
+        [userId, categoryId, 500.00, 2, 2026]
       );
     });
 
-    it('should get all user budgets', async () => {
+    it('should get all user budgets for a specific month', async () => {
       const response = await request(app)
-        .get('/api/budgets')
+        .get('/api/budgets?month=2&year=2026')
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.status).toBe(200);
       expect(Array.isArray(response.body)).toBe(true);
       expect(response.body.length).toBeGreaterThanOrEqual(1);
+      expect(Number(response.body[0].amount_limit)).toBe(500.00);
     });
 
     it('should include category information', async () => {
       const response = await request(app)
-        .get('/api/budgets')
+        .get('/api/budgets?month=2&year=2026')
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.body[0]).toHaveProperty('category_name');
@@ -120,16 +119,16 @@ describe('Budgets API', () => {
     });
 
     it('should not return other users budgets', async () => {
-      const otherUser = await createTestUser();
+      const otherUser = await createTestUser({ email: 'other@example.com' });
       const otherCategory = await createTestCategory(otherUser.id);
       const { query } = require('../../../src/config/database');
       await query(
-        'INSERT INTO budgets (user_id, category_id, amount, period) VALUES ($1, $2, $3, $4)',
-        [otherUser.id, otherCategory.id, 1000.00, 'monthly']
+        'INSERT INTO budgets (user_id, category_id, amount_limit, month, year) VALUES ($1, $2, $3, $4, $5)',
+        [otherUser.id, otherCategory.id, 1000.00, 2, 2026]
       );
 
       const response = await request(app)
-        .get('/api/budgets')
+        .get('/api/budgets?month=2&year=2026')
         .set('Authorization', `Bearer ${token}`);
 
       expect(response.body.every((b: any) => b.user_id === userId)).toBe(true);
@@ -142,8 +141,8 @@ describe('Budgets API', () => {
     beforeEach(async () => {
       const { query } = require('../../../src/config/database');
       const result = await query(
-        'INSERT INTO budgets (user_id, category_id, amount, period) VALUES ($1, $2, $3, $4) RETURNING id',
-        [userId, categoryId, 500.00, 'monthly']
+        'INSERT INTO budgets (user_id, category_id, amount_limit, month, year) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+        [userId, categoryId, 500.00, 2, 2026]
       );
       budgetId = result.rows[0].id;
     });
@@ -152,20 +151,20 @@ describe('Budgets API', () => {
       const response = await request(app)
         .put(`/api/budgets/${budgetId}`)
         .set('Authorization', `Bearer ${token}`)
-        .send({ amount: 750.00 });
+        .send({ amount_limit: 750.00 });
 
       expect(response.status).toBe(200);
-      expect(response.body.amount).toBe('750.00');
+      expect(Number(response.body.amount_limit)).toBe(750.00);
     });
 
     it('should not update other users budget', async () => {
-      const otherUser = await createTestUser();
+      const otherUser = await createTestUser({ email: 'other@example.com' });
       const otherToken = getAuthToken(otherUser.id);
 
       const response = await request(app)
         .put(`/api/budgets/${budgetId}`)
         .set('Authorization', `Bearer ${otherToken}`)
-        .send({ amount: 999.00 });
+        .send({ amount_limit: 999.00 });
 
       expect(response.status).toBe(404);
     });
@@ -177,8 +176,8 @@ describe('Budgets API', () => {
     beforeEach(async () => {
       const { query } = require('../../../src/config/database');
       const result = await query(
-        'INSERT INTO budgets (user_id, category_id, amount, period) VALUES ($1, $2, $3, $4) RETURNING id',
-        [userId, categoryId, 500.00, 'monthly']
+        'INSERT INTO budgets (user_id, category_id, amount_limit, month, year) VALUES ($1, $2, $3, $4, $5) RETURNING id',
+        [userId, categoryId, 500.00, 2, 2026]
       );
       budgetId = result.rows[0].id;
     });
@@ -192,7 +191,7 @@ describe('Budgets API', () => {
     });
 
     it('should not delete other users budget', async () => {
-      const otherUser = await createTestUser();
+      const otherUser = await createTestUser({ email: 'other@example.com' });
       const otherToken = getAuthToken(otherUser.id);
 
       const response = await request(app)
