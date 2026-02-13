@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.1.8] - 2026-02-13
+
+### Fixed
+- Synced backend and frontend package.json versions to fix "update available" false positives
+
 ## [2.1.7] - 2026-02-13
 
 ### Fixed
