@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.1.5] - 2026-02-13
+
+### Fixed
+- Fixed Docker image naming convention in GitHub Actions (force lowercase repository names)
+
 ## [2.1.4] - 2026-02-13
 
 ### Fixed

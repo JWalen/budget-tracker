@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.1.5',
+    date: '2026-02-13',
+    changes: [
+      'Fixed Docker image naming in release pipeline',
+    ],
+  },
+  {
     version: '2.1.4',
     date: '2026-02-13',
     changes: [

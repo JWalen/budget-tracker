@@ -211,8 +211,8 @@ jobs:
           context: ./backend
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/backend:latest
-            ghcr.io/${{ github.repository }}/backend:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/budget-tracker-backend:latest
+            ghcr.io/${{ github.repository_owner }}/budget-tracker-backend:${{ github.ref_name }}
 
       - name: Build and push Frontend
         uses: docker/build-push-action@v5
@@ -220,8 +220,8 @@ jobs:
           context: ./frontend
           push: true
           tags: |
-            ghcr.io/${{ github.repository }}/frontend:latest
-            ghcr.io/${{ github.repository }}/frontend:${{ github.ref_name }}
+            ghcr.io/${{ github.repository_owner }}/budget-tracker-frontend:latest
+            ghcr.io/${{ github.repository_owner }}/budget-tracker-frontend:${{ github.ref_name }}
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
