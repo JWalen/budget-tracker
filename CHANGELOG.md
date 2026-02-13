@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.1.3] - 2026-02-13
+
+### Fixed
+- Fixed incorrect test database port configuration (switched from 5433 to 5432)
+
 ## [2.1.2] - 2026-02-13
 
 ### Fixed
