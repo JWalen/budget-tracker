@@ -8,7 +8,8 @@ export const testUser = {
 };
 
 export const cleanDatabase = async () => {
-  // Delete in reverse order of foreign key dependencies
+  // Use TRUNCATE CASCADE to clean all tables efficiently and handle foreign keys
+  // List tables that should be preserved if any (e.g. migrations, but we don't have them here)
   const tables = [
     'refresh_tokens',
     'login_attempts',
@@ -33,13 +34,13 @@ export const cleanDatabase = async () => {
     'users',
   ];
 
-  for (const table of tables) {
-    try {
-      await query(`DELETE FROM ${table}`);
-    } catch (error: any) {
-      if (error.code !== '42P01') { // 42P01 is "undefined_table"
-        throw error;
-      }
+  try {
+    // Disable triggers temporarily to speed up deletion if needed, but TRUNCATE CASCADE is usually enough
+    await query(`TRUNCATE TABLE ${tables.join(', ')} CASCADE`);
+  } catch (error: any) {
+    if (error.code !== '42P01') { // 42P01 is "undefined_table"
+      console.error('Error cleaning database:', error);
+      throw error;
     }
   }
 };

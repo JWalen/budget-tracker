@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.1.2] - 2026-02-13
+
+### Fixed
+- Fixed critical database connection issues in CI/CD pipeline
+- Improved backend test stability with connection retry logic
+
 ## [2.1.1] - 2026-02-13
 
 ### Changed

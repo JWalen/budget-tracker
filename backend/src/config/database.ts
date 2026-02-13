@@ -27,28 +27,43 @@ pool.on('remove', (client) => {
 // Enhanced query function with error handling and logging
 export const query = async (text: string, params?: any[]) => {
   const start = Date.now();
-  try {
-    const result = await pool.query(text, params);
-    const duration = Date.now() - start;
-    
-    // Log slow queries
-    if (duration > 1000) {
-      logger.warn('Slow query detected', {
+  const maxRetries = 3;
+  let lastError;
+
+  for (let attempt = 1; attempt <= maxRetries; attempt++) {
+    try {
+      const result = await pool.query(text, params);
+      const duration = Date.now() - start;
+      
+      // Log slow queries
+      if (duration > 1000) {
+        logger.warn('Slow query detected', {
+          duration: `${duration}ms`,
+          query: text.substring(0, 100),
+          params: params?.length,
+        });
+      }
+      
+      return result;
+    } catch (error: any) {
+      lastError = error;
+      
+      // Retry only on connection errors
+      if ((error.code === 'ECONNREFUSED' || error.code === '57P03') && attempt < maxRetries) {
+        logger.warn(`Database connection failed, retrying (${attempt}/${maxRetries})...`, { error: error.message });
+        await new Promise(resolve => setTimeout(resolve, 1000 * attempt)); // Exponential backoff
+        continue;
+      }
+
+      const duration = Date.now() - start;
+      logger.error('Database query error', error as Error, {
         duration: `${duration}ms`,
-        query: text.substring(0, 100),
-        params: params?.length,
+        query: text.substring(0, 200),
       });
+      throw error;
     }
-    
-    return result;
-  } catch (error) {
-    const duration = Date.now() - start;
-    logger.error('Database query error', error as Error, {
-      duration: `${duration}ms`,
-      query: text.substring(0, 200),
-    });
-    throw error;
   }
+  throw lastError;
 };
 
 export default pool;

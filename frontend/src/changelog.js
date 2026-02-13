@@ -1,5 +1,13 @@
 export const changelog = [
   {
+    version: '2.1.2',
+    date: '2026-02-13',
+    changes: [
+      'Fixed critical database connection issues in CI/CD pipeline',
+      'Improved backend test stability',
+    ],
+  },
+  {
     version: '2.1.1',
     date: '2026-02-13',
     changes: [
