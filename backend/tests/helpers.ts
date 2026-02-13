@@ -34,15 +34,22 @@ export const cleanDatabase = async () => {
   ];
 
   for (const table of tables) {
-    await query(`DELETE FROM ${table}`);
+    try {
+      await query(`DELETE FROM ${table}`);
+    } catch (error: any) {
+      if (error.code !== '42P01') { // 42P01 is "undefined_table"
+        throw error;
+      }
+    }
   }
 };
 
-export const createTestUser = async () => {
-  const passwordHash = await bcrypt.hash(testUser.password, 10);
+export const createTestUser = async (overrides: Partial<typeof testUser> = {}) => {
+  const data = { ...testUser, ...overrides };
+  const passwordHash = await bcrypt.hash(data.password, 10);
   const result = await query(
     'INSERT INTO users (email, password_hash, name) VALUES ($1, $2, $3) RETURNING id, email, name, mfa_enabled, is_admin',
-    [testUser.email, passwordHash, testUser.name]
+    [data.email, passwordHash, data.name]
   );
   return result.rows[0];
 };

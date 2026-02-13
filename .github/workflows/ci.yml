@@ -44,6 +44,14 @@ jobs:
         working-directory: backend
         run: npm ci
 
+      - name: Initialize Database
+        working-directory: backend
+        env:
+          PGPASSWORD: budget_pass
+        run: |
+          sudo apt-get install -y postgresql-client
+          psql -h localhost -U budget_user -d budget_test -f ../database/init.sql
+
       - name: Run tests
         working-directory: backend
         env:
@@ -52,7 +60,7 @@ jobs:
           JWT_REFRESH_SECRET: test-refresh-secret-for-ci
           ENCRYPTION_KEY: test-encryption-key-for-ci
           NODE_ENV: test
-        run: npm test -- --coverage
+        run: npm test -- --coverage --runInBand
 
       - name: Upload coverage reports
         uses: codecov/codecov-action@v4
@@ -182,18 +190,18 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
       - name: Log in to GitHub Container Registry
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
 
       - name: Build and push Backend
         uses: docker/build-push-action@v5

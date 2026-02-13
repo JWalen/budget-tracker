@@ -35,6 +35,12 @@ router.get('/', async (req: AuthRequest, res: Response) => {
       paramIndex += 2;
     }
 
+    if (req.query.start_date && req.query.end_date) {
+      sql += ` AND t.date >= $${paramIndex} AND t.date <= $${paramIndex + 1}`;
+      params.push(req.query.start_date, req.query.end_date);
+      paramIndex += 2;
+    }
+
     if (type) {
       sql += ` AND t.type = $${paramIndex}`;
       params.push(type);
@@ -69,6 +75,10 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
     const { category_id, account_id, amount, description, date, type } = req.body;
     const budgetUserId = (req as any).budgetUserId;
 
+    if (amount < 0) {
+      return res.status(400).json({ error: 'Amount cannot be negative' });
+    }
+
     const result = await query(
       `INSERT INTO transactions (user_id, category_id, account_id, amount, description, date, type)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
@@ -91,8 +101,11 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
     );
 
     res.status(201).json(fullResult.rows[0]);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Create transaction error:', error);
+    if (error.code === '23503') {
+      return res.status(400).json({ error: 'Invalid category or account' });
+    }
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -101,15 +114,42 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
 router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { category_id, account_id, amount, description, date, type } = req.body;
+    const updates = req.body;
     const budgetUserId = (req as any).budgetUserId;
+
+    if (updates.amount !== undefined && updates.amount < 0) {
+      return res.status(400).json({ error: 'Amount cannot be negative' });
+    }
+
+    // Dynamic update query
+    const fields: string[] = [];
+    const params: any[] = [];
+    let paramIndex = 1;
+
+    // Allowed fields to update
+    const allowedFields = ['category_id', 'account_id', 'amount', 'description', 'date', 'type'];
+
+    for (const field of allowedFields) {
+      if (updates[field] !== undefined) {
+        fields.push(`${field} = $${paramIndex}`);
+        params.push(updates[field]);
+        paramIndex++;
+      }
+    }
+
+    if (fields.length === 0) {
+      return res.status(400).json({ error: 'No fields to update' });
+    }
+
+    params.push(id, budgetUserId);
 
     const result = await query(
       `UPDATE transactions
-       SET category_id = $1, account_id = $2, amount = $3, description = $4, date = $5, type = $6
-       WHERE id = $7 AND user_id = $8 RETURNING *`,
-      [category_id, account_id, amount, description, date, type, id, budgetUserId]
+       SET ${fields.join(', ')}
+       WHERE id = $${paramIndex} AND user_id = $${paramIndex + 1} RETURNING *`,
+      params
     );
+
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Transaction not found' });
     }
@@ -130,8 +170,11 @@ router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) =>
     );
 
     res.json(fullResult.rows[0]);
-  } catch (error) {
+  } catch (error: any) {
     console.error('Update transaction error:', error);
+    if (error.code === '23503') {
+      return res.status(400).json({ error: 'Invalid category or account' });
+    }
     res.status(500).json({ error: 'Server error' });
   }
 });
