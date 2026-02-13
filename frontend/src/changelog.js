@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.1.1',
+    date: '2026-02-13',
+    changes: [
+      'Moved "Check Updates" button to Help page for better accessibility',
+    ],
+  },
+  {
     version: '2.1.0',
     date: '2026-02-09',
     changes: [

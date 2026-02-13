@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.1.1] - 2026-02-13
+
+### Changed
+- Moved "Check Updates" button from Admin Dashboard to Help page for better accessibility
+
 ## [2.1.0] - 2026-02-13
 
 ### 🎉 MAJOR UPDATE: Complete Open Source Transformation
