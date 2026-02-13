@@ -105,6 +105,24 @@ export class AIAssistant {
         }
       }
 
+      // If still no GPU detected, check if we're in a container environment
+      // where we might be talking to a remote Ollama instance (which might have GPU)
+      if (!hasGPU) {
+         // Check if OLLAMA_BASE_URL is remote/containerized
+         const ollamaHost = OLLAMA_BASE_URL.replace('http://', '').split(':')[0];
+         if (ollamaHost !== 'localhost' && ollamaHost !== '127.0.0.1') {
+           // We are talking to a remote host (e.g. 'ollama' container)
+           // We can't verify GPU, but we shouldn't assume CPU only if auto-gpu is enabled
+           const settings = await query('SELECT value FROM system_settings WHERE key = $1', ['ai_auto_gpu']);
+           if (settings.rows.length > 0 && settings.rows[0].value === 'true') {
+             // Assume GPU might be available on remote host
+             hasGPU = true;
+             gpuName = 'Remote / Containerized (Unknown)';
+             recommendedModel = 'llama3.2:3b'; // Safe default for GPU
+           }
+         }
+      }
+
       // If no GPU detected, check CPU and RAM for CPU inference
       if (!hasGPU) {
         const { stdout: memInfo } = await execAsync("free -g 2>/dev/null | grep Mem | awk '{print $2}'").catch(() => ({ stdout: '' }));
@@ -174,6 +192,25 @@ export class AIAssistant {
     } catch (error) {
       console.log('Ollama is not available:', error);
       return false;
+    }
+  }
+
+  // Pull a model from Ollama library with progress streaming
+  static async pullModelStream(modelName: string): Promise<any> {
+    try {
+      if (!await this.isAvailable()) return null;
+
+      const response = await fetch(`${OLLAMA_BASE_URL}/api/pull`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: modelName, stream: true })
+      });
+
+      if (!response.ok || !response.body) return null;
+      return response.body;
+    } catch (error) {
+      console.error('Model pull stream error:', error);
+      return null;
     }
   }
 
@@ -732,7 +769,7 @@ export class AIAssistant {
 
       const response = await this.generate(
         query,
-        `You are a helpful budget assistant. Here's the user's current financial context:\n${context}\n\nAnswer their question concisely and helpfully.`
+        `You are Penny, a helpful and witty budget assistant with a good sense of humor. Here's the user's current financial context:\n${context}\n\nAnswer their question concisely, helpfully, and with a touch of humor where appropriate.`
       );
 
       return {

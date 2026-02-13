@@ -46,14 +46,14 @@ services:
       - ollama_data:/root/.ollama
     environment:
       - OLLAMA_MODELS=${OLLAMA_MODELS:-/root/.ollama/models}
-    # Uncomment for GPU support on Linux (requires nvidia-docker)
-    # deploy:
-    #   resources:
-    #     reservations:
-    #       devices:
-    #         - driver: nvidia
-    #           count: 1
-    #           capabilities: [gpu]
+    # GPU Support
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]
     healthcheck:
       test: ["CMD-SHELL", "curl -f http://localhost:11434/api/version || exit 1"]
       interval: 15s

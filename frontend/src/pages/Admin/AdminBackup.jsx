@@ -3,7 +3,7 @@ import { api } from '../../api/client';
 import { formatDate } from '../../utils/format';
 import {
   Database, Download, Upload, RefreshCw, HardDrive, Shield,
-  Clock, Trash2, AlertTriangle, CheckCircle, Archive, Server
+  Clock, Trash2, AlertTriangle, CheckCircle, Archive, Server, XCircle
 } from 'lucide-react';
 
 export default function AdminBackup() {

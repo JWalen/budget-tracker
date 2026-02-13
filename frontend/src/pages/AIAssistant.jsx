@@ -58,8 +58,8 @@ export default function AIAssistant() {
     try {
       const [dashboardData, anomalyData, budgetRecs] = await Promise.all([
         api.getAIInsights(),
-        api.getAnomalies(),
-        api.getBudgetRecommendations()
+        api.getAIAnomalies(),
+        api.getAIBudgetRecommendations()
       ]);
 
       setInsights(dashboardData.insights);
@@ -126,7 +126,7 @@ export default function AIAssistant() {
   const loadBillOptimization = async () => {
     setLoading(true);
     try {
-      const optimization = await api.optimizeBills();
+      const optimization = await api.getAIBillOptimization();
       setBillOptimization(optimization);
     } catch (error) {
       console.error('Failed to optimize bills:', error);

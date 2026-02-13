@@ -36,39 +36,44 @@ import {
   DollarSign,
   Bell,
   Sparkles,
+  Share2,
+  Mail,
+  Brain,
 } from 'lucide-react';
 import { useState } from 'react';
 import { APP_VERSION } from '../version';
+import ChatWidget from './ChatWidget';
 
 const navGroups = [
   { items: [
     { to: '/', icon: LayoutDashboard, label: 'Dashboard' },
-    { to: '/analytics', icon: TrendingUp, label: 'Analytics' },
+    { to: '/transactions', icon: ArrowLeftRight, label: 'Transactions' },
   ]},
   { label: 'FINANCES', items: [
-    { to: '/transactions', icon: ArrowLeftRight, label: 'Transactions' },
     { to: '/accounts', icon: Wallet, label: 'Accounts' },
     { to: '/budgets', icon: Target, label: 'Budgets' },
-    { to: '/budget-templates', icon: Sparkles, label: 'Templates' },
+    { to: '/bills', icon: FileText, label: 'Bills' },
     { to: '/recurring', icon: RefreshCw, label: 'Recurring' },
+    { to: '/debts', icon: Landmark, label: 'Debts' },
+  ]},
+  { label: 'PLANNING', items: [
+    { to: '/ai-assistant', icon: Brain, label: 'AI Assistant' },
+    { to: '/reports', icon: BarChart2, label: 'Reports' },
     { to: '/pay-periods', icon: Calendar, label: 'Pay Periods' },
-    { to: '/receipts', icon: Receipt, label: 'Receipts' },
+    { to: '/budget-templates', icon: Sparkles, label: 'Templates' },
+    { to: '/analytics', icon: TrendingUp, label: 'Analytics' },
   ]},
   { label: 'MANAGE', items: [
     { to: '/categories', icon: Tags, label: 'Categories' },
-    { to: '/currency', icon: DollarSign, label: 'Currency' },
-    { to: '/debts', icon: Landmark, label: 'Debts' },
-    { to: '/bills', icon: FileText, label: 'Bills' },
-    { to: '/family', icon: Users, label: 'Family Members' },
-  ]},
-  { label: 'TOOLS', items: [
-    { to: '/import', icon: Upload, label: 'Import' },
     { to: '/match-rules', icon: Zap, label: 'Auto-Categorize' },
-    { to: '/reports', icon: BarChart2, label: 'Reports' },
-    { to: '/backups', icon: HardDrive, label: 'Backups' },
+    { to: '/receipts', icon: Receipt, label: 'Receipts' },
+    { to: '/import', icon: Upload, label: 'Import' },
+    { to: '/currency', icon: DollarSign, label: 'Currency' },
+    { to: '/family', icon: Users, label: 'Family Members' },
   ]},
   { label: 'ACCOUNT', items: [
     { to: '/organizations', icon: Building2, label: 'Households' },
+    { to: '/backups', icon: HardDrive, label: 'Backups' },
     { to: '/notifications', icon: Bell, label: 'Notifications' },
     { to: '/settings', icon: Settings, label: 'Settings' },
     { to: '/help', icon: HelpCircle, label: 'Help' },
@@ -76,10 +81,7 @@ const navGroups = [
 ];
 
 const adminNavItems = [
-  { to: '/admin', icon: Shield, label: 'Admin Dashboard' },
-  { to: '/admin/users', icon: Users, label: 'User Management' },
-  { to: '/admin/logs', icon: Activity, label: 'System Logs' },
-  { to: '/admin/backup', icon: HardDrive, label: 'Backup & Maintenance' },
+  { to: '/admin', icon: Shield, label: 'Admin Console' },
 ];
 
 export default function Layout() {
@@ -435,6 +437,7 @@ export default function Layout() {
           </div>
         </main>
       </div>
+      <ChatWidget />
     </div>
   );
 }

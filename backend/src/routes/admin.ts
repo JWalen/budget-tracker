@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import axios from 'axios';
 import bcrypt from 'bcryptjs';
 import { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
@@ -922,18 +923,62 @@ router.post('/ai/pull-model', async (req: AuthRequest, res: Response) => {
     const { model } = req.body;
     if (!model) return res.status(400).json({ error: 'Model name required' });
 
-    // This is a long running operation - in a real app should be async
-    // For now we await it (timeout risk) or fire and forget
-    const success = await AIAssistant.pullModel(model);
-    
-    if (success) {
-      res.json({ success: true, message: `Model ${model} pulled successfully` });
+    // Use streaming to provide progress updates
+    const stream = await AIAssistant.pullModelStream(model);
+
+    if (stream) {
+      // Set headers for streaming
+      res.setHeader('Content-Type', 'application/x-ndjson');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+
+      // Pipe the stream to the response
+      stream.pipe(res);
     } else {
       res.status(500).json({ error: 'Failed to pull model' });
     }
   } catch (error) {
     logger.error('Pull model error', error as Error);
-    res.status(500).json({ error: 'Server error' });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Server error' });
+    }
+  }
+});
+
+// GET /api/admin/system/updates — Check for application updates
+router.get('/system/updates', async (req: AuthRequest, res: Response) => {
+  try {
+    const currentVersion = process.env.npm_package_version || '1.0.0';
+    const repo = process.env.GITHUB_REPO || 'jwalen/budget-tracker'; // Default or from env
+    
+    // Fetch latest release from GitHub
+    const response = await axios.get(`https://api.github.com/repos/${repo}/releases/latest`, {
+      headers: {
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'Budget-Tracker-App'
+      },
+      timeout: 5000
+    });
+    
+    const latestVersion = response.data.tag_name.replace(/^v/, '');
+    const hasUpdate = latestVersion !== currentVersion;
+    
+    res.json({
+      currentVersion,
+      latestVersion,
+      hasUpdate,
+      releaseUrl: response.data.html_url,
+      releaseNotes: response.data.body,
+      publishedAt: response.data.published_at
+    });
+  } catch (error) {
+    logger.error('Check updates error:', error);
+    // Return current version even if check fails
+    res.json({
+      currentVersion: process.env.npm_package_version || '1.0.0',
+      hasUpdate: false,
+      error: 'Failed to check for updates'
+    });
   }
 });
 
