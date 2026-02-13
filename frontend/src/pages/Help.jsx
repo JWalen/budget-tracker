@@ -18,8 +18,10 @@ import {
   Clock,
   Target,
   PieChart,
-  ArrowLeft
+  ArrowLeft,
+  RefreshCw
 } from 'lucide-react';
+import { api } from '../api/client';
 
 // Help content sections
 const helpSections = [
@@ -471,6 +473,7 @@ export default function Help() {
   const [selectedSection, setSelectedSection] = useState('getting-started');
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredSections, setFilteredSections] = useState(helpSections);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
 
   useEffect(() => {
     if (searchQuery) {
@@ -484,6 +487,25 @@ export default function Help() {
       setFilteredSections(helpSections);
     }
   }, [searchQuery]);
+
+  const handleCheckUpdate = async () => {
+    setCheckingUpdate(true);
+    try {
+      const data = await api.checkUpdates();
+      if (data.hasUpdate) {
+        if (confirm(`Update available: v${data.latestVersion}\n\nClick OK to view release notes.`)) {
+          if (data.releaseUrl) window.open(data.releaseUrl, '_blank');
+        }
+      } else {
+        alert(`You are on the latest version (v${data.currentVersion})`);
+      }
+    } catch (err) {
+      console.error(err);
+      alert('Failed to check for updates');
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
 
   const currentSection = helpSections.find(s => s.id === selectedSection) || helpSections[0];
 
@@ -646,6 +668,17 @@ export default function Help() {
                 );
               })}
             </nav>
+
+            <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
+              <button
+                onClick={handleCheckUpdate}
+                disabled={checkingUpdate}
+                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
+              >
+                <RefreshCw className={`w-4 h-4 ${checkingUpdate ? 'animate-spin' : ''}`} />
+                <span>{checkingUpdate ? 'Checking...' : 'Check for Updates'}</span>
+              </button>
+            </div>
           </div>
         </div>
 
