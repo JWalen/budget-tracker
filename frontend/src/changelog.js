@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.1.9',
+    date: '2026-02-13',
+    changes: [
+      'Improved Nginx Proxy Manager compatibility (HTTPS detection)',
+    ],
+  },
+  {
     version: '2.1.8',
     date: '2026-02-13',
     changes: [

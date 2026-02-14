@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.1.9] - 2026-02-13
+
+### Fixed
+- Improved compatibility with Nginx Proxy Manager by checking `X-Forwarded-Scheme` header for HTTPS enforcement
+
 ## [2.1.8] - 2026-02-13
 
 ### Fixed
