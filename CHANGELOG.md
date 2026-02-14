@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.1.10] - 2026-02-13
+
+### Fixed
+- Fixed `frontend/nginx.conf` to not overwrite `X-Forwarded-Proto` header, fixing infinite redirects behind Nginx Proxy Manager
+
 ## [2.1.9] - 2026-02-13
 
 ### Fixed

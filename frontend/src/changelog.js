@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.1.10',
+    date: '2026-02-13',
+    changes: [
+      'Fixed Nginx configuration to correctly pass proxy headers',
+    ],
+  },
+  {
     version: '2.1.9',
     date: '2026-02-13',
     changes: [
