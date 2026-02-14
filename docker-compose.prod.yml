@@ -98,8 +98,8 @@ services:
     build: ./frontend
     container_name: budget-ui-prod
     ports:
-      - "80:80"
-      - "443:443"
+      - "3456:80"
+      # - "443:443"  # SSL handled by Nginx Proxy Manager
     environment:
       - BACKEND_URL=http://backend:5000
     volumes:
