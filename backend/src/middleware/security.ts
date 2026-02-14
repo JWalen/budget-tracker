@@ -129,7 +129,10 @@ export const enforceHTTPS = (req: Request, res: Response, next: NextFunction) =>
   }
 
   // Check if request is already HTTPS
-  const isSecure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+  // Nginx Proxy Manager sets X-Forwarded-Proto and X-Forwarded-Scheme
+  const isSecure = req.secure || 
+                   req.headers['x-forwarded-proto'] === 'https' ||
+                   req.headers['x-forwarded-scheme'] === 'https';
 
   if (!isSecure) {
     // Redirect to HTTPS version
