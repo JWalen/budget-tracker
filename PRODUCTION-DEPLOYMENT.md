@@ -158,9 +158,7 @@ Expected health check response:
 ```json
 {
   "status": "ok",
-  "timestamp": "2026-02-09T...",
-  "uptime": 123.45,
-  "environment": "production",
+  "timestamp": "2026-02-16T...",
   "database": "connected",
   "databaseResponseTime": "5ms",
   "ollama": "connected"

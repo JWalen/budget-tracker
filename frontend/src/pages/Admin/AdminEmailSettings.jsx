@@ -145,6 +145,7 @@ export default function AdminEmailSettings() {
                 className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
               >
                 <option value="none">None (Disable Emails)</option>
+                <option value="gmail">Gmail</option>
                 <option value="smtp">SMTP Server</option>
                 <option value="sendgrid">SendGrid</option>
                 <option value="resend">Resend</option>
@@ -186,49 +187,57 @@ export default function AdminEmailSettings() {
               Credentials
             </h3>
 
-            {config.provider === 'smtp' && (
+            {(config.provider === 'gmail' || config.provider === 'smtp') && (
               <>
-                <div className="grid grid-cols-2 gap-4">
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      SMTP Host
-                    </label>
-                    <input
-                      type="text"
-                      name="smtpHost"
-                      value={config.smtpHost}
-                      onChange={handleChange}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    />
+                {config.provider === 'smtp' && (
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        SMTP Host
+                      </label>
+                      <input
+                        type="text"
+                        name="smtpHost"
+                        value={config.smtpHost}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                        SMTP Port
+                      </label>
+                      <input
+                        type="text"
+                        name="smtpPort"
+                        value={config.smtpPort}
+                        onChange={handleChange}
+                        className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
+                      />
+                    </div>
                   </div>
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      SMTP Port
-                    </label>
-                    <input
-                      type="text"
-                      name="smtpPort"
-                      value={config.smtpPort}
-                      onChange={handleChange}
-                      className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
-                    />
-                  </div>
-                </div>
+                )}
+                {config.provider === 'gmail' && (
+                  <p className="text-sm text-gray-500 dark:text-gray-400">
+                    Uses Gmail SMTP (smtp.gmail.com:587). Requires a Google App Password — not your regular password.
+                  </p>
+                )}
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    SMTP User
+                    {config.provider === 'gmail' ? 'Gmail Address' : 'SMTP User'}
                   </label>
                   <input
                     type="text"
                     name="smtpUser"
                     value={config.smtpUser}
                     onChange={handleChange}
+                    placeholder={config.provider === 'gmail' ? 'you@gmail.com' : ''}
                     className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"
                   />
                 </div>
                 <div>
                   <label className="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                    SMTP Password
+                    {config.provider === 'gmail' ? 'App Password' : 'SMTP Password'}
                   </label>
                   <input
                     type="password"

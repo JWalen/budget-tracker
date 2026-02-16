@@ -225,9 +225,7 @@ export default function Bills() {
 
   const handlePaySubmit = async (e) => {
     e.preventDefault();
-    console.log('handlePaySubmit called', { payingBill, payMode, month, year });
     if (!payingBill) {
-      console.log('No paying bill, returning');
       return;
     }
 
@@ -236,7 +234,6 @@ export default function Bills() {
         month: month,
         year: year
       };
-      console.log('Initial payload:', payload);
       if (payMode === 'link') {
         payload.transaction_id = parseInt(selectedTransactionId, 10);
       } else {
@@ -249,11 +246,7 @@ export default function Bills() {
           : undefined;
       }
 
-      console.log('Final payload before API call:', payload);
-      console.log('Calling api.payBill with id:', payingBill.id);
-
-      const result = await api.payBill(payingBill.id, payload);
-      console.log('API call successful, result:', result);
+      await api.payBill(payingBill.id, payload);
 
       closePayModal();
       loadData();

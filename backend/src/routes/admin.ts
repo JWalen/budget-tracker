@@ -8,7 +8,7 @@ import { EncryptionService } from '../services/encryption';
 import logger from '../config/logger';
 import fs from 'fs/promises';
 import path from 'path';
-import { exec } from 'child_process';
+import { exec, spawn } from 'child_process';
 import { promisify } from 'util';
 
 const router = Router();
@@ -955,11 +955,15 @@ router.get('/system/updates', async (req: AuthRequest, res: Response) => {
     const repo = 'JWalen/budget-tracker'; // Hardcoded correct repo
     
     // Fetch latest release from GitHub
+    const headers: Record<string, string> = {
+      'Accept': 'application/vnd.github.v3+json',
+      'User-Agent': 'Budget-Tracker-App'
+    };
+    if (process.env.GITHUB_TOKEN) {
+      headers['Authorization'] = `Bearer ${process.env.GITHUB_TOKEN}`;
+    }
     const response = await axios.get(`https://api.github.com/repos/${repo}/releases/latest`, {
-      headers: {
-        'Accept': 'application/vnd.github.v3+json',
-        'User-Agent': 'Budget-Tracker-App'
-      },
+      headers,
       timeout: 5000
     });
     
@@ -988,6 +992,58 @@ router.get('/system/updates', async (req: AuthRequest, res: Response) => {
       hasUpdate: false,
       error: 'Failed to check for updates'
     });
+  }
+});
+
+// POST /api/admin/system/update — Perform one-click update (git pull + docker compose rebuild)
+router.post('/system/update', async (req: AuthRequest, res: Response) => {
+  try {
+    logger.info('Admin initiated system update', { adminId: req.userId });
+
+    // Set headers for NDJSON streaming
+    res.setHeader('Content-Type', 'application/x-ndjson');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+
+    const child = spawn('/bin/sh', ['/app/update.sh'], {
+      cwd: '/project',
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+
+    child.stdout.on('data', (data: Buffer) => {
+      const lines = data.toString().split('\n').filter((l: string) => l.trim());
+      for (const line of lines) {
+        res.write(line + '\n');
+      }
+    });
+
+    child.stderr.on('data', (data: Buffer) => {
+      const msg = data.toString().trim();
+      if (msg) {
+        res.write(JSON.stringify({ type: 'progress', message: msg }) + '\n');
+      }
+    });
+
+    child.on('close', (code: number) => {
+      if (code !== 0) {
+        res.write(JSON.stringify({ type: 'error', message: `Update process exited with code ${code}` }) + '\n');
+      }
+      res.end();
+    });
+
+    child.on('error', (err: Error) => {
+      logger.error('Update spawn error:', err);
+      res.write(JSON.stringify({ type: 'error', message: `Failed to start update: ${err.message}` }) + '\n');
+      res.end();
+    });
+  } catch (error) {
+    logger.error('System update error:', error);
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Failed to start update' });
+    } else {
+      res.write(JSON.stringify({ type: 'error', message: 'Unexpected error during update' }) + '\n');
+      res.end();
+    }
   }
 });
 

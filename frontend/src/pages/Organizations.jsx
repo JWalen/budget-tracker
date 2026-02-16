@@ -45,9 +45,7 @@ export default function Organizations() {
     if (!newOrgName.trim()) return;
 
     try {
-      console.log('Creating household:', newOrgName);
-      const result = await api.createOrganization(newOrgName);
-      console.log('Household created:', result);
+      await api.createOrganization(newOrgName);
       setShowCreateModal(false);
       setNewOrgName('');
       await loadOrganizations();

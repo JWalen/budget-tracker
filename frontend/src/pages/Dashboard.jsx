@@ -50,8 +50,6 @@ export default function Dashboard() {
         api.getSummary({ month, year }),
         api.getTrend(),
       ]);
-      console.log('Dashboard API Response:', summaryData);
-      console.log('byCategory data:', summaryData.byCategory);
       setSummary(summaryData);
       setTrend(trendData);
     } catch (error) {

@@ -686,6 +686,12 @@ export const api = {
   checkUpdates: () =>
     fetch(`${API_URL}/admin/system/updates`, { headers: headers() }).then(handleResponse),
 
+  performUpdate: () =>
+    fetch(`${API_URL}/admin/system/update`, {
+      method: 'POST',
+      headers: headers(),
+    }),
+
   getAdminStats: () =>
     fetch(`${API_URL}/admin/stats`, { headers: headers() }).then(handleResponse),
 
@@ -751,7 +757,7 @@ export const api = {
     fetch(`${API_URL}/admin/config`, { headers: headers() }).then(handleResponse),
 
   createAdminBackup: () =>
-    fetch(`${API_URL}/admin/backups/create`, { method: 'POST', headers: headers() }).then(handleResponse),
+    fetch(`${API_URL}/admin/backup`, { method: 'POST', headers: headers() }).then(handleResponse),
 
   // Email Admin
   getAdminEmailConfig: () =>
@@ -769,12 +775,6 @@ export const api = {
       method: 'POST',
       headers: headers(),
       body: JSON.stringify({ testEmail }),
-    }).then(handleResponse),
-
-  createAdminBackup: () =>
-    fetch(`${API_URL}/admin/backups/create`, {
-      method: 'POST',
-      headers: headers(),
     }).then(handleResponse),
 
   getAdminBackups: () =>

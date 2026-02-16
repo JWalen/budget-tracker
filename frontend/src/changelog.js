@@ -1,5 +1,26 @@
 export const changelog = [
   {
+    version: '2.4.0',
+    date: '2026-02-16',
+    changes: [
+      'Production readiness improvements',
+      'Removed unsafe-eval from Content Security Policy',
+      'Removed sensitive info from health endpoint',
+      'Fixed Gmail provider option in admin email settings',
+      'Fixed database backup endpoint URL',
+      'Added MFA and backup encryption key support in Docker config',
+      'Removed console.log statements from frontend',
+      'Updated documentation and deployment guide',
+    ],
+  },
+  {
+    version: '2.3.0',
+    date: '2026-02-16',
+    changes: [
+      'Added one-click update from the Help page (streams progress, auto-reconnects after restart)',
+    ],
+  },
+  {
     version: '2.2.0',
     date: '2026-02-16',
     changes: [
