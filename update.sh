@@ -12,12 +12,18 @@ echo '{"type":"progress","message":"Starting update..."}'
 # Mark project directory as safe (container user differs from host)
 git config --global --add safe.directory "$PROJECT_DIR"
 
+# Configure git credentials if GITHUB_TOKEN is available
+if [ -n "$GITHUB_TOKEN" ]; then
+  git config --global credential.helper '!f() { echo "username=x-access-token"; echo "password=$GITHUB_TOKEN"; }; f'
+fi
+
 # Change to project directory
 cd "$PROJECT_DIR"
 
 # Fetch and pull latest changes
 echo '{"type":"progress","message":"Pulling latest changes from git..."}'
-GIT_OUTPUT=$(git pull origin "$(git rev-parse --abbrev-ref HEAD)" 2>&1) || {
+BRANCH=$(git rev-parse --abbrev-ref HEAD)
+GIT_OUTPUT=$(git pull origin "$BRANCH" 2>&1) || {
   echo "{\"type\":\"error\",\"message\":\"Git pull failed: $(echo "$GIT_OUTPUT" | tr '\n' ' ' | sed 's/"/\\"/g')\"}"
   exit 1
 }
