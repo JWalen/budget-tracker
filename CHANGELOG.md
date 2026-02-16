@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.4.1] - 2026-02-16
+
+### Fixed
+- Fixed one-click update failing due to git `safe.directory` issue in Docker container
+
 ## [2.4.0] - 2026-02-16
 
 ### Security

@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.4.1',
+    date: '2026-02-16',
+    changes: [
+      'Fixed one-click update failing due to git safe.directory issue in Docker container',
+    ],
+  },
+  {
     version: '2.4.0',
     date: '2026-02-16',
     changes: [
