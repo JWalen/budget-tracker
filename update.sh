@@ -9,6 +9,9 @@ COMPOSE_FILE="docker-compose.yml"
 
 echo '{"type":"progress","message":"Starting update..."}'
 
+# Mark project directory as safe (container user differs from host)
+git config --global --add safe.directory "$PROJECT_DIR"
+
 # Change to project directory
 cd "$PROJECT_DIR"
 
