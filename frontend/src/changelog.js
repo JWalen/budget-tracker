@@ -1,5 +1,16 @@
 export const changelog = [
   {
+    version: '2.5.0',
+    date: '2026-02-16',
+    changes: [
+      'AI-powered transaction categorization — select uncategorized transactions and let Ollama suggest categories',
+      'Bulk "AI Categorize" button in transaction selection bar',
+      'One-click "AI Categorize" header button for all uncategorized transactions in current month',
+      'Review modal to accept, reject, or override AI suggestions before applying',
+      'Increased nginx proxy timeout for AI endpoints to prevent failures on large batches',
+    ],
+  },
+  {
     version: '2.4.2',
     date: '2026-02-16',
     changes: [

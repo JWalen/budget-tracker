@@ -3,6 +3,7 @@ import { authMiddleware, AuthRequest } from '../middleware/auth';
 import AIAssistant from '../services/aiAssistant';
 import { body, query as queryValidator } from 'express-validator';
 import { handleValidationErrors } from '../middleware/validation';
+import { query } from '../config/database';
 
 const router = Router();
 
@@ -175,5 +176,126 @@ router.get('/dashboard', async (req: AuthRequest, res: Response) => {
     res.status(500).json({ error: 'Failed to load AI dashboard' });
   }
 });
+
+// AI-powered transaction categorization
+router.post('/categorize',
+  [
+    body('transactionIds').isArray({ min: 1, max: 50 }).withMessage('Provide 1-50 transaction IDs'),
+    body('transactionIds.*').isInt({ min: 1 }).withMessage('Invalid transaction ID'),
+    handleValidationErrors
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { transactionIds } = req.body;
+      const userId = req.userId!;
+
+      // Check if AI is available
+      const available = await AIAssistant.isAvailable();
+      if (!available) {
+        return res.status(503).json({
+          error: 'AI Assistant is not available. Please ensure Ollama is running.'
+        });
+      }
+
+      // Fetch the requested transactions (only those belonging to this user)
+      const txResult = await query(
+        `SELECT id, description, amount, type, date
+         FROM transactions
+         WHERE id = ANY($1::int[]) AND user_id = $2`,
+        [transactionIds, userId]
+      );
+
+      if (txResult.rows.length === 0) {
+        return res.status(404).json({ error: 'No matching transactions found' });
+      }
+
+      // Fetch user's categories
+      const catResult = await query(
+        `SELECT id, name, type FROM categories WHERE user_id = $1 ORDER BY type, name`,
+        [userId]
+      );
+
+      if (catResult.rows.length === 0) {
+        return res.status(400).json({ error: 'No categories found. Please create categories first.' });
+      }
+
+      // Build prompt
+      const categoriesList = catResult.rows
+        .map((c: any) => `  { "id": ${c.id}, "name": "${c.name}", "type": "${c.type}" }`)
+        .join(',\n');
+
+      const transactionsList = txResult.rows
+        .map((t: any) => `  { "id": ${t.id}, "description": "${(t.description || '').replace(/"/g, '\\"')}", "amount": ${Math.abs(parseFloat(t.amount))}, "type": "${t.type}" }`)
+        .join(',\n');
+
+      const prompt = `You are a financial categorization assistant. Given a list of categories and transactions, assign each transaction to the most appropriate category. Only use categories that match the transaction type (expense categories for expenses, income categories for income).
+
+CATEGORIES:
+[
+${categoriesList}
+]
+
+TRANSACTIONS:
+[
+${transactionsList}
+]
+
+Respond with ONLY a valid JSON array, no other text. Each element must have:
+- "transactionId": the transaction id
+- "categoryId": the best matching category id
+- "confidence": a number between 0 and 1 indicating confidence
+
+Example response format:
+[{"transactionId":1,"categoryId":5,"confidence":0.9}]`;
+
+      const aiResponse = await AIAssistant.generate(prompt);
+
+      // Parse JSON from AI response - extract JSON array from response
+      let suggestions;
+      try {
+        const jsonMatch = aiResponse.match(/\[[\s\S]*\]/);
+        if (!jsonMatch) {
+          throw new Error('No JSON array found in response');
+        }
+        suggestions = JSON.parse(jsonMatch[0]);
+      } catch (parseError) {
+        console.error('Failed to parse AI response:', aiResponse);
+        return res.status(500).json({ error: 'AI returned an invalid response. Please try again.' });
+      }
+
+      // Validate category IDs exist in user's categories
+      const validCategoryIds = new Set(catResult.rows.map((c: any) => c.id));
+      const validTransactionIds = new Set(txResult.rows.map((t: any) => t.id));
+
+      const validSuggestions = suggestions
+        .filter((s: any) =>
+          s.transactionId && s.categoryId &&
+          validTransactionIds.has(s.transactionId) &&
+          validCategoryIds.has(s.categoryId)
+        )
+        .map((s: any) => ({
+          transactionId: s.transactionId,
+          categoryId: s.categoryId,
+          confidence: Math.min(1, Math.max(0, parseFloat(s.confidence) || 0.5))
+        }));
+
+      // Enrich suggestions with names for frontend display
+      const categoryMap = new Map(catResult.rows.map((c: any) => [c.id, c]));
+      const enrichedSuggestions = validSuggestions.map((s: any) => {
+        const cat = categoryMap.get(s.categoryId);
+        return {
+          ...s,
+          categoryName: cat?.name || 'Unknown',
+          categoryType: cat?.type || 'expense'
+        };
+      });
+
+      res.json({ suggestions: enrichedSuggestions });
+    } catch (error) {
+      console.error('AI categorization error:', error);
+      res.status(500).json({ error: 'Failed to categorize transactions' });
+    }
+  }
+);
 
 export default router;
