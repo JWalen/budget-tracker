@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.2.0',
+    date: '2026-02-16',
+    changes: [
+      'Release 2.2.0',
+    ],
+  },
+  {
     version: '2.1.10',
     date: '2026-02-13',
     changes: [
