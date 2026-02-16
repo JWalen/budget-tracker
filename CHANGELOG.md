@@ -1,5 +1,27 @@
 # Changelog
 
+## [2.4.0] - 2026-02-16
+
+### Security
+- Removed `unsafe-eval` from Content Security Policy headers
+- Removed server uptime and environment info from `/api/health` endpoint
+- Added `.env.prod` and backup files to `.gitignore`
+
+### Fixed
+- Gmail provider option now appears in admin email settings
+- Database backup button works correctly (fixed endpoint URL)
+- Added `MFA_ENCRYPTION_KEY` and `BACKUP_ENCRYPTION_KEY` to Docker Compose environment
+- Removed stray `console.log` statements from Bills, Dashboard, and Organizations pages
+
+### Changed
+- Removed non-functional Quick Actions from admin dashboard
+- Updated README and production deployment guide
+
+## [2.3.0] - 2026-02-16
+
+### Added
+- One-click update from the Help page — streams live progress and auto-reconnects after restart
+
 ## [2.2.0] - 2026-02-16
 
 ### Changed

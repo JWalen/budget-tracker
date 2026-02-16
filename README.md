@@ -1,6 +1,6 @@
 # Budget Tracker - Open Source Financial Management
 
-[![Version](https://img.shields.io/badge/version-2.1.0-blue.svg)](https://github.com/JWalen/budget-tracker)
+[![Version](https://img.shields.io/badge/version-2.4.0-blue.svg)](https://github.com/JWalen/budget-tracker)
 [![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
@@ -249,7 +249,7 @@ GET    /api/analytics/cash-flow          - Cash flow tracking
 GET    /api/analytics/export             - CSV export
 ```
 
-#### Organizations (Business Plan)
+#### Organizations
 ```
 POST   /api/organizations                - Create organization
 GET    /api/organizations/:id            - Get organization
@@ -259,7 +259,7 @@ PUT    /api/organizations/:id/members/:userId  - Update member role
 DELETE /api/organizations/:id/members/:userId  - Remove member
 ```
 
-#### Receipts (Pro/Business)
+#### Receipts
 ```
 POST   /api/receipts/upload              - Upload receipt
 GET    /api/receipts                     - List receipts
@@ -547,10 +547,10 @@ npm test -- --watch
 
 ## 🎯 Roadmap
 
-### Current Version: 1.0.0 ✅
-- Complete SaaS platform
-- All planned features implemented
-- Production-ready
+### Current Version: 2.4.0 ✅
+- Complete self-hosted platform
+- All core features implemented
+- Production-ready with Docker deployment
 
 ### Future Enhancements
 

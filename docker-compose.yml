@@ -46,7 +46,7 @@ services:
       - ollama_data:/root/.ollama
     environment:
       - OLLAMA_MODELS=${OLLAMA_MODELS:-/root/.ollama/models}
-    # GPU Support
+    # GPU Support enabled for NVIDIA GTX 1050 Ti
     deploy:
       resources:
         reservations:
@@ -72,23 +72,30 @@ services:
       PORT: 5000
       OLLAMA_BASE_URL: http://ollama:11434
       OLLAMA_MODEL: ${OLLAMA_MODEL:-mistral}
-      EMAIL_HOST: ${EMAIL_HOST:-}
-      EMAIL_PORT: ${EMAIL_PORT:-}
-      EMAIL_USER: ${EMAIL_USER:-}
-      EMAIL_PASS: ${EMAIL_PASS:-}
+      EMAIL_PROVIDER: ${EMAIL_PROVIDER:-none}
       EMAIL_FROM: ${EMAIL_FROM:-}
-      EMAIL_SECURE: ${EMAIL_SECURE:-false}
+      EMAIL_FROM_NAME: ${EMAIL_FROM_NAME:-Budget Tracker}
+      SMTP_HOST: ${SMTP_HOST:-smtp.gmail.com}
+      SMTP_PORT: ${SMTP_PORT:-587}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
       FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3456}
       ENCRYPTION_KEY: ${ENCRYPTION_KEY:-dev-encryption-key-do-not-use-in-prod-1234567890abcdef}
+      MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:-}
+      BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-}
     ports:
       - "${BACKEND_PORT:-5050}:5000"
     depends_on:
       postgres:
         condition: service_healthy
-      # ollama:
-      #   condition: service_started
+      ollama:
+        condition: service_started
     volumes:
       - ./backend/src:/app/src
+      - /var/run/docker.sock:/var/run/docker.sock
+      - ./update.sh:/app/update.sh:ro
+      - .:/project:rw
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:

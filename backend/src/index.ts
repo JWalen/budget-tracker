@@ -175,8 +175,6 @@ app.get('/api/health', async (req, res) => {
   const checks: any = {
     status: 'ok',
     timestamp: new Date().toISOString(),
-    uptime: process.uptime(),
-    environment: process.env.NODE_ENV,
     database: 'unknown',
     ollama: 'unknown',
   };

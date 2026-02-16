@@ -5,7 +5,7 @@ import { formatCurrency } from '../../utils/format';
 import {
   Activity, Users, Database, Shield, TrendingUp, AlertTriangle,
   Server, HardDrive, Lock, Mail, DollarSign, Clock,
-  CheckCircle, XCircle, AlertCircle, RefreshCw, Download, Cpu
+  CheckCircle, XCircle, AlertCircle, RefreshCw
 } from 'lucide-react';
 import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
@@ -376,47 +376,6 @@ export default function DashboardStats() {
         </div>
       </div>
 
-      {/* Quick Actions */}
-      <div className="card p-6">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Quick Actions</h3>
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <button
-            onClick={() => window.location.href = '/admin/users'}
-            className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-          >
-            <Users className="w-8 h-8 text-primary-500 mb-2" />
-            <span className="text-sm font-medium text-gray-900 dark:text-white">Manage Users</span>
-          </button>
-          <button
-            onClick={() => window.location.href = '/admin/logs'}
-            className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-          >
-            <Activity className="w-8 h-8 text-green-500 mb-2" />
-            <span className="text-sm font-medium text-gray-900 dark:text-white">View Logs</span>
-          </button>
-          <button
-            onClick={() => window.location.href = '/admin/backup'}
-            className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-          >
-            <Download className="w-8 h-8 text-blue-500 mb-2" />
-            <span className="text-sm font-medium text-gray-900 dark:text-white">Backup</span>
-          </button>
-          <button
-            onClick={() => window.location.href = '/admin/config'}
-            className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-          >
-            <Server className="w-8 h-8 text-purple-500 mb-2" />
-            <span className="text-sm font-medium text-gray-900 dark:text-white">Configuration</span>
-          </button>
-          <button
-            onClick={() => window.location.href = '/admin/ai-settings'}
-            className="flex flex-col items-center justify-center p-4 bg-gray-50 dark:bg-gray-800 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors"
-          >
-            <Cpu className="w-8 h-8 text-orange-500 mb-2" />
-            <span className="text-sm font-medium text-gray-900 dark:text-white">AI Settings</span>
-          </button>
-        </div>
-      </div>
     </div>
   );
 }

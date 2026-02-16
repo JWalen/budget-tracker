@@ -16,6 +16,7 @@ backend/logs/
 
 # Environment variables
 .env
+.env.prod
 .env.local
 .env.*.local
 
@@ -37,6 +38,11 @@ Thumbs.db
 # Test files
 test_api.js
 test_ai.js
+
+# Backups
+backups/
+*.sql.gz
+budget_backup*.sql
 
 # Temporary files
 *.tmp
