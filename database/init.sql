@@ -421,13 +421,13 @@ $$ LANGUAGE plpgsql;
 -- Budget shares for family/team access
 CREATE TABLE budget_shares (
     id SERIAL PRIMARY KEY,
-    owner_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
-    shared_with_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+    owner_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    shared_with_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
     shared_with_email VARCHAR(255) NOT NULL,
-    role VARCHAR(50) NOT NULL DEFAULT 'view',
-    status VARCHAR(50) NOT NULL DEFAULT 'pending',
+    role VARCHAR(10) NOT NULL CHECK (role IN ('view', 'edit')),
+    status VARCHAR(10) NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'accepted')),
+    invite_token VARCHAR(64) NOT NULL UNIQUE,
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     CONSTRAINT unique_share UNIQUE (owner_id, shared_with_email)
 );
 

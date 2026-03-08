@@ -1,9 +1,10 @@
 import { Router, Response } from 'express';
 import { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
-import { sharingMiddleware } from '../middleware/sharing';
-import { requireEditAccess } from '../middleware/requireEditAccess';
+import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
+import { LoggerClass } from '../services/logger';
 
+const logger = new LoggerClass('Accounts');
 const router = Router();
 
 router.use(authMiddleware);
@@ -29,7 +30,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     res.json(result.rows);
   } catch (error) {
-    console.error('Get accounts error:', error);
+    logger.error('Get accounts error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -75,7 +76,7 @@ router.get('/:id', async (req: AuthRequest, res: Response) => {
       balanceHistory: balanceResult.rows
     });
   } catch (error) {
-    console.error('Get account error:', error);
+    logger.error('Get account error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -119,7 +120,7 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    console.error('Create account error:', error);
+    logger.error('Create account error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -167,7 +168,7 @@ router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) =>
 
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Update account error:', error);
+    logger.error('Update account error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -189,7 +190,7 @@ router.delete('/:id', requireEditAccess, async (req: AuthRequest, res: Response)
 
     res.json({ message: 'Account deleted successfully' });
   } catch (error) {
-    console.error('Delete account error:', error);
+    logger.error('Delete account error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -223,7 +224,7 @@ router.post('/:id/reconcile', requireEditAccess, async (req: AuthRequest, res: R
 
     res.json({ message: 'Account reconciled successfully' });
   } catch (error) {
-    console.error('Reconcile account error:', error);
+    logger.error('Reconcile account error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });

@@ -18,16 +18,7 @@ import {
   Loader2,
 } from 'lucide-react';
 
-const formatCurrency = (amount) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-
-const formatDate = (date) =>
-  new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-const months = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
-];
+import { formatCurrency, formatShortDate, MONTHS } from '../utils/format';
 
 export default function Transactions() {
   const [transactions, setTransactions] = useState([]);
@@ -359,7 +350,7 @@ export default function Transactions() {
               <ChevronLeft size={20} />
             </button>
             <span className="font-medium text-gray-900 dark:text-gray-100 min-w-[140px] text-center">
-              {months[month - 1]} {year}
+              {MONTHS[month - 1]} {year}
             </span>
             <button onClick={goToNextMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
               <ChevronRight size={20} />
@@ -561,7 +552,7 @@ export default function Transactions() {
                     )}
                     <td className="px-4 py-3">
                       <span className="text-gray-900 dark:text-gray-100">
-                        {formatDate(tx.date)}
+                        {formatShortDate(tx.date)}
                       </span>
                     </td>
                     <td className="px-4 py-3">
@@ -830,7 +821,7 @@ export default function Transactions() {
                               {tx.description || 'No description'}
                             </div>
                             <div className="text-xs text-gray-500 dark:text-gray-400">
-                              {formatDate(tx.date)}
+                              {formatShortDate(tx.date)}
                             </div>
                           </td>
                           <td className="px-3 py-2 text-right">

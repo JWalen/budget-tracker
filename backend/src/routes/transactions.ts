@@ -2,6 +2,9 @@ import { Router, Response } from 'express';
 import { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
+import { LoggerClass } from '../services/logger';
+
+const logger = new LoggerClass('Transactions');
 
 const router = Router();
 
@@ -64,7 +67,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const result = await query(sql, params);
     res.json(result.rows);
   } catch (error) {
-    console.error('Get transactions error:', error);
+    logger.error('Get transactions error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -102,7 +105,7 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
 
     res.status(201).json(fullResult.rows[0]);
   } catch (error: any) {
-    console.error('Create transaction error:', error);
+    logger.error('Create transaction error:', error);
     if (error.code === '23503') {
       return res.status(400).json({ error: 'Invalid category or account' });
     }
@@ -171,7 +174,7 @@ router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) =>
 
     res.json(fullResult.rows[0]);
   } catch (error: any) {
-    console.error('Update transaction error:', error);
+    logger.error('Update transaction error:', error);
     if (error.code === '23503') {
       return res.status(400).json({ error: 'Invalid category or account' });
     }
@@ -194,7 +197,7 @@ router.delete('/:id', requireEditAccess, async (req: AuthRequest, res: Response)
     }
     res.json({ message: 'Transaction deleted' });
   } catch (error) {
-    console.error('Delete transaction error:', error);
+    logger.error('Delete transaction error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });

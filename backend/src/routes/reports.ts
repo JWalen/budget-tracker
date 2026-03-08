@@ -2,7 +2,9 @@ import { Router, Response } from 'express';
 import { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware } from '../middleware/sharing';
+import { LoggerClass } from '../services/logger';
 
+const logger = new LoggerClass('Reports');
 const router = Router();
 router.use(authMiddleware);
 router.use(sharingMiddleware);
@@ -49,7 +51,7 @@ router.get('/expense-summary', async (req: AuthRequest, res: Response) => {
       totalExpenses: totalResult.rows[0]?.total || 0
     });
   } catch (error) {
-    console.error('Expense summary report error:', error);
+    logger.error('Expense summary report error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -122,7 +124,7 @@ router.get('/income-expense', async (req: AuthRequest, res: Response) => {
       monthlyBreakdown: Array.from(monthlyMap.values())
     });
   } catch (error) {
-    console.error('Income/expense report error:', error);
+    logger.error('Income/expense report error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -166,7 +168,7 @@ router.get('/category-trend', async (req: AuthRequest, res: Response) => {
       }))
     });
   } catch (error) {
-    console.error('Category trend report error:', error);
+    logger.error('Category trend report error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -211,7 +213,7 @@ router.get('/budget-performance', async (req: AuthRequest, res: Response) => {
       }))
     });
   } catch (error) {
-    console.error('Budget performance report error:', error);
+    logger.error('Budget performance report error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -245,7 +247,7 @@ router.get('/bill-payment', async (req: AuthRequest, res: Response) => {
       payments: result.rows
     });
   } catch (error) {
-    console.error('Bill payment report error:', error);
+    logger.error('Bill payment report error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -296,7 +298,7 @@ router.get('/cash-flow', async (req: AuthRequest, res: Response) => {
       cashFlow: Array.from(weeklyMap.values())
     });
   } catch (error) {
-    console.error('Cash flow report error:', error);
+    logger.error('Cash flow report error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });

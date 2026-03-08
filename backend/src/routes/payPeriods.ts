@@ -2,7 +2,9 @@ import { Router, Response } from 'express';
 import { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
+import { LoggerClass } from '../services/logger';
 
+const logger = new LoggerClass('PayPeriods');
 const router = Router();
 
 router.use(authMiddleware);
@@ -50,7 +52,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     res.json(payPeriods);
   } catch (error) {
-    console.error('Get pay periods error:', error);
+    logger.error('Get pay periods error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -78,7 +80,7 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
 
     res.status(201).json(created);
   } catch (error) {
-    console.error('Create pay period error:', error);
+    logger.error('Create pay period error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -103,7 +105,7 @@ router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) =>
 
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Update pay period error:', error);
+    logger.error('Update pay period error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -125,7 +127,7 @@ router.delete('/:id', requireEditAccess, async (req: AuthRequest, res: Response)
 
     res.json({ message: 'Pay period deleted' });
   } catch (error) {
-    console.error('Delete pay period error:', error);
+    logger.error('Delete pay period error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -166,7 +168,7 @@ router.post('/:id/bills', requireEditAccess, async (req: AuthRequest, res: Respo
 
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Assign bill error:', error);
+    logger.error('Assign bill error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -200,7 +202,7 @@ router.delete('/:id/bills/:billId', requireEditAccess, async (req: AuthRequest, 
 
     res.json({ message: 'Bill unassigned' });
   } catch (error) {
-    console.error('Unassign bill error:', error);
+    logger.error('Unassign bill error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -224,7 +226,7 @@ router.post('/generate', requireEditAccess, async (req: AuthRequest, res: Respon
 
     res.json({ message: `Generated ${totalGenerated} pay period instances` });
   } catch (error) {
-    console.error('Generate pay periods error:', error);
+    logger.error('Generate pay periods error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });

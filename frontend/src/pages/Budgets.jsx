@@ -14,13 +14,7 @@ import {
   Edit2,
 } from 'lucide-react';
 
-const formatCurrency = (amount) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-
-const months = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
-];
+import { formatCurrency, MONTHS } from '../utils/format';
 
 export default function Budgets() {
   const [budgets, setBudgets] = useState([]);
@@ -210,7 +204,7 @@ export default function Budgets() {
               <ChevronLeft size={20} />
             </button>
             <span className="font-medium text-gray-900 dark:text-gray-100 min-w-[140px] text-center">
-              {months[month - 1]} {year}
+              {MONTHS[month - 1]} {year}
             </span>
             <button onClick={goToNextMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
               <ChevronRight size={20} />
@@ -469,7 +463,7 @@ export default function Budgets() {
 
             <div className="p-4 space-y-4">
               <div className="text-sm text-gray-600 dark:text-gray-400">
-                Copy all budgets from {months[month - 1]} {year} to:
+                Copy all budgets from {MONTHS[month - 1]} {year} to:
               </div>
 
               <div className="space-y-3">

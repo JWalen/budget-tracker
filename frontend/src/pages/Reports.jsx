@@ -12,6 +12,7 @@ import {
 } from 'lucide-react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { formatCurrency } from '../utils/format';
 import { useBudget } from '../context/BudgetContext';
 
 export default function Reports() {
@@ -136,12 +137,7 @@ export default function Reports() {
     window.print();
   };
 
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount);
-  };
+
 
   const renderReportContent = () => {
     if (!reportData) return null;

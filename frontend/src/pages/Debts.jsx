@@ -13,11 +13,7 @@ import {
   UserX,
 } from 'lucide-react';
 
-const formatCurrency = (amount) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-
-const formatDate = (date) =>
-  new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+import { formatCurrency, formatDateOnly } from '../utils/format';
 
 const debtTypes = [
   { value: 'owe', label: 'I Owe' },
@@ -525,7 +521,7 @@ export default function Debts() {
                         <div className="bg-gray-50 dark:bg-gray-900 rounded-lg p-2.5">
                           <p className="text-gray-500 dark:text-gray-400">Due Date</p>
                           <p className="font-medium text-gray-900 dark:text-gray-100">
-                            {formatDate(debt.due_date)}
+                            {formatDateOnly(debt.due_date)}
                           </p>
                         </div>
                       )}

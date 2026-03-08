@@ -15,8 +15,7 @@ import {
   AlertCircle
 } from 'lucide-react';
 
-const formatCurrency = (amount) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+import { formatCurrency } from '../utils/format';
 
 const accountTypes = [
   { value: 'checking', label: 'Checking', icon: Wallet },

@@ -11,8 +11,7 @@ import {
   CreditCard,
 } from 'lucide-react';
 
-const formatCurrency = (amount) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+import { formatCurrency } from '../utils/format';
 
 const STEPS = ['Upload', 'Column Mapping', 'Review & Match', 'Confirm'];
 

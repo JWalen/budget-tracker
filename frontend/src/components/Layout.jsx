@@ -145,12 +145,15 @@ export default function Layout() {
             onClick={toggleTheme}
             className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
             title="Toggle theme"
+            aria-label={theme === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}
           >
             {theme === 'dark' ? <Sun size={20} /> : <Moon size={20} />}
           </button>
           <button
             onClick={() => setMobileMenuOpen(!mobileMenuOpen)}
             className="p-2 rounded-lg hover:bg-gray-100 dark:hover:bg-gray-700 text-gray-600 dark:text-gray-300"
+            aria-label={mobileMenuOpen ? 'Close menu' : 'Open menu'}
+            aria-expanded={mobileMenuOpen}
           >
             {mobileMenuOpen ? <X size={24} /> : <Menu size={24} />}
           </button>
@@ -377,7 +380,7 @@ export default function Layout() {
               <CalendarDays size={20} />
             </NavLink>
             <NavLink
-              to="/sharing"
+              to="/notifications"
               className={({ isActive }) =>
                 `p-2 rounded-lg transition-colors ${
                   isActive
@@ -385,9 +388,10 @@ export default function Layout() {
                     : 'text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200'
                 }`
               }
-              title="Sharing"
+              title="Notifications"
+              aria-label="Notifications"
             >
-              <Share2 size={20} />
+              <Bell size={20} />
             </NavLink>
             <div className="relative ml-1">
               <button

@@ -17,6 +17,7 @@ import {
   Eye
 } from 'lucide-react';
 import { api } from '../api/client';
+import { formatCurrency } from '../utils/format';
 
 export default function FamilyMembers() {
   const [members, setMembers] = useState([]);
@@ -117,13 +118,6 @@ export default function FamilyMembers() {
       default:
         return 'bg-gray-100 text-gray-800 dark:bg-gray-900/30 dark:text-gray-300';
     }
-  };
-
-  const formatCurrency = (amount) => {
-    return new Intl.NumberFormat('en-US', {
-      style: 'currency',
-      currency: 'USD'
-    }).format(amount || 0);
   };
 
   if (loading) {

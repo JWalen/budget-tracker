@@ -21,14 +21,7 @@ import {
   Tooltip,
   Legend,
 } from 'recharts';
-
-const formatCurrency = (amount) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-
-const months = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
-];
+import { formatCurrency, MONTHS } from '../utils/format';
 
 export default function Dashboard() {
   const { activeBudgetOwner } = useBudget();
@@ -87,7 +80,7 @@ export default function Dashboard() {
             <ChevronLeft size={20} />
           </button>
           <span className="font-medium text-gray-900 dark:text-gray-100 min-w-[140px] text-center">
-            {months[month - 1]} {year}
+            {MONTHS[month - 1]} {year}
           </span>
           <button onClick={goToNextMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
             <ChevronRight size={20} />

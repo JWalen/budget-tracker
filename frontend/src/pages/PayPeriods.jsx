@@ -14,13 +14,7 @@ import {
   RefreshCw,
 } from 'lucide-react';
 
-const formatCurrency = (amount) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-
-const months = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
+import { formatCurrency, MONTHS } from '../utils/format';
 
 export default function PayPeriods() {
   const [payPeriods, setPayPeriods] = useState([]);
@@ -230,7 +224,7 @@ export default function PayPeriods() {
               <ChevronLeft size={20} />
             </button>
             <span className="font-medium text-gray-900 dark:text-gray-100 min-w-[140px] text-center">
-              {months[month - 1]} {year}
+              {MONTHS[month - 1]} {year}
             </span>
             <button
               onClick={goToNextMonth}

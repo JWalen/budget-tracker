@@ -40,6 +40,7 @@ import receiptsRoutes from './routes/receipts';
 import budgetTemplatesRoutes from './routes/budgetTemplates';
 import currencyRoutes from './routes/currency';
 import notificationsRoutes from './routes/notifications';
+import sharingRoutes from './routes/sharing';
 import { apiLimiter, authLimiter, transactionLimiter, uploadLimiter, exportLimiter } from './middleware/rateLimiter';
 import { initStorage } from './services/storage';
 
@@ -160,6 +161,7 @@ app.use('/api/receipts', uploadLimiter, receiptsRoutes); // Rate limit file uplo
 app.use('/api/budget-templates', budgetTemplatesRoutes);
 app.use('/api/currency', currencyRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/sharing', sharingRoutes);
 
 // Serve uploaded files (for local storage only)
 app.use('/uploads', express.static(process.env.UPLOAD_DIR || './uploads'));

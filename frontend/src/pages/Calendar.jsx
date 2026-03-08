@@ -3,13 +3,7 @@ import { api } from '../api/client';
 import { useBudget } from '../context/BudgetContext';
 import { ChevronLeft, ChevronRight, Plus, X, TrendingUp, TrendingDown } from 'lucide-react';
 
-const formatCurrency = (amount) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-
-const months = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
-];
+import { formatCurrency, MONTHS } from '../utils/format';
 
 const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
 
@@ -139,7 +133,7 @@ export default function Calendar() {
             <ChevronLeft size={20} />
           </button>
           <span className="font-medium text-gray-900 dark:text-gray-100 min-w-[140px] text-center">
-            {months[month - 1]} {year}
+            {MONTHS[month - 1]} {year}
           </span>
           <button onClick={goToNextMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
             <ChevronRight size={20} />
@@ -274,7 +268,7 @@ export default function Calendar() {
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-              {months[month - 1]} {selectedDay}, {year}
+              {MONTHS[month - 1]} {selectedDay}, {year}
             </h3>
             <button
               onClick={() => setSelectedDay(null)}
