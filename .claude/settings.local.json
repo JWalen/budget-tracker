@@ -26,7 +26,29 @@
       "Bash(openssl rand:*)",
       "Bash(dist)",
       "Bash(tsconfig \")",
-      "Bash(grep:*)"
+      "Bash(grep:*)",
+      "Bash(nvidia-smi:*)",
+      "Bash(lspci:*)",
+      "Bash(dpkg:*)",
+      "Bash(lsmod:*)",
+      "Bash(sudo modprobe:*)",
+      "Bash(echo:*)",
+      "Bash(mokutil --sb-state:*)",
+      "Bash(git -C /home/jwalen/docker/budget-tracker remote -v)",
+      "Bash(git -C /home/jwalen/docker/budget-tracker log --oneline -n 10)",
+      "Bash(chmod:*)",
+      "Bash(git rm:*)",
+      "Bash(git commit:*)",
+      "Bash(git config:*)",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)",
+      "Bash(git tag:*)",
+      "Bash(git push:*)",
+      "Bash(git remote get-url:*)",
+      "Bash(npm test:*)",
+      "Bash(npx jest:*)",
+      "Bash(node:*)",
+      "Bash(DOCKER_BUILDKIT=0 docker compose:*)"
     ]
   }
 }

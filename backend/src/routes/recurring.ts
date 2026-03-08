@@ -2,7 +2,9 @@ import { Router, Response } from 'express';
 import { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
+import { LoggerClass } from '../services/logger';
 
+const logger = new LoggerClass('Recurring');
 const router = Router();
 
 router.use(authMiddleware);
@@ -23,7 +25,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     );
     res.json(result.rows);
   } catch (error) {
-    console.error('Get recurring error:', error);
+    logger.error('Get recurring error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -50,7 +52,7 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
 
     res.status(201).json(fullResult.rows[0]);
   } catch (error) {
-    console.error('Create recurring error:', error);
+    logger.error('Create recurring error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -73,7 +75,7 @@ router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) =>
     }
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Update recurring error:', error);
+    logger.error('Update recurring error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -93,7 +95,7 @@ router.delete('/:id', requireEditAccess, async (req: AuthRequest, res: Response)
     }
     res.json({ message: 'Recurring transaction deleted' });
   } catch (error) {
-    console.error('Delete recurring error:', error);
+    logger.error('Delete recurring error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -151,7 +153,7 @@ router.post('/process', requireEditAccess, async (req: AuthRequest, res: Respons
 
     res.json({ processed: created.length, transactions: created });
   } catch (error) {
-    console.error('Process recurring error:', error);
+    logger.error('Process recurring error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });

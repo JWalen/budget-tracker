@@ -2,7 +2,9 @@ import { Router, Response } from 'express';
 import { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
+import { LoggerClass } from '../services/logger';
 
+const logger = new LoggerClass('Debts');
 const router = Router();
 
 router.use(authMiddleware);
@@ -35,7 +37,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const result = await query(sql, params);
     res.json(result.rows);
   } catch (error) {
-    console.error('Get debts error:', error);
+    logger.error('Get debts error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -54,7 +56,7 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    console.error('Create debt error:', error);
+    logger.error('Create debt error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -80,7 +82,7 @@ router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) =>
 
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Update debt error:', error);
+    logger.error('Update debt error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -102,7 +104,7 @@ router.delete('/:id', requireEditAccess, async (req: AuthRequest, res: Response)
 
     res.json({ message: 'Debt deleted' });
   } catch (error) {
-    console.error('Delete debt error:', error);
+    logger.error('Delete debt error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -151,7 +153,7 @@ router.post('/:id/payment', requireEditAccess, async (req: AuthRequest, res: Res
 
     res.json({ debt: updated.rows[0], transaction });
   } catch (error) {
-    console.error('Debt payment error:', error);
+    logger.error('Debt payment error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });

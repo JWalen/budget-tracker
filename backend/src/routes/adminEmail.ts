@@ -3,7 +3,9 @@ import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { adminMiddleware } from '../middleware/admin';
 import { sendEmail, testEmailConfig } from '../services/email';
 import { query } from '../config/database';
+import { LoggerClass } from '../services/logger';
 
+const logger = new LoggerClass('AdminEmail');
 const router = Router();
 
 // All routes require authentication and admin privileges
@@ -28,7 +30,7 @@ router.get('/config', async (req: AuthRequest, res: Response) => {
 
     res.json(config);
   } catch (error) {
-    console.error('Get email config error:', error);
+    logger.error('Get email config error:', error);
     res.status(500).json({ error: 'Failed to get email configuration' });
   }
 });
@@ -76,7 +78,7 @@ router.post('/config', async (req: AuthRequest, res: Response) => {
 
     res.json({ success: true, message: 'Email configuration updated successfully' });
   } catch (error) {
-    console.error('Update email config error:', error);
+    logger.error('Update email config error:', error);
     res.status(500).json({ error: 'Failed to update email configuration' });
   }
 });
@@ -112,7 +114,7 @@ router.post('/test', async (req: AuthRequest, res: Response) => {
       res.status(400).json({ error: 'Failed to send test email. Check your configuration.' });
     }
   } catch (error) {
-    console.error('Test email error:', error);
+    logger.error('Test email error:', error);
     res.status(500).json({ error: 'Failed to send test email' });
   }
 });
@@ -131,7 +133,7 @@ router.get('/stats', async (req: AuthRequest, res: Response) => {
 
     res.json(stats.rows[0]);
   } catch (error) {
-    console.error('Get email stats error:', error);
+    logger.error('Get email stats error:', error);
     res.status(500).json({ error: 'Failed to get email statistics' });
   }
 });

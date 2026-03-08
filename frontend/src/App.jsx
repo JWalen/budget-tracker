@@ -114,6 +114,11 @@ const AppRoutes = () => {
         <Route path="settings" element={<Settings />} />
         <Route path="help" element={<Help />} />
         <Route path="admin" element={<AdminRoute><AdminDashboard /></AdminRoute>} />
+        <Route path="admin/users" element={<AdminRoute><AdminUsers /></AdminRoute>} />
+        <Route path="admin/logs" element={<AdminRoute><AdminLogs /></AdminRoute>} />
+        <Route path="admin/backups" element={<AdminRoute><AdminBackup /></AdminRoute>} />
+        <Route path="admin/ai" element={<AdminRoute><AdminAISettings /></AdminRoute>} />
+        <Route path="admin/email" element={<AdminRoute><AdminEmailSettings /></AdminRoute>} />
       </Route>
     </Routes>
   );

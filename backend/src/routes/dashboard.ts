@@ -2,6 +2,9 @@ import { Router, Response } from 'express';
 import { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware } from '../middleware/sharing';
+import { LoggerClass } from '../services/logger';
+
+const logger = new LoggerClass('Dashboard');
 
 const router = Router();
 
@@ -106,7 +109,7 @@ router.get('/summary', async (req: AuthRequest, res: Response) => {
       budgets: budgetResult.rows,
     });
   } catch (error) {
-    console.error('Get summary error:', error);
+    logger.error('Get summary error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -154,7 +157,7 @@ router.get('/trend', async (req: AuthRequest, res: Response) => {
 
     res.json(Object.values(trendData));
   } catch (error) {
-    console.error('Get trend error:', error);
+    logger.error('Get trend error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });

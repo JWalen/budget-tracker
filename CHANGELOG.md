@@ -1,5 +1,14 @@
 # Changelog
 
+## [2.5.0] - 2026-02-16
+
+### Added
+- AI-powered transaction categorization using local Ollama model
+- "AI Categorize" bulk action button when transactions are selected
+- "AI Categorize" header button to auto-categorize all uncategorized transactions for the current month
+- Review modal to accept, reject, or override AI category suggestions before applying
+- Increased nginx proxy timeout for AI endpoints to handle larger batches
+
 ## [2.4.2] - 2026-02-16
 
 ### Fixed

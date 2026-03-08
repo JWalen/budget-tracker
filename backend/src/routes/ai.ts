@@ -3,7 +3,10 @@ import { authMiddleware, AuthRequest } from '../middleware/auth';
 import AIAssistant from '../services/aiAssistant';
 import { body, query as queryValidator } from 'express-validator';
 import { handleValidationErrors } from '../middleware/validation';
+import { query } from '../config/database';
+import { LoggerClass } from '../services/logger';
 
+const logger = new LoggerClass('AI');
 const router = Router();
 
 // All routes require authentication
@@ -30,7 +33,7 @@ router.get('/status', async (req: AuthRequest, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('AI status check error:', error);
+    logger.error('AI status check error:', error);
     res.status(500).json({ error: 'Failed to check AI status' });
   }
 });
@@ -47,7 +50,7 @@ router.post('/query',
       const result = await AIAssistant.processNaturalQuery(req.userId!, query);
       res.json(result);
     } catch (error) {
-      console.error('Natural query error:', error);
+      logger.error('Natural query error:', error);
       res.status(500).json({ error: 'Failed to process query' });
     }
   }
@@ -68,7 +71,7 @@ router.get('/insights/spending',
       const insights = await AIAssistant.analyzeSpending(req.userId!, month, year);
       res.json({ insights });
     } catch (error) {
-      console.error('Spending insights error:', error);
+      logger.error('Spending insights error:', error);
       res.status(500).json({ error: 'Failed to generate spending insights' });
     }
   }
@@ -80,7 +83,7 @@ router.get('/optimize/bills', async (req: AuthRequest, res: Response) => {
     const optimization = await AIAssistant.optimizeBillAssignments(req.userId!);
     res.json(optimization);
   } catch (error) {
-    console.error('Bill optimization error:', error);
+    logger.error('Bill optimization error:', error);
     res.status(500).json({ error: 'Failed to optimize bill assignments' });
   }
 });
@@ -91,7 +94,7 @@ router.get('/anomalies', async (req: AuthRequest, res: Response) => {
     const anomalies = await AIAssistant.detectAnomalies(req.userId!);
     res.json({ anomalies });
   } catch (error) {
-    console.error('Anomaly detection error:', error);
+    logger.error('Anomaly detection error:', error);
     res.status(500).json({ error: 'Failed to detect anomalies' });
   }
 });
@@ -102,7 +105,7 @@ router.get('/recommendations/budget', async (req: AuthRequest, res: Response) =>
     const recommendations = await AIAssistant.generateBudgetRecommendations(req.userId!);
     res.json({ recommendations });
   } catch (error) {
-    console.error('Budget recommendations error:', error);
+    logger.error('Budget recommendations error:', error);
     res.status(500).json({ error: 'Failed to generate budget recommendations' });
   }
 });
@@ -134,7 +137,7 @@ router.post('/chat',
         timestamp: new Date().toISOString()
       });
     } catch (error) {
-      console.error('AI chat error:', error);
+      logger.error('AI chat error:', error);
       res.status(500).json({ error: 'Failed to process message' });
     }
   }
@@ -171,9 +174,130 @@ router.get('/dashboard', async (req: AuthRequest, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('AI dashboard error:', error);
+    logger.error('AI dashboard error:', error);
     res.status(500).json({ error: 'Failed to load AI dashboard' });
   }
 });
+
+// AI-powered transaction categorization
+router.post('/categorize',
+  [
+    body('transactionIds').isArray({ min: 1, max: 50 }).withMessage('Provide 1-50 transaction IDs'),
+    body('transactionIds.*').isInt({ min: 1 }).withMessage('Invalid transaction ID'),
+    handleValidationErrors
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const { transactionIds } = req.body;
+      const userId = req.userId!;
+
+      // Check if AI is available
+      const available = await AIAssistant.isAvailable();
+      if (!available) {
+        return res.status(503).json({
+          error: 'AI Assistant is not available. Please ensure Ollama is running.'
+        });
+      }
+
+      // Fetch the requested transactions (only those belonging to this user)
+      const txResult = await query(
+        `SELECT id, description, amount, type, date
+         FROM transactions
+         WHERE id = ANY($1::int[]) AND user_id = $2`,
+        [transactionIds, userId]
+      );
+
+      if (txResult.rows.length === 0) {
+        return res.status(404).json({ error: 'No matching transactions found' });
+      }
+
+      // Fetch user's categories
+      const catResult = await query(
+        `SELECT id, name, type FROM categories WHERE user_id = $1 ORDER BY type, name`,
+        [userId]
+      );
+
+      if (catResult.rows.length === 0) {
+        return res.status(400).json({ error: 'No categories found. Please create categories first.' });
+      }
+
+      // Build prompt
+      const categoriesList = catResult.rows
+        .map((c: any) => `  { "id": ${c.id}, "name": "${c.name}", "type": "${c.type}" }`)
+        .join(',\n');
+
+      const transactionsList = txResult.rows
+        .map((t: any) => `  { "id": ${t.id}, "description": "${(t.description || '').replace(/"/g, '\\"')}", "amount": ${Math.abs(parseFloat(t.amount))}, "type": "${t.type}" }`)
+        .join(',\n');
+
+      const prompt = `You are a financial categorization assistant. Given a list of categories and transactions, assign each transaction to the most appropriate category. Only use categories that match the transaction type (expense categories for expenses, income categories for income).
+
+CATEGORIES:
+[
+${categoriesList}
+]
+
+TRANSACTIONS:
+[
+${transactionsList}
+]
+
+Respond with ONLY a valid JSON array, no other text. Each element must have:
+- "transactionId": the transaction id
+- "categoryId": the best matching category id
+- "confidence": a number between 0 and 1 indicating confidence
+
+Example response format:
+[{"transactionId":1,"categoryId":5,"confidence":0.9}]`;
+
+      const aiResponse = await AIAssistant.generate(prompt);
+
+      // Parse JSON from AI response - extract JSON array from response
+      let suggestions;
+      try {
+        const jsonMatch = aiResponse.match(/\[[\s\S]*\]/);
+        if (!jsonMatch) {
+          throw new Error('No JSON array found in response');
+        }
+        suggestions = JSON.parse(jsonMatch[0]);
+      } catch (parseError) {
+        logger.error('Failed to parse AI response:', aiResponse);
+        return res.status(500).json({ error: 'AI returned an invalid response. Please try again.' });
+      }
+
+      // Validate category IDs exist in user's categories
+      const validCategoryIds = new Set(catResult.rows.map((c: any) => c.id));
+      const validTransactionIds = new Set(txResult.rows.map((t: any) => t.id));
+
+      const validSuggestions = suggestions
+        .filter((s: any) =>
+          s.transactionId && s.categoryId &&
+          validTransactionIds.has(s.transactionId) &&
+          validCategoryIds.has(s.categoryId)
+        )
+        .map((s: any) => ({
+          transactionId: s.transactionId,
+          categoryId: s.categoryId,
+          confidence: Math.min(1, Math.max(0, parseFloat(s.confidence) || 0.5))
+        }));
+
+      // Enrich suggestions with names for frontend display
+      const categoryMap = new Map(catResult.rows.map((c: any) => [c.id, c]));
+      const enrichedSuggestions = validSuggestions.map((s: any) => {
+        const cat = categoryMap.get(s.categoryId);
+        return {
+          ...s,
+          categoryName: cat?.name || 'Unknown',
+          categoryType: cat?.type || 'expense'
+        };
+      });
+
+      res.json({ suggestions: enrichedSuggestions });
+    } catch (error) {
+      logger.error('AI categorization error:', error);
+      res.status(500).json({ error: 'Failed to categorize transactions' });
+    }
+  }
+);
 
 export default router;

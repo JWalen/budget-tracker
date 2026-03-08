@@ -140,23 +140,34 @@ jobs:
     runs-on: ubuntu-latest
     needs: [test-backend, test-frontend, lint]
     if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
 
-      - name: Deploy notification
-        run: |
-          echo "🚀 Deploying to staging environment"
-          echo "Commit: ${{ github.sha }}"
-          echo "Author: ${{ github.actor }}"
-      
-      # Add your deployment steps here
-      # Examples:
-      # - Deploy to Heroku
-      # - Deploy to AWS
-      # - Deploy to DigitalOcean
-      # - Build and push Docker images
+    steps:
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          script: |
+            set -e
+            cd ${{ secrets.DEPLOY_PATH || '~/docker/budget-tracker' }}
+            echo "Pulling latest develop branch..."
+            git pull origin develop
+            echo "Rebuilding containers..."
+            docker compose build --no-cache
+            echo "Restarting services..."
+            docker compose up -d --force-recreate
+            echo "Waiting for health checks..."
+            sleep 10
+            docker compose ps
+            # Verify backend is healthy
+            if ! docker exec budget-api wget -qO- http://localhost:5000/api/health > /dev/null 2>&1; then
+              echo "ERROR: Backend health check failed after deploy!"
+              docker compose logs --tail=50 backend
+              exit 1
+            fi
+            echo "Staging deploy complete!"
 
   deploy-production:
     name: Deploy to Production
@@ -165,19 +176,91 @@ jobs:
     if: github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment:
       name: production
-      url: https://budget.yourdomain.com
-    
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
 
-      - name: Deploy notification
+    steps:
+      - name: Backup database before deploy
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          script: |
+            set -e
+            BACKUP_DIR="${{ secrets.DEPLOY_PATH || '~/docker/budget-tracker' }}/backups"
+            mkdir -p "$BACKUP_DIR"
+            TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+            echo "Creating pre-deploy database backup..."
+            docker exec budget-db pg_dump -U "$DB_USER" -d "$DB_NAME" | gzip > "$BACKUP_DIR/pre-deploy-${TIMESTAMP}.sql.gz"
+            echo "Backup saved: pre-deploy-${TIMESTAMP}.sql.gz"
+
+      - name: Deploy to server via SSH
+        uses: appleboy/ssh-action@v1
+        with:
+          host: ${{ secrets.DEPLOY_HOST }}
+          username: ${{ secrets.DEPLOY_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
+          script: |
+            set -e
+            cd ${{ secrets.DEPLOY_PATH || '~/docker/budget-tracker' }}
+
+            # Use production compose file
+            COMPOSE_FILE="docker-compose.prod.yml"
+            if [ ! -f "$COMPOSE_FILE" ]; then
+              COMPOSE_FILE="docker-compose.yml"
+            fi
+
+            echo "Pulling latest main branch..."
+            git pull origin main
+
+            echo "Rebuilding containers..."
+            docker compose -f "$COMPOSE_FILE" build --no-cache
+
+            echo "Restarting services with zero-downtime..."
+            docker compose -f "$COMPOSE_FILE" up -d --force-recreate
+
+            echo "Waiting for services to start..."
+            sleep 15
+            docker compose -f "$COMPOSE_FILE" ps
+
+            # Verify backend is healthy
+            CONTAINER_NAME="budget-api-prod"
+            if ! docker ps --format '{{.Names}}' | grep -q "$CONTAINER_NAME"; then
+              CONTAINER_NAME="budget-api"
+            fi
+
+            RETRIES=6
+            for i in $(seq 1 $RETRIES); do
+              if docker exec "$CONTAINER_NAME" wget -qO- http://localhost:5000/api/health > /dev/null 2>&1; then
+                echo "Health check passed!"
+                break
+              fi
+              if [ "$i" -eq "$RETRIES" ]; then
+                echo "ERROR: Backend health check failed after $RETRIES attempts!"
+                docker compose -f "$COMPOSE_FILE" logs --tail=50 backend
+                exit 1
+              fi
+              echo "Waiting for backend... ($i/$RETRIES)"
+              sleep 5
+            done
+
+            # Clean up old Docker images
+            docker image prune -f
+            echo "Production deploy complete!"
+
+      - name: Notify deploy success
+        if: success()
         run: |
-          echo "🚀 Deploying to production environment"
+          echo "Production deploy successful!"
           echo "Commit: ${{ github.sha }}"
           echo "Author: ${{ github.actor }}"
-      
-      # Add your production deployment steps here
+
+      - name: Notify deploy failure
+        if: failure()
+        run: |
+          echo "::error::Production deploy FAILED! Check server logs."
+          echo "A pre-deploy database backup was created."
 
   release:
     name: Create Release & Push Docker Images
