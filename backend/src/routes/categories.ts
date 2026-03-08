@@ -2,6 +2,9 @@ import { Router, Response } from 'express';
 import { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
+import { LoggerClass } from '../services/logger';
+
+const logger = new LoggerClass('Categories');
 
 const router = Router();
 
@@ -19,7 +22,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     );
     res.json(result.rows);
   } catch (error) {
-    console.error('Get categories error:', error);
+    logger.error('Get categories error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -36,7 +39,7 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
     );
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    console.error('Create category error:', error);
+    logger.error('Create category error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -57,7 +60,7 @@ router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) =>
     }
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Update category error:', error);
+    logger.error('Update category error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -77,7 +80,7 @@ router.delete('/:id', requireEditAccess, async (req: AuthRequest, res: Response)
     }
     res.json({ message: 'Category deleted' });
   } catch (error) {
-    console.error('Delete category error:', error);
+    logger.error('Delete category error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });

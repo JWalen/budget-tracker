@@ -13,13 +13,7 @@ import {
   AlertCircle,
 } from 'lucide-react';
 
-const formatCurrency = (amount) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-
-const months = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December',
-];
+import { formatCurrency, MONTHS } from '../utils/format';
 
 export default function Bills() {
   const [bills, setBills] = useState([]);
@@ -293,7 +287,7 @@ export default function Bills() {
               <ChevronLeft size={20} />
             </button>
             <span className="font-medium text-gray-900 dark:text-gray-100 min-w-[140px] text-center">
-              {months[month - 1]} {year}
+              {MONTHS[month - 1]} {year}
             </span>
             <button
               onClick={goToNextMonth}
@@ -616,7 +610,7 @@ export default function Bills() {
                   {expenseTransactions.length === 0 ? (
                     <div className="py-4">
                       <p className="text-sm text-gray-500 dark:text-gray-400 text-center">
-                        No expense transactions found for {months[month - 1]} {year}.
+                        No expense transactions found for {MONTHS[month - 1]} {year}.
                       </p>
                       <p className="text-sm text-gray-400 dark:text-gray-500 text-center mt-2">
                         Please switch to "Create Expense" mode to mark this bill as paid.

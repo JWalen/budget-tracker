@@ -2,10 +2,12 @@ import { Router, Response } from 'express';
 import pool, { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { adminMiddleware } from '../middleware/admin';
+import { LoggerClass } from '../services/logger';
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 
+const logger = new LoggerClass('Backup');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
 const adminUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
@@ -214,7 +216,7 @@ router.get('/export', async (req: AuthRequest, res: Response) => {
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(sql);
   } catch (error) {
-    console.error('Backup export error:', error);
+    logger.error('Backup export error:', error);
     res.status(500).json({ error: 'Failed to export backup' });
   }
 });
@@ -344,7 +346,7 @@ router.post('/restore', upload.single('file'), async (req: AuthRequest, res: Res
     res.json({ totalRestored });
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Backup restore error:', error);
+    logger.error('Backup restore error:', error);
     res.status(500).json({ error: 'Failed to restore backup' });
   } finally {
     client.release();
@@ -428,7 +430,7 @@ adminRouter.get('/export', async (req: AuthRequest, res: Response) => {
     res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
     res.send(sql);
   } catch (error) {
-    console.error('Admin backup export error:', error);
+    logger.error('Admin backup export error:', error);
     res.status(500).json({ error: 'Failed to export database backup' });
   }
 });
@@ -473,7 +475,7 @@ adminRouter.post('/restore', adminUpload.single('file'), async (req: AuthRequest
     res.json({ statementsExecuted });
   } catch (error) {
     await client.query('ROLLBACK');
-    console.error('Admin backup restore error:', error);
+    logger.error('Admin backup restore error:', error);
     res.status(500).json({ error: 'Failed to restore database backup' });
   } finally {
     client.release();

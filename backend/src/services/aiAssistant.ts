@@ -286,24 +286,42 @@ export class AIAssistant {
   }
 
   // Natural language query processor
-  static async processNaturalQuery(userId: number, query: string): Promise<any> {
+  static async processNaturalQuery(userId: number, userQuery: string): Promise<any> {
     try {
       // Analyze the query to determine intent
-      const intent = await this.analyzeQueryIntent(query);
+      const intent = await this.analyzeQueryIntent(userQuery);
 
+      let data: any;
       switch (intent.type) {
         case 'spending_query':
-          return await this.handleSpendingQuery(userId, intent);
+          data = await this.handleSpendingQuery(userId, intent);
+          break;
         case 'budget_query':
-          return await this.handleBudgetQuery(userId, intent);
+          data = await this.handleBudgetQuery(userId, intent);
+          break;
         case 'transaction_search':
-          return await this.handleTransactionSearch(userId, intent);
+          data = await this.handleTransactionSearch(userId, intent);
+          break;
         case 'insight_request':
-          // TODO: Implement generateInsights method
-          return { insights: [] };
+          data = { type: 'insight_request', data: [] };
+          break;
         default:
-          return await this.handleGeneralQuery(userId, query);
+          return await this.handleGeneralQuery(userId, userQuery);
       }
+
+      // Pass structured data through AI for natural language response
+      if (await this.isAvailable()) {
+        const context = await this.getUserContext(userId);
+        const dataJson = JSON.stringify(data, null, 2);
+        const response = await this.generate(
+          userQuery,
+          `You are Penny, a helpful and witty budget assistant. Here's the user's financial context:\n${context}\n\nHere is the relevant data for their question:\n${dataJson}\n\nProvide a concise, helpful, natural language answer based on this data. Use dollar amounts and percentages where relevant. If the data is empty, let them know kindly.`
+        );
+        return { type: 'ai_response', response };
+      }
+
+      // Fallback if AI not available - return raw data
+      return data;
     } catch (error) {
       console.error('Natural query processing error:', error);
       throw error;
@@ -327,7 +345,7 @@ export class AIAssistant {
           SUM(ABS(t.amount)) as total,
           COUNT(t.id) as count,
           AVG(ABS(t.amount)) as avg_amount,
-          b.amount as budget_amount
+          b.amount_limit as budget_amount
         FROM transactions t
         LEFT JOIN categories c ON t.category_id = c.id
         LEFT JOIN budgets b ON b.category_id = c.id
@@ -336,20 +354,22 @@ export class AIAssistant {
           AND EXTRACT(MONTH FROM t.date) = $2
           AND EXTRACT(YEAR FROM t.date) = $3
           AND t.type = 'expense'
-        GROUP BY c.id, c.name, c.type, b.amount
+        GROUP BY c.id, c.name, c.type, b.amount_limit
         ORDER BY total DESC
       `, [userId, targetMonth, targetYear]);
 
       // Analyze overspending
       for (const row of spending.rows) {
-        if (row.budget_amount && row.total > row.budget_amount) {
-          const overPercent = ((row.total - row.budget_amount) / row.budget_amount * 100).toFixed(1);
+        const total = parseFloat(row.total);
+        const budgetAmount = parseFloat(row.budget_amount);
+        if (budgetAmount && total > budgetAmount) {
+          const overPercent = ((total - budgetAmount) / budgetAmount * 100).toFixed(1);
           insights.push({
             type: 'overspending',
             title: `Overspending in ${row.category}`,
-            message: `You've exceeded your ${row.category} budget by ${overPercent}% ($${(row.total - row.budget_amount).toFixed(2)})`,
+            message: `You've exceeded your ${row.category} budget by ${overPercent}% ($${(total - budgetAmount).toFixed(2)})`,
             severity: parseFloat(overPercent) > 50 ? 'critical' : 'warning',
-            data: { category: row.category, spent: row.total, budget: row.budget_amount }
+            data: { category: row.category, spent: total, budget: budgetAmount }
           });
         }
       }
@@ -379,17 +399,20 @@ export class AIAssistant {
       for (const current of spending.rows) {
         const historical = historicalSpending.rows.find(h => h.category === current.category);
         if (historical && historical.stddev_monthly) {
-          const zScore = (current.total - historical.avg_monthly) / historical.stddev_monthly;
+          const currentTotal = parseFloat(current.total);
+          const avgMonthly = parseFloat(historical.avg_monthly);
+          const stddevMonthly = parseFloat(historical.stddev_monthly);
+          const zScore = (currentTotal - avgMonthly) / stddevMonthly;
 
           if (Math.abs(zScore) > 2) {
             insights.push({
               type: 'anomaly',
               title: `Unusual spending in ${current.category}`,
               message: zScore > 0
-                ? `Your ${current.category} spending is significantly higher than usual ($${current.total.toFixed(2)} vs average $${historical.avg_monthly.toFixed(2)})`
-                : `Your ${current.category} spending is significantly lower than usual ($${current.total.toFixed(2)} vs average $${historical.avg_monthly.toFixed(2)})`,
+                ? `Your ${current.category} spending is significantly higher than usual ($${currentTotal.toFixed(2)} vs average $${avgMonthly.toFixed(2)})`
+                : `Your ${current.category} spending is significantly lower than usual ($${currentTotal.toFixed(2)} vs average $${avgMonthly.toFixed(2)})`,
               severity: 'info',
-              data: { category: current.category, current: current.total, average: historical.avg_monthly }
+              data: { category: current.category, current: currentTotal, average: avgMonthly }
             });
           }
         }
@@ -427,8 +450,8 @@ export class AIAssistant {
     try {
       // Get all bills and pay periods
       const [bills, payPeriods] = await Promise.all([
-        query('SELECT * FROM bills WHERE user_id = $1 AND is_active = true ORDER BY due_day', [userId]),
-        query('SELECT * FROM pay_periods WHERE user_id = $1 AND is_active = true ORDER BY pay_day', [userId])
+        query('SELECT * FROM bills WHERE user_id = $1 AND is_active = true ORDER BY due_date', [userId]),
+        query('SELECT * FROM pay_periods WHERE user_id = $1 ORDER BY date', [userId])
       ]);
 
       if (payPeriods.rows.length === 0) {
@@ -445,7 +468,7 @@ export class AIAssistant {
       }
 
       // Sort bills by amount (largest first for better distribution)
-      const sortedBills = bills.rows.sort((a, b) => b.amount - a.amount);
+      const sortedBills = bills.rows.sort((a: any, b: any) => parseFloat(b.amount) - parseFloat(a.amount));
 
       for (const bill of sortedBills) {
         // Find the pay period that comes before the due date with the least current load
@@ -455,9 +478,9 @@ export class AIAssistant {
         for (const period of payPeriods.rows) {
           const currentLoad = periodTotals.get(period.id);
 
-          // Check if this pay period comes before the bill due date
-          const periodDay = period.pay_day;
-          const billDay = bill.due_day;
+          // Extract day of month from period date
+          const periodDay = new Date(period.date).getDate();
+          const billDay = bill.due_date;
 
           // Simple check - in reality, this needs more sophisticated date logic
           const daysBefore = billDay >= periodDay ? billDay - periodDay : 31 - periodDay + billDay;
@@ -469,14 +492,15 @@ export class AIAssistant {
         }
 
         if (bestPeriod) {
+          const periodDay = new Date(bestPeriod.date).getDate();
           assignments.push({
             bill: bill.name,
-            amount: bill.amount,
-            dueDay: bill.due_day,
+            amount: parseFloat(bill.amount),
+            dueDay: bill.due_date,
             assignedTo: bestPeriod.name,
-            payDay: bestPeriod.pay_day
+            payDay: periodDay
           });
-          periodTotals.set(bestPeriod.id, periodTotals.get(bestPeriod.id) + bill.amount);
+          periodTotals.set(bestPeriod.id, periodTotals.get(bestPeriod.id) + parseFloat(bill.amount));
         }
       }
 
@@ -484,11 +508,11 @@ export class AIAssistant {
       const summary = {
         assignments,
         periodSummary: Array.from(periodTotals.entries()).map(([periodId, total]) => {
-          const period = payPeriods.rows.find(p => p.id === periodId);
+          const period = payPeriods.rows.find((p: any) => p.id === periodId);
           return {
             period: period.name,
             totalAssigned: total,
-            remainingIncome: period.amount - total
+            remainingIncome: parseFloat(period.amount) - (total as number)
           };
         })
       };
@@ -497,8 +521,8 @@ export class AIAssistant {
       if (await this.isAvailable()) {
         const context = `
           Bill optimization analysis:
-          Pay periods: ${payPeriods.rows.map(p => `${p.name}: $${p.amount} on day ${p.pay_day}`).join(', ')}
-          Bills: ${bills.rows.map(b => `${b.name}: $${b.amount} due on day ${b.due_day}`).join(', ')}
+          Pay periods: ${payPeriods.rows.map((p: any) => `${p.name}: $${p.amount} on day ${new Date(p.date).getDate()}`).join(', ')}
+          Bills: ${bills.rows.map((b: any) => `${b.name}: $${b.amount} due on day ${b.due_date}`).join(', ')}
         `;
 
         const recommendation = await this.generate(
@@ -556,11 +580,11 @@ export class AIAssistant {
       const anomalies = result.rows.map(row => ({
         id: row.id,
         description: row.description,
-        amount: Math.abs(row.amount),
+        amount: Math.abs(parseFloat(row.amount)),
         date: row.date,
         category: row.category,
-        severity: row.z_score > 3 ? 'high' : 'medium',
-        explanation: `This ${row.category} transaction of $${Math.abs(row.amount).toFixed(2)} is ${row.z_score.toFixed(1)} standard deviations from your typical spending of $${row.avg_amount.toFixed(2)}`
+        severity: parseFloat(row.z_score) > 3 ? 'high' : 'medium',
+        explanation: `This ${row.category} transaction of $${Math.abs(parseFloat(row.amount)).toFixed(2)} is ${parseFloat(row.z_score).toFixed(1)} standard deviations from your typical spending of $${parseFloat(row.avg_amount).toFixed(2)}`
       }));
 
       return anomalies;
@@ -581,7 +605,7 @@ export class AIAssistant {
           AVG(monthly.total) as avg_monthly,
           MAX(monthly.total) as max_monthly,
           MIN(monthly.total) as min_monthly,
-          b.amount as current_budget
+          b.amount_limit as current_budget
         FROM (
           SELECT
             category_id,
@@ -600,13 +624,16 @@ export class AIAssistant {
           AND b.month = EXTRACT(MONTH FROM CURRENT_DATE)
           AND b.year = EXTRACT(YEAR FROM CURRENT_DATE)
         WHERE c.id IS NOT NULL
-        GROUP BY c.id, c.name, b.amount
+        GROUP BY c.id, c.name, b.amount_limit
       `, [userId]);
 
       const recommendations = [];
 
       for (const row of spending.rows) {
-        const recommended = row.avg_monthly * 1.1; // 10% buffer
+        const avgMonthly = parseFloat(row.avg_monthly);
+        const maxMonthly = parseFloat(row.max_monthly);
+        const currentBudget = parseFloat(row.current_budget || 0);
+        const recommended = avgMonthly * 1.1; // 10% buffer
 
         if (!row.current_budget) {
           recommendations.push({
@@ -614,23 +641,23 @@ export class AIAssistant {
             action: 'create',
             currentBudget: 0,
             recommendedBudget: Math.ceil(recommended / 10) * 10, // Round to nearest $10
-            reason: `Based on your average spending of $${row.avg_monthly.toFixed(2)}/month`
+            reason: `Based on your average spending of $${avgMonthly.toFixed(2)}/month`
           });
-        } else if (row.current_budget < row.avg_monthly * 0.9) {
+        } else if (currentBudget < avgMonthly * 0.9) {
           recommendations.push({
             category: row.category,
             action: 'increase',
-            currentBudget: row.current_budget,
+            currentBudget,
             recommendedBudget: Math.ceil(recommended / 10) * 10,
-            reason: `Your budget is consistently exceeded. Average spending: $${row.avg_monthly.toFixed(2)}`
+            reason: `Your budget is consistently exceeded. Average spending: $${avgMonthly.toFixed(2)}`
           });
-        } else if (row.current_budget > row.max_monthly * 1.5) {
+        } else if (currentBudget > maxMonthly * 1.5) {
           recommendations.push({
             category: row.category,
             action: 'decrease',
-            currentBudget: row.current_budget,
-            recommendedBudget: Math.ceil(row.max_monthly * 1.2 / 10) * 10,
-            reason: `Budget is much higher than your maximum spending of $${row.max_monthly.toFixed(2)}`
+            currentBudget,
+            recommendedBudget: Math.ceil(maxMonthly * 1.2 / 10) * 10,
+            reason: `Budget is much higher than your maximum spending of $${maxMonthly.toFixed(2)}`
           });
         }
       }
@@ -715,9 +742,9 @@ export class AIAssistant {
     const result = await query(`
       SELECT
         c.name as category,
-        b.amount as budget,
+        b.amount_limit as budget,
         COALESCE(SUM(ABS(t.amount)), 0) as spent,
-        b.amount - COALESCE(SUM(ABS(t.amount)), 0) as remaining
+        b.amount_limit - COALESCE(SUM(ABS(t.amount)), 0) as remaining
       FROM budgets b
       LEFT JOIN categories c ON b.category_id = c.id
       LEFT JOIN transactions t ON t.category_id = c.id
@@ -728,7 +755,7 @@ export class AIAssistant {
       WHERE b.user_id = $1
         AND b.month = EXTRACT(MONTH FROM CURRENT_DATE)
         AND b.year = EXTRACT(YEAR FROM CURRENT_DATE)
-      GROUP BY c.id, c.name, b.amount
+      GROUP BY c.id, c.name, b.amount_limit
       ORDER BY remaining ASC
     `, [userId]);
 
@@ -808,8 +835,8 @@ export class AIAssistant {
       Total transactions: ${data.total_transactions}
       Categories used: ${data.total_categories}
       Active budgets: ${data.active_budgets}
-      Current month income: $${data.monthly_income?.toFixed(2) || 0}
-      Current month expenses: $${data.monthly_expenses?.toFixed(2) || 0}
+      Current month income: $${parseFloat(data.monthly_income || 0).toFixed(2)}
+      Current month expenses: $${parseFloat(data.monthly_expenses || 0).toFixed(2)}
     `;
   }
 }

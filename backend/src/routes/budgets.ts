@@ -2,6 +2,9 @@ import { Router, Response } from 'express';
 import { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
+import { LoggerClass } from '../services/logger';
+
+const logger = new LoggerClass('Budgets');
 
 const router = Router();
 
@@ -36,7 +39,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     );
     res.json(result.rows);
   } catch (error) {
-    console.error('Get budgets error:', error);
+    logger.error('Get budgets error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -59,7 +62,7 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    console.error('Create budget error:', error);
+    logger.error('Create budget error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -84,7 +87,7 @@ router.put('/update-all-months', requireEditAccess, async (req: AuthRequest, res
       updatedCount: result.rows.length
     });
   } catch (error) {
-    console.error('Update all months budget error:', error);
+    logger.error('Update all months budget error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -110,7 +113,7 @@ router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) =>
 
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Update budget error:', error);
+    logger.error('Update budget error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -153,7 +156,7 @@ router.post('/copy', requireEditAccess, async (req: AuthRequest, res: Response) 
       copiedCount
     });
   } catch (error) {
-    console.error('Copy budgets error:', error);
+    logger.error('Copy budgets error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -173,7 +176,7 @@ router.delete('/:id', requireEditAccess, async (req: AuthRequest, res: Response)
     }
     res.json({ message: 'Budget deleted' });
   } catch (error) {
-    console.error('Delete budget error:', error);
+    logger.error('Delete budget error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });

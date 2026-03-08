@@ -4,7 +4,9 @@ import AIAssistant from '../services/aiAssistant';
 import { body, query as queryValidator } from 'express-validator';
 import { handleValidationErrors } from '../middleware/validation';
 import { query } from '../config/database';
+import { LoggerClass } from '../services/logger';
 
+const logger = new LoggerClass('AI');
 const router = Router();
 
 // All routes require authentication
@@ -31,7 +33,7 @@ router.get('/status', async (req: AuthRequest, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('AI status check error:', error);
+    logger.error('AI status check error:', error);
     res.status(500).json({ error: 'Failed to check AI status' });
   }
 });
@@ -48,7 +50,7 @@ router.post('/query',
       const result = await AIAssistant.processNaturalQuery(req.userId!, query);
       res.json(result);
     } catch (error) {
-      console.error('Natural query error:', error);
+      logger.error('Natural query error:', error);
       res.status(500).json({ error: 'Failed to process query' });
     }
   }
@@ -69,7 +71,7 @@ router.get('/insights/spending',
       const insights = await AIAssistant.analyzeSpending(req.userId!, month, year);
       res.json({ insights });
     } catch (error) {
-      console.error('Spending insights error:', error);
+      logger.error('Spending insights error:', error);
       res.status(500).json({ error: 'Failed to generate spending insights' });
     }
   }
@@ -81,7 +83,7 @@ router.get('/optimize/bills', async (req: AuthRequest, res: Response) => {
     const optimization = await AIAssistant.optimizeBillAssignments(req.userId!);
     res.json(optimization);
   } catch (error) {
-    console.error('Bill optimization error:', error);
+    logger.error('Bill optimization error:', error);
     res.status(500).json({ error: 'Failed to optimize bill assignments' });
   }
 });
@@ -92,7 +94,7 @@ router.get('/anomalies', async (req: AuthRequest, res: Response) => {
     const anomalies = await AIAssistant.detectAnomalies(req.userId!);
     res.json({ anomalies });
   } catch (error) {
-    console.error('Anomaly detection error:', error);
+    logger.error('Anomaly detection error:', error);
     res.status(500).json({ error: 'Failed to detect anomalies' });
   }
 });
@@ -103,7 +105,7 @@ router.get('/recommendations/budget', async (req: AuthRequest, res: Response) =>
     const recommendations = await AIAssistant.generateBudgetRecommendations(req.userId!);
     res.json({ recommendations });
   } catch (error) {
-    console.error('Budget recommendations error:', error);
+    logger.error('Budget recommendations error:', error);
     res.status(500).json({ error: 'Failed to generate budget recommendations' });
   }
 });
@@ -135,7 +137,7 @@ router.post('/chat',
         timestamp: new Date().toISOString()
       });
     } catch (error) {
-      console.error('AI chat error:', error);
+      logger.error('AI chat error:', error);
       res.status(500).json({ error: 'Failed to process message' });
     }
   }
@@ -172,7 +174,7 @@ router.get('/dashboard', async (req: AuthRequest, res: Response) => {
       }
     });
   } catch (error) {
-    console.error('AI dashboard error:', error);
+    logger.error('AI dashboard error:', error);
     res.status(500).json({ error: 'Failed to load AI dashboard' });
   }
 });
@@ -259,7 +261,7 @@ Example response format:
         }
         suggestions = JSON.parse(jsonMatch[0]);
       } catch (parseError) {
-        console.error('Failed to parse AI response:', aiResponse);
+        logger.error('Failed to parse AI response:', aiResponse);
         return res.status(500).json({ error: 'AI returned an invalid response. Please try again.' });
       }
 
@@ -292,7 +294,7 @@ Example response format:
 
       res.json({ suggestions: enrichedSuggestions });
     } catch (error) {
-      console.error('AI categorization error:', error);
+      logger.error('AI categorization error:', error);
       res.status(500).json({ error: 'Failed to categorize transactions' });
     }
   }

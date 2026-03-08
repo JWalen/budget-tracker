@@ -17,4 +17,6 @@ module.exports = {
   verbose: true,
   setupFilesAfterEnv: ['<rootDir>/tests/setup.ts'],
   testTimeout: 10000,
+  // Run tests serially — integration tests share a single database
+  maxWorkers: 1,
 };
