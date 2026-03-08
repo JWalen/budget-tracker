@@ -13,18 +13,12 @@ import {
   ArrowUpDown,
   ArrowUp,
   ArrowDown,
+  Sparkles,
+  Check,
+  Loader2,
 } from 'lucide-react';
 
-const formatCurrency = (amount) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-
-const formatDate = (date) =>
-  new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-
-const months = [
-  'January', 'February', 'March', 'April', 'May', 'June',
-  'July', 'August', 'September', 'October', 'November', 'December'
-];
+import { formatCurrency, formatShortDate, MONTHS } from '../utils/format';
 
 export default function Transactions() {
   const [transactions, setTransactions] = useState([]);
@@ -39,6 +33,10 @@ export default function Transactions() {
   const [filterAccount, setFilterAccount] = useState('all');
   const [selectedTransactions, setSelectedTransactions] = useState(new Set());
   const [bulkAccountId, setBulkAccountId] = useState('');
+  const [aiSuggestions, setAiSuggestions] = useState([]);
+  const [showAiModal, setShowAiModal] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState('');
   const { activeBudgetOwner, isReadOnly } = useBudget();
 
   const month = currentDate.getMonth() + 1;
@@ -239,6 +237,100 @@ export default function Transactions() {
     }
   };
 
+  // AI Categorize: request suggestions for selected transactions
+  const handleAiCategorize = async (txIds) => {
+    const ids = Array.from(txIds);
+    if (ids.length === 0) return;
+
+    setAiLoading(true);
+    setAiError('');
+    try {
+      const data = await api.aiCategorize(ids);
+      // Add accept flag and optional override to each suggestion
+      const suggestions = (data.suggestions || []).map(s => ({
+        ...s,
+        accepted: true,
+        overrideCategoryId: null,
+      }));
+      setAiSuggestions(suggestions);
+      setShowAiModal(true);
+    } catch (error) {
+      setAiError(error.message || 'Failed to get AI suggestions. Is Ollama running?');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  // AI Categorize: auto-select uncategorized transactions for current month
+  const handleAiCategorizeUncategorized = () => {
+    const uncategorizedIds = sortedTransactions
+      .filter(tx => !tx.category_id)
+      .map(tx => tx.id);
+    if (uncategorizedIds.length === 0) {
+      setAiError('No uncategorized transactions this month.');
+      setTimeout(() => setAiError(''), 3000);
+      return;
+    }
+    if (uncategorizedIds.length > 50) {
+      uncategorizedIds.length = 50; // cap at 50
+    }
+    handleAiCategorize(uncategorizedIds);
+  };
+
+  // Apply accepted AI suggestions
+  const handleApplyAiSuggestions = async () => {
+    const toApply = aiSuggestions.filter(s => s.accepted);
+    if (toApply.length === 0) return;
+
+    setAiLoading(true);
+    try {
+      const promises = toApply.map(s => {
+        const tx = transactions.find(t => t.id === s.transactionId);
+        if (tx) {
+          const categoryId = s.overrideCategoryId || s.categoryId;
+          return api.updateTransaction(s.transactionId, {
+            ...tx,
+            category_id: categoryId,
+          });
+        }
+        return Promise.resolve();
+      });
+
+      await Promise.all(promises);
+      setShowAiModal(false);
+      setAiSuggestions([]);
+      setSelectedTransactions(new Set());
+      loadData();
+    } catch (error) {
+      console.error('Failed to apply AI suggestions:', error);
+      setAiError('Failed to apply some suggestions.');
+    } finally {
+      setAiLoading(false);
+    }
+  };
+
+  // Toggle accept on a suggestion
+  const toggleSuggestionAccept = (transactionId) => {
+    setAiSuggestions(prev =>
+      prev.map(s =>
+        s.transactionId === transactionId ? { ...s, accepted: !s.accepted } : s
+      )
+    );
+  };
+
+  // Override category on a suggestion
+  const overrideSuggestionCategory = (transactionId, categoryId) => {
+    setAiSuggestions(prev =>
+      prev.map(s =>
+        s.transactionId === transactionId
+          ? { ...s, overrideCategoryId: categoryId ? parseInt(categoryId) : null }
+          : s
+      )
+    );
+  };
+
+  const uncategorizedCount = sortedTransactions.filter(tx => !tx.category_id).length;
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -258,7 +350,7 @@ export default function Transactions() {
               <ChevronLeft size={20} />
             </button>
             <span className="font-medium text-gray-900 dark:text-gray-100 min-w-[140px] text-center">
-              {months[month - 1]} {year}
+              {MONTHS[month - 1]} {year}
             </span>
             <button onClick={goToNextMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
               <ChevronRight size={20} />
@@ -279,6 +371,16 @@ export default function Transactions() {
             ))}
           </select>
 
+          {!isReadOnly && uncategorizedCount > 0 && (
+            <button
+              onClick={handleAiCategorizeUncategorized}
+              disabled={aiLoading}
+              className="btn-secondary flex items-center gap-2"
+            >
+              {aiLoading ? <Loader2 size={18} className="animate-spin" /> : <Sparkles size={18} />}
+              <span>AI Categorize ({uncategorizedCount})</span>
+            </button>
+          )}
           {!isReadOnly && (
             <button onClick={() => openModal()} className="btn-primary flex items-center gap-2">
               <Plus size={20} />
@@ -287,6 +389,18 @@ export default function Transactions() {
           )}
         </div>
       </div>
+
+      {/* AI Error Toast */}
+      {aiError && (
+        <div className="card bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800">
+          <div className="flex items-center justify-between">
+            <span className="text-sm text-red-700 dark:text-red-300">{aiError}</span>
+            <button onClick={() => setAiError('')} className="text-red-500 hover:text-red-700">
+              <X size={16} />
+            </button>
+          </div>
+        </div>
+      )}
 
       {/* Bulk Actions */}
       {!isReadOnly && selectedTransactions.size > 0 && (
@@ -314,6 +428,14 @@ export default function Transactions() {
                 className="btn-primary px-4 py-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 Move to Account
+              </button>
+              <button
+                onClick={() => handleAiCategorize(selectedTransactions)}
+                disabled={aiLoading}
+                className="btn-secondary px-4 py-2 text-sm flex items-center gap-1.5 disabled:opacity-50"
+              >
+                {aiLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+                AI Categorize
               </button>
               <button
                 onClick={() => setSelectedTransactions(new Set())}
@@ -430,7 +552,7 @@ export default function Transactions() {
                     )}
                     <td className="px-4 py-3">
                       <span className="text-gray-900 dark:text-gray-100">
-                        {formatDate(tx.date)}
+                        {formatShortDate(tx.date)}
                       </span>
                     </td>
                     <td className="px-4 py-3">
@@ -638,6 +760,122 @@ export default function Transactions() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* AI Categorization Review Modal */}
+      {showAiModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-2xl w-full max-h-[80vh] flex flex-col">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+              <div className="flex items-center gap-2">
+                <Sparkles size={20} className="text-primary-500" />
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
+                  AI Category Suggestions
+                </h2>
+              </div>
+              <button
+                onClick={() => { setShowAiModal(false); setAiSuggestions([]); }}
+                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <div className="overflow-y-auto flex-1 p-4">
+              {aiSuggestions.length === 0 ? (
+                <p className="text-center text-gray-500 dark:text-gray-400 py-8">
+                  No suggestions were returned. The AI may not have been able to match these transactions.
+                </p>
+              ) : (
+                <table className="w-full">
+                  <thead className="bg-gray-50 dark:bg-gray-700 text-xs uppercase text-gray-500 dark:text-gray-400">
+                    <tr>
+                      <th className="px-3 py-2 text-center w-10">
+                        <Check size={14} />
+                      </th>
+                      <th className="px-3 py-2 text-left">Transaction</th>
+                      <th className="px-3 py-2 text-right">Amount</th>
+                      <th className="px-3 py-2 text-left">Suggested Category</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100 dark:divide-gray-700">
+                    {aiSuggestions.map((suggestion) => {
+                      const tx = transactions.find(t => t.id === suggestion.transactionId);
+                      if (!tx) return null;
+                      const effectiveCategoryId = suggestion.overrideCategoryId || suggestion.categoryId;
+                      const effectiveCategory = categories.find(c => c.id === effectiveCategoryId);
+                      return (
+                        <tr key={suggestion.transactionId} className={!suggestion.accepted ? 'opacity-50' : ''}>
+                          <td className="px-3 py-2 text-center">
+                            <input
+                              type="checkbox"
+                              checked={suggestion.accepted}
+                              onChange={() => toggleSuggestionAccept(suggestion.transactionId)}
+                              className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                            />
+                          </td>
+                          <td className="px-3 py-2">
+                            <div className="text-sm text-gray-900 dark:text-gray-100">
+                              {tx.description || 'No description'}
+                            </div>
+                            <div className="text-xs text-gray-500 dark:text-gray-400">
+                              {formatShortDate(tx.date)}
+                            </div>
+                          </td>
+                          <td className="px-3 py-2 text-right">
+                            <span className={`text-sm font-medium ${tx.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
+                              {tx.type === 'income' ? '+' : '-'}{formatCurrency(tx.amount)}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2">
+                            <select
+                              value={effectiveCategoryId}
+                              onChange={(e) => overrideSuggestionCategory(suggestion.transactionId, e.target.value)}
+                              className="input text-sm px-2 py-1"
+                            >
+                              {categories
+                                .filter(c => c.type === tx.type)
+                                .map(c => (
+                                  <option key={c.id} value={c.id}>{c.name}</option>
+                                ))}
+                            </select>
+                            {suggestion.confidence != null && !suggestion.overrideCategoryId && (
+                              <span className="text-xs text-gray-400 dark:text-gray-500 ml-1">
+                                {Math.round(suggestion.confidence * 100)}%
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            <div className="flex items-center justify-between p-4 border-t border-gray-200 dark:border-gray-700">
+              <span className="text-sm text-gray-500 dark:text-gray-400">
+                {aiSuggestions.filter(s => s.accepted).length} of {aiSuggestions.length} selected
+              </span>
+              <div className="flex gap-3">
+                <button
+                  onClick={() => { setShowAiModal(false); setAiSuggestions([]); }}
+                  className="btn-secondary"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={handleApplyAiSuggestions}
+                  disabled={aiLoading || aiSuggestions.filter(s => s.accepted).length === 0}
+                  className="btn-primary flex items-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {aiLoading ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+                  Apply ({aiSuggestions.filter(s => s.accepted).length})
+                </button>
+              </div>
+            </div>
           </div>
         </div>
       )}

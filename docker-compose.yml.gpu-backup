@@ -1,0 +1,113 @@
+# ============================================
+# DEVELOPMENT DOCKER COMPOSE CONFIGURATION
+# ============================================
+#
+# ⚠️  WARNING: This configuration is for DEVELOPMENT ONLY
+#
+# Security Issues in this file:
+# - Database port exposed to host (5433:5432)
+# - Weak default passwords if .env is missing
+# - Source code mounted as volumes
+# - Debug settings enabled
+#
+# For PRODUCTION deployment:
+# 1. Use docker-compose.prod.yml instead
+# 2. Generate strong secrets (see PRODUCTION-DEPLOYMENT.md)
+# 3. Configure SSL/HTTPS
+# 4. Remove all port exposures except frontend
+#
+# ============================================
+
+services:
+  postgres:
+    image: postgres:15-alpine
+    container_name: budget-db
+    environment:
+      POSTGRES_USER: ${DB_USER:-budget_user}
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-budget_pass}
+      POSTGRES_DB: ${DB_NAME:-budget_db}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./database/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "${DB_PORT:-5433}:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER:-budget_user} -d ${DB_NAME:-budget_db}"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  ollama:
+    image: ollama/ollama:latest
+    container_name: budget-ollama
+    ports:
+      - "${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    environment:
+      - OLLAMA_MODELS=${OLLAMA_MODELS:-/root/.ollama/models}
+    # GPU Support enabled for NVIDIA GTX 1050 Ti
+    # Temporarily disabled - driver not loaded yet
+    # deploy:
+    #   resources:
+    #     reservations:
+    #       devices:
+    #         - driver: nvidia
+    #           count: 1
+    #           capabilities: [gpu]
+    healthcheck:
+      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/version || exit 1"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+      start_period: 60s
+
+  backend:
+    build: ./backend
+    container_name: budget-api
+    environment:
+      DATABASE_URL: postgres://${DB_USER:-budget_user}:${DB_PASSWORD:-budget_pass}@postgres:5432/${DB_NAME:-budget_db}
+      JWT_SECRET: ${JWT_SECRET:-dev-jwt-secret-do-not-use-in-production-abcdef1234567890}
+      JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET:-dev-refresh-secret-do-not-use-in-production-abcdef1234567890}
+      NODE_ENV: ${NODE_ENV:-development}
+      PORT: 5000
+      OLLAMA_BASE_URL: http://ollama:11434
+      OLLAMA_MODEL: ${OLLAMA_MODEL:-mistral}
+      EMAIL_HOST: ${EMAIL_HOST:-}
+      EMAIL_PORT: ${EMAIL_PORT:-}
+      EMAIL_USER: ${EMAIL_USER:-}
+      EMAIL_PASS: ${EMAIL_PASS:-}
+      EMAIL_FROM: ${EMAIL_FROM:-}
+      EMAIL_SECURE: ${EMAIL_SECURE:-false}
+      FRONTEND_URL: ${FRONTEND_URL:-http://localhost:3456}
+      ENCRYPTION_KEY: ${ENCRYPTION_KEY:-dev-encryption-key-do-not-use-in-prod-1234567890abcdef}
+    ports:
+      - "${BACKEND_PORT:-5050}:5000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      ollama:
+        condition: service_started
+    volumes:
+      - ./backend/src:/app/src
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:5000/api/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  frontend:
+    build: ./frontend
+    container_name: budget-ui
+    ports:
+      - "${FRONTEND_PORT:-3456}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+
+volumes:
+  postgres_data:
+  ollama_data:

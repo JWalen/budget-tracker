@@ -13,11 +13,7 @@ import {
   TrendingDown,
 } from 'lucide-react';
 
-const formatCurrency = (amount) =>
-  new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
-
-const formatDate = (date) =>
-  new Date(date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+import { formatCurrency, formatDateOnly } from '../utils/format';
 
 const frequencies = [
   { value: 'daily', label: 'Daily' },
@@ -226,7 +222,7 @@ export default function Recurring() {
                   <div className="flex items-center gap-2 text-sm text-gray-500 dark:text-gray-400">
                     <span className="capitalize">{item.frequency}</span>
                     <span>•</span>
-                    <span>Next: {formatDate(item.next_date)}</span>
+                    <span>Next: {formatDateOnly(item.next_date)}</span>
                     {item.category_name && (
                       <>
                         <span>•</span>

@@ -1,6 +1,9 @@
 import { Response, NextFunction } from 'express';
 import { AuthRequest } from './auth';
 import { query } from '../config/database';
+import { LoggerClass } from '../services/logger';
+
+const logger = new LoggerClass('AdminMiddleware');
 
 export const adminMiddleware = async (req: AuthRequest, res: Response, next: NextFunction) => {
   try {
@@ -12,7 +15,7 @@ export const adminMiddleware = async (req: AuthRequest, res: Response, next: Nex
 
     next();
   } catch (error) {
-    console.error('Admin middleware error:', error);
+    logger.error('Admin middleware error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 };

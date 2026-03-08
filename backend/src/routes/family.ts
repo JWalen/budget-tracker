@@ -3,7 +3,9 @@ import { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { validators, validateDateRange } from '../middleware/validation';
 import { body } from 'express-validator';
+import { LoggerClass } from '../services/logger';
 
+const logger = new LoggerClass('Family');
 const router = Router();
 
 // All routes require authentication
@@ -37,7 +39,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     res.json(members.rows);
   } catch (error) {
-    console.error('Get family members error:', error);
+    logger.error('Get family members error:', error);
     res.status(500).json({ error: 'Failed to fetch family members' });
   }
 });
@@ -82,7 +84,7 @@ router.post('/',
       if (error.code === '23505') {
         return res.status(400).json({ error: 'Email already exists' });
       }
-      console.error('Create family member error:', error);
+      logger.error('Create family member error:', error);
       res.status(500).json({ error: 'Failed to create family member' });
     }
   }
@@ -152,7 +154,7 @@ router.put('/:id',
 
       res.json(result.rows[0]);
     } catch (error) {
-      console.error('Update family member error:', error);
+      logger.error('Update family member error:', error);
       res.status(500).json({ error: 'Failed to update family member' });
     }
   }
@@ -174,7 +176,7 @@ router.delete('/:id', async (req: AuthRequest, res: Response) => {
 
     res.json({ message: 'Family member deleted successfully' });
   } catch (error) {
-    console.error('Delete family member error:', error);
+    logger.error('Delete family member error:', error);
     res.status(500).json({ error: 'Failed to delete family member' });
   }
 });
@@ -206,7 +208,7 @@ router.get('/:id/limits', async (req: AuthRequest, res: Response) => {
 
     res.json(limits.rows);
   } catch (error) {
-    console.error('Get spending limits error:', error);
+    logger.error('Get spending limits error:', error);
     res.status(500).json({ error: 'Failed to fetch spending limits' });
   }
 });
@@ -251,7 +253,7 @@ router.post('/:id/limits',
 
       res.status(201).json(result.rows[0]);
     } catch (error) {
-      console.error('Set spending limit error:', error);
+      logger.error('Set spending limit error:', error);
       res.status(500).json({ error: 'Failed to set spending limit' });
     }
   }
@@ -316,7 +318,7 @@ router.get('/:id/spending', validateDateRange, async (req: AuthRequest, res: Res
       totals: totals.rows[0],
     });
   } catch (error) {
-    console.error('Get spending report error:', error);
+    logger.error('Get spending report error:', error);
     res.status(500).json({ error: 'Failed to fetch spending report' });
   }
 });

@@ -17,7 +17,7 @@ export default function Notifications() {
         api.getNotifications(),
         api.getNotificationPreferences(),
       ]);
-      setNotifications(notifs);
+      setNotifications(notifs.notifications || []);
       setPreferences(prefs);
     } catch (error) {
       console.error('Failed to load notifications:', error);
@@ -43,6 +43,17 @@ export default function Notifications() {
       setNotifications(notifications.map(n => ({ ...n, is_read: true })));
     } catch (error) {
       console.error('Failed to mark all as read:', error);
+    }
+  };
+
+  const handlePreferenceChange = async (key) => {
+    const updated = { ...preferences, [key]: !preferences[key] };
+    setPreferences(updated);
+    try {
+      await api.updateNotificationPreferences(updated);
+    } catch (error) {
+      console.error('Failed to update preferences:', error);
+      setPreferences(preferences);
     }
   };
 
@@ -134,21 +145,21 @@ export default function Notifications() {
             Notification Preferences
           </h3>
           <div className="space-y-3">
-            <label className="flex items-center justify-between">
+            <label className="flex items-center justify-between cursor-pointer">
               <span className="text-gray-700 dark:text-gray-300">Email Notifications</span>
-              <input type="checkbox" checked={preferences.email_enabled} className="toggle" />
+              <input type="checkbox" checked={preferences.email_enabled} onChange={() => handlePreferenceChange('email_enabled')} className="toggle" />
             </label>
-            <label className="flex items-center justify-between">
+            <label className="flex items-center justify-between cursor-pointer">
               <span className="text-gray-700 dark:text-gray-300">Budget Alerts</span>
-              <input type="checkbox" checked={preferences.budget_alerts} className="toggle" />
+              <input type="checkbox" checked={preferences.budget_alerts} onChange={() => handlePreferenceChange('budget_alerts')} className="toggle" />
             </label>
-            <label className="flex items-center justify-between">
+            <label className="flex items-center justify-between cursor-pointer">
               <span className="text-gray-700 dark:text-gray-300">Transaction Alerts</span>
-              <input type="checkbox" checked={preferences.transaction_alerts} className="toggle" />
+              <input type="checkbox" checked={preferences.transaction_alerts} onChange={() => handlePreferenceChange('transaction_alerts')} className="toggle" />
             </label>
-            <label className="flex items-center justify-between">
+            <label className="flex items-center justify-between cursor-pointer">
               <span className="text-gray-700 dark:text-gray-300">Collaboration Alerts</span>
-              <input type="checkbox" checked={preferences.collaboration_alerts} className="toggle" />
+              <input type="checkbox" checked={preferences.collaboration_alerts} onChange={() => handlePreferenceChange('collaboration_alerts')} className="toggle" />
             </label>
           </div>
         </div>

@@ -2,7 +2,9 @@ import { Router, Response } from 'express';
 import { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
+import { LoggerClass } from '../services/logger';
 
+const logger = new LoggerClass('Bills');
 const router = Router();
 
 router.use(authMiddleware);
@@ -30,7 +32,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     res.json(result.rows);
   } catch (error) {
-    console.error('Get bills error:', error);
+    logger.error('Get bills error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -55,7 +57,7 @@ router.get('/status', async (req: AuthRequest, res: Response) => {
 
     res.json(result.rows);
   } catch (error) {
-    console.error('Get bill status error:', error);
+    logger.error('Get bill status error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -74,7 +76,7 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    console.error('Create bill error:', error);
+    logger.error('Create bill error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -99,7 +101,7 @@ router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) =>
 
     res.json(result.rows[0]);
   } catch (error) {
-    console.error('Update bill error:', error);
+    logger.error('Update bill error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -121,7 +123,7 @@ router.delete('/:id', requireEditAccess, async (req: AuthRequest, res: Response)
 
     res.json({ message: 'Bill deleted' });
   } catch (error) {
-    console.error('Delete bill error:', error);
+    logger.error('Delete bill error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
@@ -169,7 +171,7 @@ router.post('/:id/pay', requireEditAccess, async (req: AuthRequest, res: Respons
 
     res.json(paymentResult.rows[0]);
   } catch (error) {
-    console.error('Pay bill error:', error);
+    logger.error('Pay bill error:', error);
     res.status(500).json({ error: 'Server error' });
   }
 });
