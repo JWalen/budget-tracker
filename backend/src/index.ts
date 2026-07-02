@@ -140,7 +140,13 @@ app.use('/api', apiRateLimiter);
 app.use(sanitizeInput);
 
 // Routes
-app.use('/api/auth', authLimiter, authRoutes); // Strict brute-force protection on auth
+// Strict brute-force protection on credential submission only. Do NOT apply it
+// to the whole /api/auth router — that would throttle /auth/me and /auth/refresh
+// (which the SPA calls on every load), locking legitimate users out. Those still
+// fall under the general apiRateLimiter mounted on /api.
+app.use('/api/auth/login', authLimiter);
+app.use('/api/auth/register', authLimiter);
+app.use('/api/auth', authRoutes);
 app.use('/api/transactions', transactionLimiter, transactionRoutes);
 app.use('/api/budgets', budgetRoutes);
 app.use('/api/categories', categoryRoutes);

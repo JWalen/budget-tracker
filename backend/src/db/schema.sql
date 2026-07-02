@@ -182,6 +182,19 @@ CREATE TABLE IF NOT EXISTS system_settings (
     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
+-- --- AI assistant chat history ----------------------------------------------
+-- Persists the conversation with the AI assistant so it survives refreshes and
+-- can be replayed to the model for short-term memory within a session.
+CREATE TABLE IF NOT EXISTS ai_chat_messages (
+    id SERIAL PRIMARY KEY,
+    user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    role VARCHAR(16) NOT NULL,           -- 'user' | 'assistant'
+    content TEXT NOT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_ai_chat_messages_user
+    ON ai_chat_messages(user_id, created_at);
+
 -- --- Additive columns (safe on existing tables) -----------------------------
 ALTER TABLE users ADD COLUMN IF NOT EXISTS default_currency VARCHAR(3) DEFAULT 'USD';
 ALTER TABLE transactions ADD COLUMN IF NOT EXISTS currency VARCHAR(3) DEFAULT 'USD';
