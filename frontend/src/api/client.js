@@ -21,6 +21,9 @@ const handleResponse = async (response) => {
         window.dispatchEvent(new CustomEvent('auth:unauthorized'));
       }
     }
+    if (response.status === 413) {
+      throw new Error('File is too large. Please upload a file under 10 MB.');
+    }
     const error = await response.json().catch(() => ({ error: 'Request failed' }));
     throw new Error(error.error || 'Request failed');
   }
@@ -656,6 +659,19 @@ export const api = {
       method: 'POST',
       headers: headers(),
       body: JSON.stringify({ message, context }),
+    }).then(handleResponse);
+  },
+
+  getAIHistory: () => {
+    return fetch(`${API_URL}/ai/history`, {
+      headers: headers(),
+    }).then(handleResponse);
+  },
+
+  clearAIHistory: () => {
+    return fetch(`${API_URL}/ai/history`, {
+      method: 'DELETE',
+      headers: headers(),
     }).then(handleResponse);
   },
 

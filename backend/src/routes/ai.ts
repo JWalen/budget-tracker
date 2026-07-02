@@ -126,7 +126,8 @@ router.post('/chat',
   ],
   async (req: AuthRequest, res: Response) => {
     try {
-      const { message, context } = req.body;
+      const { message } = req.body;
+      const userId = req.userId!;
 
       // Check if AI is available
       const available = await AIAssistant.isAvailable();
@@ -136,8 +137,32 @@ router.post('/chat',
         });
       }
 
-      // Process the message with user context
-      const response = await AIAssistant.processNaturalQuery(req.userId!, message);
+      // Load recent prior turns (oldest first) for short-term memory. Fetch
+      // before inserting the current message so it isn't duplicated as history.
+      const historyResult = await query(
+        `SELECT role, content FROM ai_chat_messages
+         WHERE user_id = $1 ORDER BY created_at DESC, id DESC LIMIT 10`,
+        [userId]
+      );
+      const history = historyResult.rows.reverse();
+
+      // Persist the user's message.
+      await query(
+        `INSERT INTO ai_chat_messages (user_id, role, content) VALUES ($1, 'user', $2)`,
+        [userId, message]
+      );
+
+      // Process the message with user context + conversation memory.
+      const response = await AIAssistant.processNaturalQuery(userId, message, history);
+
+      // Persist the assistant's reply as text so it reloads and feeds memory.
+      const assistantText = typeof response === 'string'
+        ? response
+        : (response?.type === 'ai_response' ? response.response : JSON.stringify(response));
+      await query(
+        `INSERT INTO ai_chat_messages (user_id, role, content) VALUES ($1, 'assistant', $2)`,
+        [userId, assistantText]
+      );
 
       res.json({
         response,
@@ -149,6 +174,32 @@ router.post('/chat',
     }
   }
 );
+
+// Get persisted chat history for the current user
+router.get('/history', async (req: AuthRequest, res: Response) => {
+  try {
+    const result = await query(
+      `SELECT id, role, content, created_at FROM ai_chat_messages
+       WHERE user_id = $1 ORDER BY created_at ASC, id ASC LIMIT 200`,
+      [req.userId!]
+    );
+    res.json({ messages: result.rows });
+  } catch (error) {
+    logger.error('AI history error:', error);
+    res.status(500).json({ error: 'Failed to load chat history' });
+  }
+});
+
+// Clear the current user's chat history
+router.delete('/history', async (req: AuthRequest, res: Response) => {
+  try {
+    await query('DELETE FROM ai_chat_messages WHERE user_id = $1', [req.userId!]);
+    res.json({ success: true });
+  } catch (error) {
+    logger.error('AI clear history error:', error);
+    res.status(500).json({ error: 'Failed to clear chat history' });
+  }
+});
 
 // Get quick insights dashboard
 router.get('/dashboard', async (req: AuthRequest, res: Response) => {

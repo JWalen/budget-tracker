@@ -4,7 +4,7 @@ import { useToast } from '../context/ToastContext';
 import {
   Brain, Send, AlertCircle, TrendingUp, TrendingDown,
   Lightbulb, Loader, Check, X, Sparkles, MessageSquare,
-  BarChart3, AlertTriangle, DollarSign, Target
+  BarChart3, AlertTriangle, DollarSign, Target, Trash2
 } from 'lucide-react';
 
 export default function AIAssistant() {
@@ -44,6 +44,24 @@ export default function AIAssistant() {
           content: 'AI Assistant is offline. An administrator needs to enable it and add an API key in Admin → AI Configuration.',
           timestamp: new Date().toISOString()
         }]);
+        return;
+      }
+
+      // Load persisted chat history so the conversation survives refreshes.
+      let history = [];
+      try {
+        const res = await api.getAIHistory();
+        history = res.messages || [];
+      } catch (e) {
+        console.error('Failed to load chat history:', e);
+      }
+
+      if (history.length > 0) {
+        setMessages(history.map((m) => ({
+          type: m.role === 'user' ? 'user' : 'assistant',
+          content: m.content,
+          timestamp: m.created_at
+        })));
       } else {
         setMessages([{
           type: 'assistant',
@@ -54,6 +72,20 @@ export default function AIAssistant() {
     } catch (error) {
       console.error('Failed to check AI status:', error);
       toast.error(error.message || 'Failed to check AI status.');
+    }
+  };
+
+  const handleClearHistory = async () => {
+    try {
+      await api.clearAIHistory();
+      setMessages([{
+        type: 'assistant',
+        content: 'History cleared. How can I help you today?',
+        timestamp: new Date().toISOString()
+      }]);
+      toast.success('Chat history cleared');
+    } catch (error) {
+      toast.error(error.message || 'Failed to clear history');
     }
   };
 
@@ -174,7 +206,7 @@ export default function AIAssistant() {
           <div>
             <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">AI Budget Assistant</h1>
             <p className="text-sm text-gray-500 dark:text-gray-400">
-              Powered by local AI • Your data never leaves your device
+              Remembers your conversation • Ask about spending, budgets, and bills
             </p>
           </div>
         </div>
@@ -219,6 +251,17 @@ export default function AIAssistant() {
       {/* Chat Tab */}
       {activeTab === 'chat' && (
         <div className="card p-0 flex flex-col h-[600px]">
+          {/* Chat header */}
+          <div className="flex items-center justify-between px-4 py-2 border-b border-gray-200 dark:border-gray-700">
+            <span className="text-sm font-medium text-gray-600 dark:text-gray-300">Conversation</span>
+            <button
+              onClick={handleClearHistory}
+              className="flex items-center gap-1 text-xs text-gray-500 hover:text-red-600 dark:hover:text-red-400"
+              title="Clear chat history"
+            >
+              <Trash2 size={14} /> Clear history
+            </button>
+          </div>
           {/* Messages */}
           <div className="flex-1 overflow-y-auto p-4 space-y-4">
             {messages.map((msg, idx) => (
