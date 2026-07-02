@@ -12,12 +12,12 @@ const logger = new LoggerClass('AI');
 const router = Router();
 
 // AI calls hit a paid external LLM API, so apply a dedicated rate limiter.
-// 60 requests / 5 min per IP leaves room for the assistant dashboard (which
-// fires several insight calls per load) plus bulk categorization, while still
-// guarding the paid API from abuse.
+// 100 requests / 5 min per IP leaves ample room for the assistant dashboard
+// (which fires several insight calls per load) plus bulk categorization, while
+// still guarding the paid API from abuse.
 const aiLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 60,
+  max: 100,
   message: { error: 'AI requests are temporarily rate-limited (too many in a short time). Please wait about a minute, then try again.' },
   standardHeaders: true,
   legacyHeaders: false,
