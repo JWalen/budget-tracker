@@ -534,7 +534,6 @@ router.get('/config', async (req: AuthRequest, res: Response) => {
         mfaEnabled: process.env.MFA_ENABLED !== 'false',
         emailNotifications: process.env.EMAIL_NOTIFICATIONS === 'true',
         aiEnabled: process.env.AI_ENABLED !== 'false',
-        ollamaUrl: process.env.OLLAMA_URL || 'http://localhost:11434',
         backupEnabled: process.env.BACKUP_ENABLED !== 'false'
       }
     };
@@ -872,22 +871,35 @@ router.post('/users/:id/impersonate', async (req: AuthRequest, res: Response) =>
 
 import AIAssistant from '../services/aiAssistant';
 
+// Provider API keys are stored encrypted in these settings. They are never
+// returned to the client — only a boolean "configured" flag is exposed.
+const AI_KEY_SETTINGS: Record<string, string> = {
+  claude: 'ai_anthropic_api_key',
+  openai: 'ai_openai_api_key',
+};
+
 // GET /api/admin/ai/settings — Get AI configuration
 router.get('/ai/settings', async (req: AuthRequest, res: Response) => {
   try {
-    const settings = await query('SELECT * FROM system_settings WHERE key LIKE \'ai_%\'');
-    const capabilities = await AIAssistant.detectSystemCapabilities();
-    
-    // Convert rows to object
+    const settings = await query("SELECT key, value FROM system_settings WHERE key LIKE 'ai_%'");
+
+    // Convert rows to object, omitting the encrypted key material.
     const config: any = {};
     settings.rows.forEach(row => {
+      if (row.key === AI_KEY_SETTINGS.claude || row.key === AI_KEY_SETTINGS.openai) return;
       config[row.key] = row.value;
     });
 
+    // Report which providers have a key configured (without exposing the key).
+    const configured = {
+      claude: settings.rows.some(r => r.key === AI_KEY_SETTINGS.claude && r.value),
+      openai: settings.rows.some(r => r.key === AI_KEY_SETTINGS.openai && r.value),
+    };
+
     res.json({
       config,
-      capabilities,
-      isOllamaRunning: await AIAssistant.isAvailable()
+      keysConfigured: configured,
+      available: await AIAssistant.isAvailable(),
     });
   } catch (error) {
     logger.error('Get AI settings error', error as Error);
@@ -898,32 +910,43 @@ router.get('/ai/settings', async (req: AuthRequest, res: Response) => {
 // POST /api/admin/ai/settings — Update AI configuration
 router.post('/ai/settings', async (req: AuthRequest, res: Response) => {
   try {
-    const { ai_enabled, ai_model, ai_auto_gpu } = req.body;
+    const { ai_enabled, ai_provider, ai_model, anthropic_api_key, openai_api_key } = req.body;
+
+    if (ai_provider !== undefined && !['claude', 'openai'].includes(ai_provider)) {
+      return res.status(400).json({ error: 'Invalid provider. Must be "claude" or "openai".' });
+    }
 
     await query('BEGIN');
-    
+
+    const upsert = (key: string, value: string, type: string) =>
+      query(
+        'INSERT INTO system_settings (key, value, type) VALUES ($1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = $2',
+        [key, value, type]
+      );
+
     if (ai_enabled !== undefined) {
-      await query(
-        'INSERT INTO system_settings (key, value, type) VALUES ($1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = $2',
-        ['ai_enabled', String(ai_enabled), 'boolean']
-      );
+      await upsert('ai_enabled', String(ai_enabled), 'boolean');
     }
-    
+    if (ai_provider !== undefined) {
+      await upsert('ai_provider', ai_provider, 'string');
+    }
     if (ai_model !== undefined) {
-      await query(
-        'INSERT INTO system_settings (key, value, type) VALUES ($1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = $2',
-        ['ai_model', ai_model, 'string']
-      );
+      await upsert('ai_model', ai_model, 'string');
     }
 
-    if (ai_auto_gpu !== undefined) {
-      await query(
-        'INSERT INTO system_settings (key, value, type) VALUES ($1, $2, $3) ON CONFLICT (key) DO UPDATE SET value = $2',
-        ['ai_auto_gpu', String(ai_auto_gpu), 'boolean']
-      );
+    // API keys: only update when a non-empty value is supplied so a blank field
+    // doesn't wipe an existing key. Stored encrypted at rest.
+    if (typeof anthropic_api_key === 'string' && anthropic_api_key.trim()) {
+      await upsert(AI_KEY_SETTINGS.claude, EncryptionService.encryptAPIKey(anthropic_api_key.trim()), 'string');
     }
-    
+    if (typeof openai_api_key === 'string' && openai_api_key.trim()) {
+      await upsert(AI_KEY_SETTINGS.openai, EncryptionService.encryptAPIKey(openai_api_key.trim()), 'string');
+    }
+
     await query('COMMIT');
+
+    // Reflect the change immediately rather than waiting for the config TTL.
+    AIAssistant.invalidateConfigCache();
     res.json({ success: true });
   } catch (error) {
     await query('ROLLBACK');
@@ -932,42 +955,19 @@ router.post('/ai/settings', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// GET /api/admin/ai/models — List available models
-router.get('/ai/models', async (req: AuthRequest, res: Response) => {
+// DELETE /api/admin/ai/settings/key/:provider — Remove a stored provider key
+router.delete('/ai/settings/key/:provider', async (req: AuthRequest, res: Response) => {
   try {
-    const models = await AIAssistant.listModels();
-    res.json(models);
+    const settingKey = AI_KEY_SETTINGS[req.params.provider];
+    if (!settingKey) {
+      return res.status(400).json({ error: 'Invalid provider' });
+    }
+    await query('DELETE FROM system_settings WHERE key = $1', [settingKey]);
+    AIAssistant.invalidateConfigCache();
+    res.json({ success: true });
   } catch (error) {
-    logger.error('List models error', error as Error);
+    logger.error('Delete AI key error', error as Error);
     res.status(500).json({ error: 'Server error' });
-  }
-});
-
-// POST /api/admin/ai/pull-model — Pull a new model
-router.post('/ai/pull-model', async (req: AuthRequest, res: Response) => {
-  try {
-    const { model } = req.body;
-    if (!model) return res.status(400).json({ error: 'Model name required' });
-
-    // Use streaming to provide progress updates
-    const stream = await AIAssistant.pullModelStream(model);
-
-    if (stream) {
-      // Set headers for streaming
-      res.setHeader('Content-Type', 'application/x-ndjson');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-
-      // Pipe the stream to the response
-      stream.pipe(res);
-    } else {
-      res.status(500).json({ error: 'Failed to pull model' });
-    }
-  } catch (error) {
-    logger.error('Pull model error', error as Error);
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'Server error' });
-    }
   }
 });
 

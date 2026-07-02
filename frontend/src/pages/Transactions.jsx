@@ -264,7 +264,7 @@ export default function Transactions() {
       setAiSuggestions(suggestions);
       setShowAiModal(true);
     } catch (error) {
-      setAiError(error.message || 'Failed to get AI suggestions. Is Ollama running?');
+      setAiError(error.message || 'Failed to get AI suggestions. Is the AI assistant enabled and configured?');
     } finally {
       setAiLoading(false);
     }

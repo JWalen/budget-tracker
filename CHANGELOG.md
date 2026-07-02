@@ -1,5 +1,22 @@
 # Changelog
 
+## [2.7.0] - 2026-07-02
+
+Replaced the local Ollama LLM integration with hosted AI providers.
+
+### Changed
+- The AI assistant now calls a hosted provider — **Anthropic Claude** (default, `claude-opus-4-8`) or **OpenAI** (`gpt-4o`) — via the official SDKs, instead of running a local Ollama model.
+- Admins select the provider, model, and enter API keys under **Admin → AI Configuration**. Keys are encrypted at rest (AES-256-GCM, like other secrets) and never returned to the client.
+- Health check reports `ai: configured | disabled` instead of probing Ollama.
+
+### Removed
+- The `ollama` Docker service (and its GPU reservation / model volume) from both dev and prod compose files.
+- GPU/VRAM detection, in-app model downloads (`/api/admin/ai/pull-model`, `/ai/models`), and the `ai_auto_gpu` setting.
+- `OLLAMA_BASE_URL` / `OLLAMA_MODEL` environment variables.
+
+### Migration
+- On startup, `schema.sql` converges existing installs: a legacy `ai_model` (e.g. `mistral`) is reset to `claude-opus-4-8`, a new `ai_provider` setting defaults to `claude`, and `ai_auto_gpu` is dropped. Enable AI and add an API key in the admin UI to use it.
+
 ## [2.6.0] - 2026-07-02
 
 Security & stability hardening pass (pre-launch audit remediation).

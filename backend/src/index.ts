@@ -34,6 +34,7 @@ import accountsRoutes from './routes/accounts';
 import adminEmailRoutes from './routes/adminEmail';
 import familyRoutes from './routes/family';
 import aiRoutes from './routes/ai';
+import AIAssistant from './services/aiAssistant';
 import organizationRoutes from './routes/organizations';
 import analyticsRoutes from './routes/analytics';
 import receiptsRoutes from './routes/receipts';
@@ -180,7 +181,7 @@ app.get('/api/health', async (req, res) => {
     status: 'ok',
     timestamp: new Date().toISOString(),
     database: 'unknown',
-    ollama: 'unknown',
+    ai: 'unknown',
   };
 
   try {
@@ -195,20 +196,12 @@ app.get('/api/health', async (req, res) => {
     logger.error('Health check: Database connection failed', error as Error);
   }
 
-  // Check Ollama (if AI features enabled)
-  if (process.env.AI_ENABLED !== 'false') {
-    try {
-      const ollamaUrl = process.env.OLLAMA_BASE_URL || 'http://ollama:11434';
-      const response = await fetch(`${ollamaUrl}/api/version`, { 
-        signal: AbortSignal.timeout(5000) 
-      });
-      checks.ollama = response.ok ? 'connected' : 'disconnected';
-    } catch (error) {
-      checks.ollama = 'disconnected';
-      // Ollama failure is not critical, don't degrade status
-    }
-  } else {
-    checks.ollama = 'disabled';
+  // Check AI provider availability (enabled + API key configured).
+  // Not critical to overall health — never degrades status.
+  try {
+    checks.ai = (await AIAssistant.isAvailable()) ? 'configured' : 'disabled';
+  } catch (error) {
+    checks.ai = 'disabled';
   }
 
   const statusCode = checks.status === 'ok' ? 200 : 503;

@@ -1,30 +1,40 @@
 import { useState, useEffect } from 'react';
-import { Cpu, Database, Download, Power, Server, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
-import api from '../../api/client';
+import { Power, Save, CheckCircle, AlertCircle, KeyRound, Trash2, Sparkles } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
 
-const DEFAULT_CONFIG = { ai_enabled: 'false', ai_model: '', ai_auto_gpu: 'true' };
+const DEFAULT_CONFIG = { ai_enabled: 'false', ai_provider: 'claude', ai_model: '' };
+
+const PROVIDERS = [
+  {
+    id: 'claude',
+    name: 'Claude (Anthropic)',
+    defaultModel: 'claude-opus-4-8',
+    keyField: 'anthropic_api_key',
+    keyLabel: 'Anthropic API key',
+    keyPlaceholder: 'sk-ant-...',
+    modelHint: 'e.g. claude-opus-4-8, claude-sonnet-4-6',
+  },
+  {
+    id: 'openai',
+    name: 'OpenAI',
+    defaultModel: 'gpt-4o',
+    keyField: 'openai_api_key',
+    keyLabel: 'OpenAI API key',
+    keyPlaceholder: 'sk-...',
+    modelHint: 'e.g. gpt-4o, gpt-4o-mini',
+  },
+];
 
 export default function AdminAISettings() {
   const toast = useToast();
   const [config, setConfig] = useState(DEFAULT_CONFIG);
-  const [capabilities, setCapabilities] = useState(null);
-  const [models, setModels] = useState([]);
-  const [isOllamaRunning, setIsOllamaRunning] = useState(false);
+  const [keysConfigured, setKeysConfigured] = useState({ claude: false, openai: false });
+  const [available, setAvailable] = useState(false);
+  const [keyInputs, setKeyInputs] = useState({ anthropic_api_key: '', openai_api_key: '' });
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [pullingModel, setPullingModel] = useState(false);
-  const [pullProgress, setPullProgress] = useState(null);
-  const [newModelName, setNewModelName] = useState('');
-  const [message, setMessage] = useState(null);
 
-  const recommendedModels = [
-    { name: 'llama3.2:1b', description: 'Fastest, low memory (1GB)', type: 'efficient' },
-    { name: 'llama3.2:3b', description: 'Balanced performance (2GB)', type: 'balanced' },
-    { name: 'mistral', description: 'High quality reasoning (4GB)', type: 'quality' },
-    { name: 'phi3', description: 'Microsoft efficient model (2.3GB)', type: 'efficient' },
-    { name: 'gemma2:2b', description: 'Google lightweight model (1.6GB)', type: 'efficient' }
-  ];
+  const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
   useEffect(() => {
     loadData();
@@ -33,24 +43,12 @@ export default function AdminAISettings() {
   const loadData = async () => {
     try {
       setLoading(true);
-      // We need to add this method to api client, but for now direct fetch
-      const token = localStorage.getItem('token');
-      const headers = { 'Authorization': `Bearer ${token}` };
-      
-      const settingsRes = await fetch('/api/admin/ai/settings', { headers });
-      if (!settingsRes.ok) throw new Error('Failed to load AI settings');
-      const settingsData = await settingsRes.json();
-
-      setConfig(settingsData.config || DEFAULT_CONFIG);
-      setCapabilities(settingsData.capabilities);
-      setIsOllamaRunning(settingsData.isOllamaRunning);
-
-      if (settingsData.isOllamaRunning) {
-        const modelsRes = await fetch('/api/admin/ai/models', { headers });
-        if (!modelsRes.ok) throw new Error('Failed to load AI models');
-        const modelsData = await modelsRes.json();
-        setModels(modelsData);
-      }
+      const res = await fetch('/api/admin/ai/settings', { headers: authHeaders() });
+      if (!res.ok) throw new Error('Failed to load AI settings');
+      const data = await res.json();
+      setConfig({ ...DEFAULT_CONFIG, ...(data.config || {}) });
+      setKeysConfigured(data.keysConfigured || { claude: false, openai: false });
+      setAvailable(!!data.available);
     } catch (error) {
       console.error('Failed to load AI settings', error);
       toast.error(error.message || 'Failed to load AI settings');
@@ -59,26 +57,30 @@ export default function AdminAISettings() {
     }
   };
 
+  const activeProvider = PROVIDERS.find((p) => p.id === config.ai_provider) || PROVIDERS[0];
+
   const handleSave = async () => {
     if (saving) return;
     setSaving(true);
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/admin/ai/settings', {
+      const body = {
+        ai_enabled: config.ai_enabled === 'true',
+        ai_provider: config.ai_provider,
+        ai_model: config.ai_model,
+      };
+      // Only send key fields the admin actually typed into.
+      if (keyInputs.anthropic_api_key.trim()) body.anthropic_api_key = keyInputs.anthropic_api_key.trim();
+      if (keyInputs.openai_api_key.trim()) body.openai_api_key = keyInputs.openai_api_key.trim();
+
+      const res = await fetch('/api/admin/ai/settings', {
         method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          ai_enabled: config.ai_enabled === 'true',
-          ai_model: config.ai_model,
-          ai_auto_gpu: config.ai_auto_gpu === 'true'
-        })
+        headers: { ...authHeaders(), 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
       });
-      if (!response.ok) throw new Error('Failed to save settings');
+      if (!res.ok) throw new Error('Failed to save settings');
       toast.success('Settings saved successfully');
-      loadData(); // Reload to confirm state
+      setKeyInputs({ anthropic_api_key: '', openai_api_key: '' });
+      loadData();
     } catch (error) {
       toast.error(error.message || 'Failed to save settings');
     } finally {
@@ -86,62 +88,17 @@ export default function AdminAISettings() {
     }
   };
 
-  const handlePullModel = async (e) => {
-    e.preventDefault();
-    if (!newModelName) return;
-    
-    setPullingModel(true);
-    setPullProgress({ status: 'starting', percentage: 0 });
-    
+  const handleRemoveKey = async (providerId) => {
     try {
-      const token = localStorage.getItem('token');
-      const response = await fetch('/api/admin/ai/pull-model', {
-        method: 'POST',
-        headers: { 
-          'Authorization': `Bearer ${token}`,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ model: newModelName })
+      const res = await fetch(`/api/admin/ai/settings/key/${providerId}`, {
+        method: 'DELETE',
+        headers: authHeaders(),
       });
-      
-      if (!response.ok) throw new Error('Failed to start model pull');
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n').filter(line => line.trim() !== '');
-        
-        for (const line of lines) {
-          try {
-            const data = JSON.parse(line);
-            if (data.status) {
-              setPullProgress(prev => ({
-                status: data.status,
-                completed: data.completed,
-                total: data.total,
-                percentage: data.total ? Math.round((data.completed / data.total) * 100) : (prev?.percentage || 0)
-              }));
-            }
-          } catch (e) {
-            // Ignore parse errors for partial chunks
-          }
-        }
-      }
-      
-      setMessage({ type: 'success', text: `Model ${newModelName} pulled successfully` });
-      setNewModelName('');
+      if (!res.ok) throw new Error('Failed to remove API key');
+      toast.success('API key removed');
       loadData();
     } catch (error) {
-      console.error(error);
-      setMessage({ type: 'error', text: 'Failed to pull model (check server logs)' });
-    } finally {
-      setPullingModel(false);
-      setPullProgress(null);
+      toast.error(error.message || 'Failed to remove API key');
     }
   };
 
@@ -152,19 +109,13 @@ export default function AdminAISettings() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">AI Configuration</h1>
-          <p className="text-gray-600 dark:text-gray-400">Manage local LLM settings and models</p>
+          <p className="text-gray-600 dark:text-gray-400">Connect Claude or OpenAI to power the AI assistant</p>
         </div>
-        <div className={`px-4 py-2 rounded-full flex items-center gap-2 ${isOllamaRunning ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-          <div className={`w-3 h-3 rounded-full ${isOllamaRunning ? 'bg-green-500' : 'bg-red-500'}`}></div>
-          <span className="font-medium">{isOllamaRunning ? 'Ollama Online' : 'Ollama Offline'}</span>
+        <div className={`px-4 py-2 rounded-full flex items-center gap-2 ${available ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+          <div className={`w-3 h-3 rounded-full ${available ? 'bg-green-500' : 'bg-red-500'}`}></div>
+          <span className="font-medium">{available ? 'AI Ready' : 'AI Offline'}</span>
         </div>
       </div>
-
-      {message && (
-        <div className={`p-4 rounded-lg ${message.type === 'success' ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
-          {message.text}
-        </div>
-      )}
 
       {/* Main Settings Card */}
       <div className="card space-y-6">
@@ -179,11 +130,11 @@ export default function AdminAISettings() {
             </div>
           </div>
           <label className="relative inline-flex items-center cursor-pointer">
-            <input 
-              type="checkbox" 
+            <input
+              type="checkbox"
               className="sr-only peer"
               checked={config.ai_enabled === 'true'}
-              onChange={(e) => setConfig({...config, ai_enabled: e.target.checked ? 'true' : 'false'})}
+              onChange={(e) => setConfig({ ...config, ai_enabled: e.target.checked ? 'true' : 'false' })}
             />
             <div className="w-11 h-6 bg-gray-200 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-primary-300 dark:peer-focus:ring-primary-800 rounded-full peer dark:bg-gray-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-gray-600 peer-checked:bg-primary-600"></div>
           </label>
@@ -191,191 +142,104 @@ export default function AdminAISettings() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
-            <label className="label">Default Model</label>
-            <select 
+            <label className="label">Provider</label>
+            <select
               className="input w-full"
-              value={config.ai_model}
-              onChange={(e) => setConfig({...config, ai_model: e.target.value})}
-              disabled={!isOllamaRunning}
+              value={config.ai_provider}
+              onChange={(e) => setConfig({ ...config, ai_provider: e.target.value })}
             >
-              {models.map(m => (
-                <option key={m} value={m}>{m}</option>
+              {PROVIDERS.map((p) => (
+                <option key={p.id} value={p.id}>{p.name}</option>
               ))}
-              {models.length === 0 && <option>No models found</option>}
             </select>
           </div>
-          
-          <div className="flex items-center justify-between pt-8">
-            <label className="flex items-center gap-2 cursor-pointer">
-              <input 
-                type="checkbox" 
-                className="checkbox"
-                checked={config.ai_auto_gpu === 'true'}
-                onChange={(e) => setConfig({...config, ai_auto_gpu: e.target.checked ? 'true' : 'false'})}
-              />
-              <span className="text-gray-700 dark:text-gray-300">Auto-detect GPU</span>
-            </label>
-            <button onClick={handleSave} disabled={saving} className="btn btn-primary disabled:opacity-50">
-              {saving ? 'Saving...' : 'Save Configuration'}
-            </button>
+
+          <div>
+            <label className="label">Model</label>
+            <input
+              type="text"
+              className="input w-full"
+              value={config.ai_model}
+              placeholder={activeProvider.defaultModel}
+              onChange={(e) => setConfig({ ...config, ai_model: e.target.value })}
+            />
+            <p className="text-xs text-gray-500 mt-1">
+              Leave blank to use the default (<span className="font-mono">{activeProvider.defaultModel}</span>). {activeProvider.modelHint}
+            </p>
           </div>
+        </div>
+
+        <div className="flex justify-end">
+          <button onClick={handleSave} disabled={saving} className="btn btn-primary disabled:opacity-50 flex items-center gap-2">
+            <Save className="w-4 h-4" />
+            {saving ? 'Saving...' : 'Save Configuration'}
+          </button>
         </div>
       </div>
 
-      {/* System Capabilities */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <div className="card">
-          <div className="flex items-center gap-3 mb-4">
-            <Cpu className="w-5 h-5 text-gray-500" />
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100">GPU Status</h3>
-          </div>
-          {capabilities?.hasGPU ? (
-            <div className="flex items-center gap-2 text-green-600">
-              <CheckCircle size={20} />
-              <span className="font-medium">
-                {capabilities.gpuName === 'Remote / Containerized (Unknown)' 
-                  ? 'Remote GPU (Assumed)' 
-                  : capabilities.gpuName}
-              </span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-gray-500">
-              <AlertCircle size={20} />
-              <span>Running on CPU</span>
-            </div>
-          )}
-          {capabilities?.vram && (
-             <p className="text-sm text-gray-500 mt-2">VRAM: {capabilities.vram} GB</p>
-          )}
-          {capabilities?.gpuName === 'Remote / Containerized (Unknown)' && (
-             <p className="text-xs text-gray-500 mt-2 italic">Backend cannot verify remote GPU stats</p>
-          )}
-        </div>
-
-        <div className="card">
-          <div className="flex items-center gap-3 mb-4">
-            <Server className="w-5 h-5 text-gray-500" />
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100">Recommendation</h3>
-          </div>
-          <p className="text-gray-600 dark:text-gray-400">
-            Recommended Model: <span className="font-mono font-bold">{capabilities?.recommendedModel}</span>
-          </p>
-        </div>
-
-        <div className="card">
-          <div className="flex items-center gap-3 mb-4">
-            <Database className="w-5 h-5 text-gray-500" />
-            <h3 className="font-semibold text-gray-900 dark:text-gray-100">Installed Models</h3>
-          </div>
-          <p className="text-3xl font-bold text-gray-900 dark:text-gray-100">{models.length}</p>
-        </div>
-      </div>
-
-      {/* Model Management */}
+      {/* API Keys */}
       <div className="card">
-        <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Model Management</h3>
-        
-        {/* Recommended Models */}
-        <div className="mb-6">
-          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Recommended for Budget Tracker</h4>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
-            {recommendedModels.map((rec) => {
-              const isInstalled = models.includes(rec.name);
-              const isSelected = config.ai_model === rec.name;
-              
-              return (
-                <div key={rec.name} className={`p-3 border rounded-lg flex flex-col justify-between ${
-                  isSelected 
-                    ? 'border-primary-500 bg-primary-50 dark:bg-primary-900/20' 
-                    : 'border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800'
-                }`}>
-                  <div>
-                    <div className="flex justify-between items-start mb-1">
-                      <span className="font-semibold text-gray-900 dark:text-gray-100">{rec.name}</span>
-                      {isInstalled && (
-                        <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full flex items-center gap-1">
-                          <CheckCircle size={10} /> Installed
-                        </span>
-                      )}
-                    </div>
-                    <p className="text-xs text-gray-500 dark:text-gray-400 mb-3">{rec.description}</p>
-                  </div>
-                  
-                  {isInstalled ? (
-                    <button
-                      onClick={() => setConfig({...config, ai_model: rec.name})}
-                      disabled={isSelected}
-                      className={`w-full text-xs py-1.5 rounded transition-colors ${
-                        isSelected
-                          ? 'bg-primary-600 text-white opacity-50 cursor-default'
-                          : 'bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-600'
-                      }`}
-                    >
-                      {isSelected ? 'Active Model' : 'Select'}
-                    </button>
-                  ) : (
-                    <button
-                      onClick={() => { setNewModelName(rec.name); handlePullModel({ preventDefault: () => {} }); }}
-                      disabled={pullingModel || !isOllamaRunning}
-                      className="w-full text-xs py-1.5 bg-gray-900 dark:bg-gray-600 text-white rounded hover:bg-gray-800 dark:hover:bg-gray-500 disabled:opacity-50 flex items-center justify-center gap-1"
-                    >
-                      <Download size={12} />
-                      {pullingModel && newModelName === rec.name ? 'Pulling...' : 'Install'}
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </div>
+        <div className="flex items-center gap-3 mb-4">
+          <KeyRound className="w-5 h-5 text-gray-500" />
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">API Keys</h3>
         </div>
+        <p className="text-sm text-gray-500 mb-4">
+          Keys are encrypted at rest and never shown again after saving. Enter a value to add or replace a key; leave blank to keep the existing one.
+        </p>
 
-        <div className="border-t border-gray-200 dark:border-gray-700 pt-4">
-          <h4 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-3">Install Custom Model</h4>
-          <form onSubmit={handlePullModel} className="flex gap-4">
-            <div className="flex-1">
-              <div className="relative">
-                <Download className="absolute left-3 top-3 w-5 h-5 text-gray-400" />
-                <input 
-                  type="text" 
-                  className="input w-full pl-10" 
-                  placeholder="e.g. neural-chat, starling-lm"
-                  value={newModelName}
-                  onChange={(e) => setNewModelName(e.target.value)}
-                />
+        <div className="space-y-5">
+          {PROVIDERS.map((p) => (
+            <div key={p.id}>
+              <div className="flex items-center justify-between mb-1">
+                <label className="label mb-0">{p.keyLabel}</label>
+                {keysConfigured[p.id] ? (
+                  <span className="text-xs bg-green-100 text-green-800 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <CheckCircle size={10} /> Configured
+                  </span>
+                ) : (
+                  <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <AlertCircle size={10} /> Not set
+                  </span>
+                )}
               </div>
-              {pullProgress && (
-                <div className="mt-3">
-                  <div className="flex justify-between text-xs text-gray-500 mb-1">
-                    <span>{pullProgress.status}</span>
-                    <span>{pullProgress.percentage}%</span>
-                  </div>
-                  <div className="w-full bg-gray-200 rounded-full h-2 dark:bg-gray-700">
-                    <div 
-                      className="bg-primary-600 h-2 rounded-full transition-all duration-300" 
-                      style={{ width: `${pullProgress.percentage}%` }}
-                    ></div>
-                  </div>
-                </div>
-              )}
-              <p className="text-xs text-gray-500 mt-2">
-                See <a href="https://ollama.com/library" target="_blank" rel="noreferrer" className="text-primary-600 hover:underline">Ollama Library</a> for available models.
-              </p>
+              <div className="flex gap-2">
+                <input
+                  type="password"
+                  autoComplete="new-password"
+                  className="input w-full"
+                  placeholder={keysConfigured[p.id] ? '•••••••• (leave blank to keep)' : p.keyPlaceholder}
+                  value={keyInputs[p.keyField]}
+                  onChange={(e) => setKeyInputs({ ...keyInputs, [p.keyField]: e.target.value })}
+                />
+                {keysConfigured[p.id] && (
+                  <button
+                    onClick={() => handleRemoveKey(p.id)}
+                    className="btn btn-secondary flex items-center gap-1 whitespace-nowrap"
+                    title="Remove stored key"
+                  >
+                    <Trash2 className="w-4 h-4" /> Remove
+                  </button>
+                )}
+              </div>
             </div>
-            <button 
-              type="submit" 
-              disabled={pullingModel || !isOllamaRunning || !newModelName}
-              className="btn btn-secondary h-[42px]"
-            >
-              {pullingModel && !recommendedModels.some(r => r.name === newModelName) ? (
-                <>
-                  <RefreshCw className="w-4 h-4 mr-2 animate-spin" />
-                  Pulling...
-                </>
-              ) : (
-                'Pull Model'
-              )}
-            </button>
-          </form>
+          ))}
+        </div>
+      </div>
+
+      {/* Info */}
+      <div className="card bg-primary-50 dark:bg-primary-900/10 border border-primary-100 dark:border-primary-900/30">
+        <div className="flex items-start gap-3">
+          <Sparkles className="w-5 h-5 text-primary-600 mt-0.5" />
+          <div className="text-sm text-gray-600 dark:text-gray-300">
+            <p className="font-medium text-gray-900 dark:text-gray-100 mb-1">How it works</p>
+            <p>
+              The assistant sends your budget data to the selected provider's API to generate insights, categorize
+              transactions, and answer questions. Enable AI, pick a provider, add its API key, and save. Get keys from{' '}
+              <a href="https://console.anthropic.com/" target="_blank" rel="noreferrer" className="text-primary-600 hover:underline">console.anthropic.com</a>
+              {' '}or{' '}
+              <a href="https://platform.openai.com/api-keys" target="_blank" rel="noreferrer" className="text-primary-600 hover:underline">platform.openai.com</a>.
+            </p>
+          </div>
         </div>
       </div>
     </div>

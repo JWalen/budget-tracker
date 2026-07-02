@@ -1,5 +1,14 @@
 export const changelog = [
   {
+    version: '2.7.0',
+    date: '2026-07-02',
+    changes: [
+      'AI assistant now uses hosted providers — Anthropic Claude (default) or OpenAI — instead of a local Ollama model',
+      'Removed the Ollama service, GPU detection, and in-app model downloads',
+      'Admins configure the provider, model, and API keys under Admin → AI Configuration; keys are encrypted at rest',
+    ],
+  },
+  {
     version: '2.6.0',
     date: '2026-07-02',
     changes: [

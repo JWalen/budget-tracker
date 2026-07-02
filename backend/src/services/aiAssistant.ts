@@ -1,34 +1,30 @@
 import { query } from '../config/database';
-import { exec } from 'child_process';
-import { promisify } from 'util';
+import Anthropic from '@anthropic-ai/sdk';
+import OpenAI from 'openai';
+import { EncryptionService } from './encryption';
 
-const execAsync = promisify(exec);
+// The assistant calls out to a hosted LLM API (Anthropic Claude or OpenAI)
+// instead of a local model. Provider selection, model, and encrypted API keys
+// are managed by admins via /api/admin/ai/settings and stored in
+// system_settings; keys are encrypted at rest with EncryptionService.
+type AIProvider = 'claude' | 'openai';
 
-// Ollama configuration
-const OLLAMA_BASE_URL = process.env.OLLAMA_BASE_URL || 'http://localhost:11434';
+const DEFAULT_MODELS: Record<AIProvider, string> = {
+  claude: 'claude-opus-4-8',
+  openai: 'gpt-4o',
+};
 
-// GPU Detection and Model Selection
-interface SystemCapabilities {
-  hasGPU: boolean;
-  gpuName?: string;
-  vram?: number;
-  recommendedModel: string;
-}
+// Setting keys holding each provider's encrypted API key.
+const API_KEY_SETTING: Record<AIProvider, string> = {
+  claude: 'ai_anthropic_api_key',
+  openai: 'ai_openai_api_key',
+};
 
-interface OllamaResponse {
+interface AIConfig {
+  enabled: boolean;
+  provider: AIProvider;
   model: string;
-  response: string;
-  done: boolean;
-}
-
-interface TransactionData {
-  id: number;
-  description: string;
-  amount: number;
-  type: 'income' | 'expense';
-  date: Date;
-  category?: string;
-  account?: string;
+  apiKey: string | null;
 }
 
 interface BudgetInsight {
@@ -40,268 +36,127 @@ interface BudgetInsight {
 }
 
 export class AIAssistant {
-  private static systemCapabilities: SystemCapabilities | null = null;
-  private static selectedModel: string | null = null;
+  // Short-lived cache for the resolved config. isAvailable()/generate() are
+  // called many times per request (e.g. in /dashboard), and each uncached call
+  // reads system_settings and decrypts an API key, so we memoize for a brief TTL.
+  private static configCache: { value: AIConfig; expiresAt: number } | null = null;
+  private static readonly CONFIG_TTL_MS = 30 * 1000; // 30 seconds
 
-  // Short-lived cache for availability. isAvailable() is called many times per
-  // request (e.g. in /dashboard), and each uncached call performs a DB read plus
-  // a network fetch to Ollama, so we memoize the result for a brief TTL.
-  private static availabilityCache: { value: boolean; expiresAt: number } | null = null;
-  private static readonly AVAILABILITY_TTL_MS = 30 * 1000; // 30 seconds
-
-  // Detect GPU and system capabilities
-  static async detectSystemCapabilities(): Promise<SystemCapabilities> {
-    if (this.systemCapabilities) {
-      return this.systemCapabilities;
-    }
-
-    let hasGPU = false;
-    let gpuName: string | undefined;
-    let vram: number | undefined;
-    let recommendedModel = 'llama3.2:1b'; // Default to smallest model
-
-    try {
-      // Try to detect NVIDIA GPU (most common for AI workloads)
-      const { stdout: nvidiaOutput } = await execAsync('nvidia-smi --query-gpu=name,memory.total --format=csv,noheader,nounits 2>/dev/null').catch(() => ({ stdout: '' }));
-
-      if (nvidiaOutput && nvidiaOutput.trim()) {
-        hasGPU = true;
-        const [name, memory] = nvidiaOutput.trim().split(',').map(s => s.trim());
-        gpuName = name;
-        vram = parseInt(memory) / 1024; // Convert MB to GB
-
-        // Select model based on VRAM
-        if (vram >= 24) {
-          recommendedModel = 'llama3.2:70b'; // Large model for high-end GPUs
-        } else if (vram >= 12) {
-          recommendedModel = 'llama3.2:13b'; // Medium model
-        } else if (vram >= 8) {
-          recommendedModel = 'llama3.2:7b'; // Standard model
-        } else if (vram >= 4) {
-          recommendedModel = 'llama3.2:3b'; // Small model
-        } else {
-          recommendedModel = 'llama3.2:1b'; // Tiny model for low VRAM
-        }
-      }
-
-      // If no NVIDIA GPU, try to detect Apple Silicon
-      if (!hasGPU) {
-        const { stdout: macOutput } = await execAsync('sysctl -n hw.optional.arm64 2>/dev/null').catch(() => ({ stdout: '' }));
-
-        if (macOutput && macOutput.trim() === '1') {
-          hasGPU = true;
-          gpuName = 'Apple Silicon GPU';
-
-          // Check for unified memory size
-          const { stdout: memOutput } = await execAsync('sysctl -n hw.memsize 2>/dev/null').catch(() => ({ stdout: '' }));
-          if (memOutput) {
-            const totalMemGB = parseInt(memOutput) / (1024 * 1024 * 1024);
-
-            // Apple Silicon uses unified memory
-            if (totalMemGB >= 64) {
-              recommendedModel = 'llama3.2:13b';
-            } else if (totalMemGB >= 32) {
-              recommendedModel = 'llama3.2:7b';
-            } else if (totalMemGB >= 16) {
-              recommendedModel = 'llama3.2:3b';
-            } else {
-              recommendedModel = 'llama3.2:1b';
-            }
-          }
-        }
-      }
-
-      // If still no GPU detected, check if we're in a container environment
-      // where we might be talking to a remote Ollama instance (which might have GPU)
-      if (!hasGPU) {
-         // Check if OLLAMA_BASE_URL is remote/containerized
-         const ollamaHost = OLLAMA_BASE_URL.replace('http://', '').split(':')[0];
-         if (ollamaHost !== 'localhost' && ollamaHost !== '127.0.0.1') {
-           // We are talking to a remote host (e.g. 'ollama' container)
-           // We can't verify GPU, but we shouldn't assume CPU only if auto-gpu is enabled
-           const settings = await query('SELECT value FROM system_settings WHERE key = $1', ['ai_auto_gpu']);
-           if (settings.rows.length > 0 && settings.rows[0].value === 'true') {
-             // Assume GPU might be available on remote host
-             hasGPU = true;
-             gpuName = 'Remote / Containerized (Unknown)';
-             recommendedModel = 'llama3.2:3b'; // Safe default for GPU
-           }
-         }
-      }
-
-      // If no GPU detected, check CPU and RAM for CPU inference
-      if (!hasGPU) {
-        const { stdout: memInfo } = await execAsync("free -g 2>/dev/null | grep Mem | awk '{print $2}'").catch(() => ({ stdout: '' }));
-
-        if (memInfo) {
-          const ramGB = parseInt(memInfo.trim());
-
-          if (ramGB >= 32) {
-            recommendedModel = 'llama3.2:3b'; // Can handle small models on CPU with enough RAM
-          } else if (ramGB >= 16) {
-            recommendedModel = 'llama3.2:1b';
-          } else {
-            recommendedModel = 'llama3.2:1b'; // Smallest model for low-resource systems
-          }
-        }
-      }
-    } catch (error) {
-      console.log('GPU detection error:', error);
-    }
-
-    // Override with environment variable if set
-    if (process.env.OLLAMA_MODEL) {
-      recommendedModel = process.env.OLLAMA_MODEL;
-    }
-
-    this.systemCapabilities = {
-      hasGPU,
-      gpuName,
-      vram,
-      recommendedModel
-    };
-
-    console.log('System capabilities detected:', this.systemCapabilities);
-    return this.systemCapabilities;
-  }
-
-  // Check if Ollama is available and get optimal model.
-  // Cached for a short TTL to avoid a DB read + network fetch on every call.
-  static async isAvailable(): Promise<boolean> {
+  // Load and resolve the AI configuration from system_settings (cached).
+  private static async getConfig(): Promise<AIConfig> {
     const now = Date.now();
-    if (this.availabilityCache && this.availabilityCache.expiresAt > now) {
-      return this.availabilityCache.value;
+    if (this.configCache && this.configCache.expiresAt > now) {
+      return this.configCache.value;
     }
 
-    const value = await this.checkAvailability();
-    this.availabilityCache = { value, expiresAt: now + this.AVAILABILITY_TTL_MS };
-    return value;
+    const rows = await query("SELECT key, value FROM system_settings WHERE key LIKE 'ai_%'");
+    const settings: Record<string, string> = {};
+    for (const row of rows.rows) {
+      settings[row.key] = row.value;
+    }
+
+    const enabled = settings['ai_enabled'] === 'true';
+    const provider: AIProvider = settings['ai_provider'] === 'openai' ? 'openai' : 'claude';
+
+    // Resolve the model: use the configured value only if it plausibly belongs
+    // to the selected provider; otherwise fall back to the provider default.
+    // (Guards against a legacy Ollama model name like "mistral" leaking in.)
+    let model = (settings['ai_model'] || '').trim();
+    const looksClaude = model.toLowerCase().startsWith('claude');
+    const looksOpenAI = /^(gpt|o[0-9]|chatgpt)/i.test(model);
+    if (provider === 'claude' && !looksClaude) model = DEFAULT_MODELS.claude;
+    if (provider === 'openai' && !looksOpenAI) model = DEFAULT_MODELS.openai;
+
+    let apiKey: string | null = null;
+    const encrypted = settings[API_KEY_SETTING[provider]];
+    if (encrypted) {
+      try {
+        apiKey = EncryptionService.decryptAPIKey(encrypted);
+      } catch (error) {
+        console.error('Failed to decrypt AI API key:', error);
+        apiKey = null;
+      }
+    }
+
+    const config: AIConfig = { enabled, provider, model, apiKey };
+    this.configCache = { value: config, expiresAt: now + this.CONFIG_TTL_MS };
+    return config;
   }
 
-  // Uncached availability probe (DB setting check + Ollama network fetch).
-  private static async checkAvailability(): Promise<boolean> {
+  // Invalidate the cached config. Call after admins update AI settings so the
+  // change takes effect immediately rather than after the TTL.
+  static invalidateConfigCache(): void {
+    this.configCache = null;
+  }
+
+  // AI is available when it's enabled and the selected provider has an API key.
+  static async isAvailable(): Promise<boolean> {
     try {
-      // Check if AI is enabled in settings
-      const settings = await query('SELECT value FROM system_settings WHERE key = $1', ['ai_enabled']);
-      if (settings.rows.length > 0 && settings.rows[0].value !== 'true') {
-        return false;
-      }
-
-      const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`);
-      if (!response.ok) return false;
-
-      // Get system capabilities and select best model
-      const capabilities = await this.detectSystemCapabilities();
-      const models: any = await response.json();
-
-      // Check if recommended model is available
-      const modelExists = models.models?.some((m: any) =>
-        m.name.startsWith(capabilities.recommendedModel.split(':')[0])
-      );
-
-      if (modelExists) {
-        this.selectedModel = capabilities.recommendedModel;
-      } else {
-        // Fallback to first available model
-        this.selectedModel = models.models?.[0]?.name || 'llama3.2:1b';
-      }
-
-      console.log(`AI Assistant ready with model: ${this.selectedModel} (GPU: ${capabilities.hasGPU ? capabilities.gpuName : 'None'})`);
-      return true;
+      const config = await this.getConfig();
+      return config.enabled && !!config.apiKey;
     } catch (error) {
-      console.log('Ollama is not available:', error);
+      console.error('AI availability check failed:', error);
       return false;
     }
   }
 
-  // Pull a model from Ollama library with progress streaming
-  static async pullModelStream(modelName: string): Promise<any> {
-    try {
-      if (!await this.isAvailable()) return null;
-
-      const response = await fetch(`${OLLAMA_BASE_URL}/api/pull`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: modelName, stream: true })
-      });
-
-      if (!response.ok || !response.body) return null;
-      return response.body;
-    } catch (error) {
-      console.error('Model pull stream error:', error);
-      return null;
-    }
+  // The currently configured provider ('claude' | 'openai').
+  static async getProvider(): Promise<AIProvider> {
+    return (await this.getConfig()).provider;
   }
 
-  // Pull a model from Ollama library
-  static async pullModel(modelName: string): Promise<boolean> {
-    try {
-      if (!await this.isAvailable()) return false;
-
-      const response = await fetch(`${OLLAMA_BASE_URL}/api/pull`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ name: modelName, stream: false })
-      });
-
-      return response.ok;
-    } catch (error) {
-      console.error('Model pull error:', error);
-      return false;
-    }
-  }
-
-  // List available models
-  static async listModels(): Promise<string[]> {
-    try {
-      if (!await this.isAvailable()) return [];
-
-      const response = await fetch(`${OLLAMA_BASE_URL}/api/tags`);
-      const data = await response.json() as any;
-      return data.models?.map((m: any) => m.name) || [];
-    } catch (error) {
-      console.error('List models error:', error);
-      return [];
-    }
-  }
-
-  // Get the selected model
+  // The currently configured model string.
   static async getModel(): Promise<string> {
-    if (!this.selectedModel) {
-      await this.isAvailable();
-    }
-    return this.selectedModel || 'llama3.2:1b';
+    return (await this.getConfig()).model;
   }
 
-  // Generate response from Ollama
+  // Generate a completion from the configured provider. `context` becomes the
+  // system prompt (trusted instructions); `prompt` is the user message.
   static async generate(prompt: string, context?: string): Promise<string> {
+    const config = await this.getConfig();
+    if (!config.enabled) {
+      throw new Error('AI features are disabled');
+    }
+    if (!config.apiKey) {
+      throw new Error(`No API key configured for provider "${config.provider}"`);
+    }
+
     try {
-      const model = await this.getModel();
-
-      const response = await fetch(`${OLLAMA_BASE_URL}/api/generate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          model,
-          prompt: context ? `${context}\n\n${prompt}` : prompt,
-          stream: false,
-          options: {
-            temperature: 0.7,
-            top_p: 0.9,
-          }
-        }),
-      });
-
-      if (!response.ok) {
-        throw new Error('Ollama API error');
-      }
-
-      const data = await response.json() as OllamaResponse;
-      return data.response;
+      return config.provider === 'openai'
+        ? await this.generateOpenAI(config, prompt, context)
+        : await this.generateClaude(config, prompt, context);
     } catch (error) {
-      console.error('Ollama generation error:', error);
+      console.error(`AI generation error (${config.provider}):`, error);
       throw error;
     }
+  }
+
+  private static async generateClaude(config: AIConfig, prompt: string, context?: string): Promise<string> {
+    const client = new Anthropic({ apiKey: config.apiKey! });
+    const message = await client.messages.create({
+      model: config.model,
+      max_tokens: 2048,
+      ...(context ? { system: context } : {}),
+      messages: [{ role: 'user', content: prompt }],
+    });
+    return message.content
+      .filter((block): block is Anthropic.TextBlock => block.type === 'text')
+      .map(block => block.text)
+      .join('')
+      .trim();
+  }
+
+  private static async generateOpenAI(config: AIConfig, prompt: string, context?: string): Promise<string> {
+    const client = new OpenAI({ apiKey: config.apiKey! });
+    const completion = await client.chat.completions.create({
+      model: config.model,
+      max_tokens: 2048,
+      messages: [
+        ...(context ? [{ role: 'system' as const, content: context }] : []),
+        { role: 'user' as const, content: prompt },
+      ],
+    });
+    return (completion.choices[0]?.message?.content || '').trim();
   }
 
   // Natural language query processor
@@ -839,7 +694,7 @@ export class AIAssistant {
 
     return {
       type: 'error',
-      message: 'AI assistant is not available. Please ensure Ollama is running.'
+      message: 'AI assistant is not available. Ask an administrator to enable it and configure an API key in Admin → AI Configuration.'
     };
   }
 
