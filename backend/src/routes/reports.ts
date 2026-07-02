@@ -9,11 +9,29 @@ const router = Router();
 router.use(authMiddleware);
 router.use(sharingMiddleware);
 
+// Validate that startDate/endDate are present and parse to valid dates.
+// Returns true (and sends a 400) when the range is invalid.
+function invalidDateRange(startDate: unknown, endDate: unknown, res: Response): boolean {
+  if (!startDate || !endDate) {
+    res.status(400).json({ error: 'startDate and endDate are required' });
+    return true;
+  }
+  const start = new Date(startDate as string);
+  const end = new Date(endDate as string);
+  if (isNaN(start.getTime()) || isNaN(end.getTime())) {
+    res.status(400).json({ error: 'Invalid startDate or endDate' });
+    return true;
+  }
+  return false;
+}
+
 // Expense Summary Report
 router.get('/expense-summary', async (req: AuthRequest, res: Response) => {
   try {
     const budgetUserId = (req as any).budgetUserId;
     const { startDate, endDate } = req.query;
+
+    if (invalidDateRange(startDate, endDate, res)) return;
 
     const result = await query(
       `SELECT
@@ -62,31 +80,38 @@ router.get('/income-expense', async (req: AuthRequest, res: Response) => {
     const budgetUserId = (req as any).budgetUserId;
     const { startDate, endDate } = req.query;
 
-    // Get totals
+    if (invalidDateRange(startDate, endDate, res)) return;
+
+    // Get totals (exclude income categories flagged exclude_from_income,
+    // matching the dashboard income convention)
     const totalsResult = await query(
       `SELECT
-        type,
-        COALESCE(SUM(amount), 0) as total
-      FROM transactions
-      WHERE user_id = $1
-        AND date >= $2
-        AND date <= $3
-      GROUP BY type`,
+        t.type,
+        COALESCE(SUM(t.amount), 0) as total
+      FROM transactions t
+      LEFT JOIN categories c ON t.category_id = c.id
+      WHERE t.user_id = $1
+        AND t.date >= $2
+        AND t.date <= $3
+        AND NOT (t.type = 'income' AND c.exclude_from_income = true)
+      GROUP BY t.type`,
       [budgetUserId, startDate, endDate]
     );
 
     // Get monthly breakdown
     const monthlyResult = await query(
       `SELECT
-        EXTRACT(YEAR FROM date) as year,
-        EXTRACT(MONTH FROM date) as month,
-        type,
-        COALESCE(SUM(amount), 0) as total
-      FROM transactions
-      WHERE user_id = $1
-        AND date >= $2
-        AND date <= $3
-      GROUP BY EXTRACT(YEAR FROM date), EXTRACT(MONTH FROM date), type
+        EXTRACT(YEAR FROM t.date) as year,
+        EXTRACT(MONTH FROM t.date) as month,
+        t.type,
+        COALESCE(SUM(t.amount), 0) as total
+      FROM transactions t
+      LEFT JOIN categories c ON t.category_id = c.id
+      WHERE t.user_id = $1
+        AND t.date >= $2
+        AND t.date <= $3
+        AND NOT (t.type = 'income' AND c.exclude_from_income = true)
+      GROUP BY EXTRACT(YEAR FROM t.date), EXTRACT(MONTH FROM t.date), t.type
       ORDER BY year, month`,
       [budgetUserId, startDate, endDate]
     );
@@ -135,6 +160,8 @@ router.get('/category-trend', async (req: AuthRequest, res: Response) => {
     const budgetUserId = (req as any).budgetUserId;
     const { startDate, endDate, category_id } = req.query;
 
+    if (invalidDateRange(startDate, endDate, res)) return;
+
     let categoryFilter = '';
     const params: any[] = [budgetUserId, startDate, endDate];
 
@@ -179,10 +206,20 @@ router.get('/budget-performance', async (req: AuthRequest, res: Response) => {
     const budgetUserId = (req as any).budgetUserId;
     const { startDate, endDate } = req.query;
 
+    if (invalidDateRange(startDate, endDate, res)) return;
+
     const startMonth = new Date(startDate as string).getMonth() + 1;
     const startYear = new Date(startDate as string).getFullYear();
     const endMonth = new Date(endDate as string).getMonth() + 1;
     const endYear = new Date(endDate as string).getFullYear();
+
+    // When the range is within a single year, restrict to the month span so
+    // spent isn't over-counted across the whole year; otherwise use the
+    // multi-year form (partial start year, full middle years, partial end year).
+    const budgetPeriodFilter =
+      startYear === endYear
+        ? '(b.year = $4 AND b.month BETWEEN $5 AND $7)'
+        : '((b.year = $4 AND b.month >= $5) OR (b.year = $6 AND b.month <= $7) OR (b.year > $4 AND b.year < $6))';
 
     const result = await query(
       `SELECT
@@ -199,7 +236,7 @@ router.get('/budget-performance', async (req: AuthRequest, res: Response) => {
         AND t.date <= $3
         AND t.type = 'expense'
       WHERE b.user_id = $1
-        AND ((b.year = $4 AND b.month >= $5) OR (b.year = $6 AND b.month <= $7) OR (b.year > $4 AND b.year < $6))
+        AND ${budgetPeriodFilter}
       GROUP BY b.id, b.amount_limit, c.name, c.color
       ORDER BY c.name`,
       [budgetUserId, startDate, endDate, startYear, startMonth, endYear, endMonth]
@@ -223,6 +260,8 @@ router.get('/bill-payment', async (req: AuthRequest, res: Response) => {
   try {
     const budgetUserId = (req as any).budgetUserId;
     const { startDate, endDate } = req.query;
+
+    if (invalidDateRange(startDate, endDate, res)) return;
 
     const result = await query(
       `SELECT
@@ -258,16 +297,20 @@ router.get('/cash-flow', async (req: AuthRequest, res: Response) => {
     const budgetUserId = (req as any).budgetUserId;
     const { startDate, endDate } = req.query;
 
+    if (invalidDateRange(startDate, endDate, res)) return;
+
     const result = await query(
       `SELECT
-        DATE_TRUNC('week', date) as week,
-        type,
-        COALESCE(SUM(amount), 0) as total
-      FROM transactions
-      WHERE user_id = $1
-        AND date >= $2
-        AND date <= $3
-      GROUP BY DATE_TRUNC('week', date), type
+        DATE_TRUNC('week', t.date) as week,
+        t.type,
+        COALESCE(SUM(t.amount), 0) as total
+      FROM transactions t
+      LEFT JOIN categories c ON t.category_id = c.id
+      WHERE t.user_id = $1
+        AND t.date >= $2
+        AND t.date <= $3
+        AND NOT (t.type = 'income' AND c.exclude_from_income = true)
+      GROUP BY DATE_TRUNC('week', t.date), t.type
       ORDER BY week`,
       [budgetUserId, startDate, endDate]
     );

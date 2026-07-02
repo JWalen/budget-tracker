@@ -64,6 +64,18 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 
     sql += ' ORDER BY t.date DESC, t.created_at DESC';
 
+    // Pagination
+    let limit = parseInt(req.query.limit as string, 10);
+    if (!Number.isFinite(limit)) limit = 100;
+    limit = Math.max(1, Math.min(500, limit));
+
+    let offset = parseInt(req.query.offset as string, 10);
+    if (!Number.isFinite(offset) || offset < 0) offset = 0;
+
+    sql += ` LIMIT $${paramIndex} OFFSET $${paramIndex + 1}`;
+    params.push(limit, offset);
+    paramIndex += 2;
+
     const result = await query(sql, params);
     res.json(result.rows);
   } catch (error) {
@@ -78,8 +90,38 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
     const { category_id, account_id, amount, description, date, type } = req.body;
     const budgetUserId = (req as any).budgetUserId;
 
-    if (amount < 0) {
-      return res.status(400).json({ error: 'Amount cannot be negative' });
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      return res.status(400).json({ error: 'Amount must be a positive number' });
+    }
+
+    if (type !== 'income' && type !== 'expense') {
+      return res.status(400).json({ error: 'Invalid type' });
+    }
+
+    if (!date || isNaN(new Date(date).getTime())) {
+      return res.status(400).json({ error: 'Invalid date' });
+    }
+
+    // Verify ownership of referenced category/account to prevent cross-tenant references
+    if (category_id !== undefined && category_id !== null) {
+      const catCheck = await query(
+        'SELECT id FROM categories WHERE id = $1 AND user_id = $2',
+        [category_id, budgetUserId]
+      );
+      if (catCheck.rows.length === 0) {
+        return res.status(400).json({ error: 'Invalid category' });
+      }
+    }
+
+    if (account_id !== undefined && account_id !== null) {
+      const acctCheck = await query(
+        'SELECT id FROM bank_accounts WHERE id = $1 AND user_id = $2',
+        [account_id, budgetUserId]
+      );
+      if (acctCheck.rows.length === 0) {
+        return res.status(400).json({ error: 'Invalid account' });
+      }
     }
 
     const result = await query(
@@ -120,8 +162,40 @@ router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) =>
     const updates = req.body;
     const budgetUserId = (req as any).budgetUserId;
 
-    if (updates.amount !== undefined && updates.amount < 0) {
-      return res.status(400).json({ error: 'Amount cannot be negative' });
+    if (updates.amount !== undefined) {
+      const numericAmount = Number(updates.amount);
+      if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+        return res.status(400).json({ error: 'Amount must be a positive number' });
+      }
+    }
+
+    if (updates.type !== undefined && updates.type !== 'income' && updates.type !== 'expense') {
+      return res.status(400).json({ error: 'Invalid type' });
+    }
+
+    if (updates.date !== undefined && (!updates.date || isNaN(new Date(updates.date).getTime()))) {
+      return res.status(400).json({ error: 'Invalid date' });
+    }
+
+    // Verify ownership of referenced category/account to prevent cross-tenant references
+    if (updates.category_id !== undefined && updates.category_id !== null) {
+      const catCheck = await query(
+        'SELECT id FROM categories WHERE id = $1 AND user_id = $2',
+        [updates.category_id, budgetUserId]
+      );
+      if (catCheck.rows.length === 0) {
+        return res.status(400).json({ error: 'Invalid category' });
+      }
+    }
+
+    if (updates.account_id !== undefined && updates.account_id !== null) {
+      const acctCheck = await query(
+        'SELECT id FROM bank_accounts WHERE id = $1 AND user_id = $2',
+        [updates.account_id, budgetUserId]
+      );
+      if (acctCheck.rows.length === 0) {
+        return res.status(400).json({ error: 'Invalid account' });
+      }
     }
 
     // Dynamic update query

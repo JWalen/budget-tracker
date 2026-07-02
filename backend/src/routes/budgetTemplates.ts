@@ -137,10 +137,10 @@ router.post('/:id/apply', requireWriteAccess, async (req: TenantRequest, res: Re
       return res.status(400).json({ error: 'Month and year are required' });
     }
 
-    // Get template
+    // Get template (only public templates or ones owned by this user)
     const templateResult = await query(
-      'SELECT * FROM budget_templates WHERE id = $1',
-      [templateId]
+      'SELECT * FROM budget_templates WHERE id = $1 AND (is_public = true OR created_by = $2)',
+      [templateId, userId]
     );
 
     if (templateResult.rows.length === 0) {
@@ -166,12 +166,19 @@ router.post('/:id/apply', requireWriteAccess, async (req: TenantRequest, res: Re
         return res.status(400).json({ error: 'Income is required for 50/30/20 template' });
       }
 
+      const incomeValue = parseFloat(income);
+      if (!Number.isFinite(incomeValue) || incomeValue <= 0) {
+        return res.status(400).json({ error: 'Income must be a positive number' });
+      }
+
       for (const category of categories) {
-        const amount = (parseFloat(income) * category.percentage) / 100;
-        
-        // Find matching user category
-        const userCategory = userCategories.find((c) =>
-          c.name.toLowerCase().includes(category.name.toLowerCase())
+        const percentage = parseFloat(category.percentage);
+        if (!Number.isFinite(percentage)) continue;
+        const amount = (incomeValue * percentage) / 100;
+
+        // Find matching user category (case-insensitive exact name match)
+        const userCategory = userCategories.find(
+          (c) => c.name.toLowerCase() === String(category.name).toLowerCase()
         );
 
         if (userCategory) {
@@ -194,13 +201,20 @@ router.post('/:id/apply', requireWriteAccess, async (req: TenantRequest, res: Re
         return res.status(400).json({ error: 'Income is required' });
       }
 
+      const incomeValue = parseFloat(income);
+      if (!Number.isFinite(incomeValue) || incomeValue <= 0) {
+        return res.status(400).json({ error: 'Income must be a positive number' });
+      }
+
       for (const category of categories) {
         if (category.is_income) continue;
 
-        const amount = (parseFloat(income) * (category.percentage || 0)) / 100;
-        
-        const userCategory = userCategories.find((c) =>
-          c.name.toLowerCase().includes(category.name.toLowerCase())
+        const percentage = parseFloat(category.percentage) || 0;
+        if (!Number.isFinite(percentage)) continue;
+        const amount = (incomeValue * percentage) / 100;
+
+        const userCategory = userCategories.find(
+          (c) => c.name.toLowerCase() === String(category.name).toLowerCase()
         );
 
         if (userCategory) {
@@ -219,18 +233,19 @@ router.post('/:id/apply', requireWriteAccess, async (req: TenantRequest, res: Re
     } else if (template.type === 'envelope') {
       // Use fixed amounts
       for (const category of categories) {
-        const userCategory = userCategories.find((c) =>
-          c.name.toLowerCase().includes(category.name.toLowerCase())
+        const userCategory = userCategories.find(
+          (c) => c.name.toLowerCase() === String(category.name).toLowerCase()
         );
 
-        if (userCategory && category.amount) {
+        const amount = parseFloat(category.amount);
+        if (userCategory && Number.isFinite(amount) && amount > 0) {
           const budgetResult = await query(
             `INSERT INTO budgets (user_id, organization_id, category_id, amount_limit, month, year)
              VALUES ($1, $2, $3, $4, $5, $6)
              ON CONFLICT (user_id, category_id, month, year)
              DO UPDATE SET amount_limit = $4
              RETURNING *`,
-            [userId, organizationId, userCategory.id, category.amount, month, year]
+            [userId, organizationId, userCategory.id, amount, month, year]
           );
 
           budgetsCreated.push(budgetResult.rows[0]);
@@ -271,6 +286,16 @@ router.post('/:id/save', async (req: TenantRequest, res: Response) => {
     const templateId = parseInt(req.params.id, 10);
     const userId = req.userId!;
     const organizationId = req.organizationId!;
+
+    // Only allow saving public templates or ones owned by this user
+    const templateResult = await query(
+      'SELECT id FROM budget_templates WHERE id = $1 AND (is_public = true OR created_by = $2)',
+      [templateId, userId]
+    );
+
+    if (templateResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Template not found' });
+    }
 
     await query(
       `INSERT INTO user_budget_templates (user_id, organization_id, template_id)

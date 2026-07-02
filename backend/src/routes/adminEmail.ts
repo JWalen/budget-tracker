@@ -125,10 +125,10 @@ router.get('/stats', async (req: AuthRequest, res: Response) => {
     // Get email-related statistics
     const stats = await query(`
       SELECT
-        (SELECT COUNT(*) FROM budget_shares WHERE status = 'pending') as pending_invites,
-        (SELECT COUNT(*) FROM budget_shares WHERE status = 'accepted') as accepted_invites,
-        (SELECT COUNT(*) FROM budget_shares WHERE created_at > NOW() - INTERVAL '24 hours') as invites_last_24h,
-        (SELECT COUNT(*) FROM budget_shares WHERE created_at > NOW() - INTERVAL '7 days') as invites_last_7d
+        (SELECT COUNT(*) FROM organization_invitations WHERE accepted_at IS NULL) as pending_invites,
+        (SELECT COUNT(*) FROM organization_invitations WHERE accepted_at IS NOT NULL) as accepted_invites,
+        (SELECT COUNT(*) FROM organization_invitations WHERE created_at > NOW() - INTERVAL '24 hours') as invites_last_24h,
+        (SELECT COUNT(*) FROM organization_invitations WHERE created_at > NOW() - INTERVAL '7 days') as invites_last_7d
     `);
 
     res.json(stats.rows[0]);

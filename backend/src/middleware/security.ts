@@ -30,8 +30,11 @@ export const helmetConfig = helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
+      // styleSrc keeps 'unsafe-inline' because the UI uses inline styles (e.g.
+      // dynamic progress-bar widths). scriptSrc must NOT allow inline scripts —
+      // that would negate CSP as an XSS mitigation.
       styleSrc: ["'self'", "'unsafe-inline'"],
-      scriptSrc: ["'self'", "'unsafe-inline'"],
+      scriptSrc: ["'self'"],
       imgSrc: ["'self'", "data:", "https:"],
       connectSrc: ["'self'"],
       fontSrc: ["'self'", "data:"],

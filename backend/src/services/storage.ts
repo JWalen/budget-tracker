@@ -57,6 +57,67 @@ interface UploadResult {
   s3Bucket?: string;
 }
 
+// Maximum allowed upload size (defense-in-depth; multer also enforces its own limit)
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
+interface DetectedType {
+  ext: string;
+  mime: string;
+}
+
+/**
+ * Detect the true file type from magic bytes.
+ * Only JPEG, PNG, GIF, WEBP images and PDFs are accepted. Trusting the
+ * client-supplied mimetype/extension enables stored-XSS (e.g. an HTML file
+ * renamed to .png), so validation is done against the actual content.
+ */
+export const detectFileType = (buffer: Buffer): DetectedType | null => {
+  if (!buffer || buffer.length < 12) {
+    return null;
+  }
+
+  // JPEG: FF D8 FF
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) {
+    return { ext: '.jpg', mime: 'image/jpeg' };
+  }
+
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buffer[0] === 0x89 && buffer[1] === 0x50 &&
+    buffer[2] === 0x4e && buffer[3] === 0x47
+  ) {
+    return { ext: '.png', mime: 'image/png' };
+  }
+
+  // PDF: 25 50 44 46 ('%PDF')
+  if (
+    buffer[0] === 0x25 && buffer[1] === 0x50 &&
+    buffer[2] === 0x44 && buffer[3] === 0x46
+  ) {
+    return { ext: '.pdf', mime: 'application/pdf' };
+  }
+
+  // GIF: 'GIF8'
+  if (
+    buffer[0] === 0x47 && buffer[1] === 0x49 &&
+    buffer[2] === 0x46 && buffer[3] === 0x38
+  ) {
+    return { ext: '.gif', mime: 'image/gif' };
+  }
+
+  // WEBP: 'RIFF' .... 'WEBP'
+  if (
+    buffer[0] === 0x52 && buffer[1] === 0x49 &&
+    buffer[2] === 0x46 && buffer[3] === 0x46 &&
+    buffer[8] === 0x57 && buffer[9] === 0x45 &&
+    buffer[10] === 0x42 && buffer[11] === 0x50
+  ) {
+    return { ext: '.webp', mime: 'image/webp' };
+  }
+
+  return null;
+};
+
 /**
  * Upload file to S3 or local storage
  */
@@ -66,21 +127,34 @@ export const uploadFile = async (
   organizationId: number
 ): Promise<UploadResult> => {
   try {
-    const fileExt = path.extname(file.originalname);
+    // Enforce size cap (defense-in-depth alongside multer limits)
+    if (file.size > MAX_FILE_SIZE || file.buffer.length > MAX_FILE_SIZE) {
+      throw new Error('File exceeds maximum allowed size');
+    }
+
+    // Validate real content type via magic bytes and derive the stored
+    // extension/mime from the DETECTED type — never trust originalname/mimetype.
+    const detected = detectFileType(file.buffer);
+    if (!detected) {
+      throw new Error('Invalid file type. Only JPEG, PNG, GIF, WEBP images and PDFs are allowed.');
+    }
+
+    const fileExt = detected.ext;
+    const mimeType = detected.mime;
     const filename = `${crypto.randomBytes(16).toString('hex')}${fileExt}`;
     const userFolder = `user-${userId}/org-${organizationId}`;
-    
+
     if (useLocalStorage) {
       // Local storage
       const uploadPath = path.join(LOCAL_UPLOAD_DIR, userFolder);
       await fs.mkdir(uploadPath, { recursive: true });
-      
+
       const filePath = path.join(uploadPath, filename);
       await fs.writeFile(filePath, file.buffer);
 
       // Generate thumbnail for images
       let thumbnailPath: string | undefined;
-      if (file.mimetype.startsWith('image/')) {
+      if (mimeType.startsWith('image/')) {
         const thumbFilename = `thumb_${filename}`;
         thumbnailPath = path.join(uploadPath, thumbFilename);
         await sharp(file.buffer)
@@ -92,7 +166,7 @@ export const uploadFile = async (
         filename,
         filePath: path.join(userFolder, filename),
         fileSize: file.size,
-        mimeType: file.mimetype,
+        mimeType,
         thumbnailPath: thumbnailPath ? path.join(userFolder, `thumb_${filename}`) : undefined,
       };
     } else {
@@ -106,7 +180,7 @@ export const uploadFile = async (
           Bucket: bucket,
           Key: s3Key,
           Body: file.buffer,
-          ContentType: file.mimetype,
+          ContentType: mimeType,
           Metadata: {
             userId: userId.toString(),
             organizationId: organizationId.toString(),
@@ -119,19 +193,19 @@ export const uploadFile = async (
 
       // Generate and upload thumbnail for images
       let thumbnailPath: string | undefined;
-      if (file.mimetype.startsWith('image/')) {
+      if (mimeType.startsWith('image/')) {
         const thumbBuffer = await sharp(file.buffer)
           .resize(200, 200, { fit: 'inside' })
           .toBuffer();
 
         const thumbKey = `${userFolder}/thumb_${filename}`;
-        
+
         await s3Client!.send(
           new PutObjectCommand({
             Bucket: bucket,
             Key: thumbKey,
             Body: thumbBuffer,
-            ContentType: file.mimetype,
+            ContentType: mimeType,
           })
         );
 
@@ -142,7 +216,7 @@ export const uploadFile = async (
         filename,
         filePath: s3Key,
         fileSize: file.size,
-        mimeType: file.mimetype,
+        mimeType,
         thumbnailPath,
         s3Key,
         s3Bucket: bucket,

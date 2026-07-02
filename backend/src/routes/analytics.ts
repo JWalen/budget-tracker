@@ -24,15 +24,17 @@ router.get('/spending-trends', async (req: AuthRequest, res: Response) => {
     const { months = 6 } = req.query;
     const budgetUserId = (req as any).budgetUserId;
 
+    const m = Math.min(Math.max(parseInt(months as string, 10) || 6, 1), 60);
+
     const result = await query(
-      `SELECT 
+      `SELECT
         DATE_TRUNC('month', date) as month,
         SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expenses,
         SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
         COUNT(*) as transaction_count
        FROM transactions
-       WHERE user_id = $1 
-         AND date >= CURRENT_DATE - INTERVAL '${parseInt(months as string, 10)} months'
+       WHERE user_id = $1
+         AND date >= CURRENT_DATE - INTERVAL '${m} months'
        GROUP BY DATE_TRUNC('month', date)
        ORDER BY month DESC`,
       [budgetUserId]
@@ -59,11 +61,15 @@ router.get('/category-breakdown', async (req: AuthRequest, res: Response) => {
     const { month, year } = req.query;
     const budgetUserId = (req as any).budgetUserId;
 
-    const m = month || new Date().getMonth() + 1;
-    const y = year || new Date().getFullYear();
+    const m = month !== undefined ? parseInt(month as string, 10) : new Date().getMonth() + 1;
+    const y = year !== undefined ? parseInt(year as string, 10) : new Date().getFullYear();
+
+    if (!Number.isInteger(m) || m < 1 || m > 12 || !Number.isInteger(y) || y < 1970 || y > 9999) {
+      return res.status(400).json({ error: 'Invalid month or year' });
+    }
 
     const result = await query(
-      `SELECT 
+      `SELECT
         c.id,
         c.name,
         c.color,
@@ -155,11 +161,15 @@ router.get('/cash-flow', async (req: AuthRequest, res: Response) => {
     const { month, year } = req.query;
     const budgetUserId = (req as any).budgetUserId;
 
-    const m = month || new Date().getMonth() + 1;
-    const y = year || new Date().getFullYear();
+    const m = month !== undefined ? parseInt(month as string, 10) : new Date().getMonth() + 1;
+    const y = year !== undefined ? parseInt(year as string, 10) : new Date().getFullYear();
+
+    if (!Number.isInteger(m) || m < 1 || m > 12 || !Number.isInteger(y) || y < 1970 || y > 9999) {
+      return res.status(400).json({ error: 'Invalid month or year' });
+    }
 
     const result = await query(
-      `SELECT 
+      `SELECT
         DATE(date) as day,
         SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
         SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expenses,
@@ -197,6 +207,10 @@ router.get('/summary', async (req: AuthRequest, res: Response) => {
 
     const m: number = month || new Date().getMonth() + 1;
     const y: number = year || new Date().getFullYear();
+
+    if (!Number.isInteger(m) || m < 1 || m > 12 || !Number.isInteger(y) || y < 1970 || y > 9999) {
+      return res.status(400).json({ error: 'Invalid month or year' });
+    }
 
     // Get current month stats
     const currentMonth = await query(
@@ -307,18 +321,20 @@ router.get('/income-vs-expenses', async (req: AuthRequest, res: Response) => {
     const { months = 12 } = req.query;
     const budgetUserId = (req as any).budgetUserId;
 
+    const m = Math.min(Math.max(parseInt(months as string, 10) || 12, 1), 60);
+
     const result = await query(
-      `SELECT 
+      `SELECT
         TO_CHAR(DATE_TRUNC('month', date), 'Mon YYYY') as month,
         SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expenses,
         SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
         SUM(CASE WHEN type = 'income' THEN amount ELSE -amount END) as savings
        FROM transactions
-       WHERE user_id = $1 
-         AND date >= CURRENT_DATE - INTERVAL '${parseInt(months as string, 10)} months'
+       WHERE user_id = $1
+         AND date >= CURRENT_DATE - INTERVAL '${m} months'
        GROUP BY DATE_TRUNC('month', date)
        ORDER BY DATE_TRUNC('month', date) DESC
-       LIMIT ${parseInt(months as string, 10)}`,
+       LIMIT ${m}`,
       [budgetUserId]
     );
 
@@ -441,9 +457,15 @@ router.get('/export/csv', async (req: AuthRequest, res: Response) => {
         } else if (typeof value === 'number') {
           value = value.toFixed(2);
         } else {
-          value = String(value).replace(/"/g, '""'); // Escape quotes
+          value = String(value);
+          // Neutralize CSV/formula injection: prefix a single quote when the
+          // value begins with a character a spreadsheet may interpret as a formula.
+          if (/^[=+\-@\t\r]/.test(value)) {
+            value = `'${value}`;
+          }
+          value = value.replace(/"/g, '""'); // Escape quotes
         }
-        
+
         return `"${value}"`;
       });
       csvRows.push(values.join(','));

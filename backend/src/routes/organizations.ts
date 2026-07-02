@@ -150,6 +150,13 @@ router.post('/', async (req: AuthRequest, res: Response) => {
 router.patch('/:id', tenantMiddleware, requireOwner, async (req: TenantRequest, res: Response) => {
   try {
     const orgId = parseInt(req.params.id, 10);
+
+    // Prevent header/param mismatch (IDOR): tenantMiddleware authorized the
+    // X-Organization-Id header org, but this handler acts on the URL :id.
+    if (req.organizationId !== orgId) {
+      return res.status(403).json({ error: 'Organization mismatch' });
+    }
+
     const { name, settings } = req.body;
 
     const updates: string[] = [];
@@ -243,15 +250,30 @@ router.post('/:id/invite', tenantMiddleware, requireWriteAccess, async (req: Ten
     const userId = req.userId!;
     const { email, role } = req.body;
 
+    // Prevent header/param mismatch (IDOR): tenantMiddleware authorized the
+    // X-Organization-Id header org, but this handler acts on the URL :id.
+    if (req.organizationId !== orgId) {
+      return res.status(403).json({ error: 'Organization mismatch' });
+    }
+
     if (!email) {
       return res.status(400).json({ error: 'Email is required' });
     }
 
     const inviteRole = role || 'member';
     const validRoles = ['admin', 'member', 'viewer'];
-    
+
     if (!validRoles.includes(inviteRole)) {
       return res.status(400).json({ error: 'Invalid role' });
+    }
+
+    // Prevent privilege escalation: only owners/admins may invite privileged roles
+    if (
+      (inviteRole === 'owner' || inviteRole === 'admin') &&
+      req.userRole !== 'owner' &&
+      req.userRole !== 'admin'
+    ) {
+      return res.status(403).json({ error: 'Insufficient permissions to invite this role' });
     }
 
     // Check if user already invited or member
@@ -307,8 +329,17 @@ router.delete('/:id/members/:userId', tenantMiddleware, requireWriteAccess, asyn
     const removeUserId = parseInt(req.params.userId, 10);
     const currentUserId = req.userId!;
 
+    // Prevent header/param mismatch (IDOR): tenantMiddleware authorized the
+    // X-Organization-Id header org, but this handler acts on the URL :id.
+    if (req.organizationId !== orgId) {
+      return res.status(403).json({ error: 'Organization mismatch' });
+    }
+
     // Can't remove organization owner
     const orgResult = await query('SELECT owner_id FROM organizations WHERE id = $1', [orgId]);
+    if (orgResult.rows.length === 0) {
+      return res.status(404).json({ error: 'Organization not found' });
+    }
     if (orgResult.rows[0].owner_id === removeUserId) {
       return res.status(400).json({ error: 'Cannot remove organization owner' });
     }
@@ -364,9 +395,10 @@ router.post('/accept-invite/:token', async (req: AuthRequest, res: Response) => 
       return res.status(403).json({ error: 'Invitation was sent to a different email' });
     }
 
-    // Add user to organization
+    // Add user to organization (ignore if already a member to avoid duplicate-membership errors)
     await query(
-      'INSERT INTO organization_members (organization_id, user_id, role) VALUES ($1, $2, $3)',
+      `INSERT INTO organization_members (organization_id, user_id, role) VALUES ($1, $2, $3)
+       ON CONFLICT (organization_id, user_id) DO NOTHING`,
       [invitation.organization_id, userId, invitation.role]
     );
 

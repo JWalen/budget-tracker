@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { query } from '../config/database';
+import pool, { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
 import { LoggerClass } from '../services/logger';
@@ -226,27 +226,108 @@ router.post('/upload', uploadRateLimiter, requireEditAccess, upload.single('file
 });
 
 // Confirm import — bulk insert transactions and link matches
+const MAX_IMPORT_ROWS = 10000;
+
 router.post('/confirm', requireEditAccess, async (req: AuthRequest, res: Response) => {
+  const { transactions, account_id } = req.body;
+  const budgetUserId = (req as any).budgetUserId;
+
+  if (!Array.isArray(transactions)) {
+    return res.status(400).json({ error: 'transactions must be an array' });
+  }
+
+  // Bound memory/work: reject oversized imports
+  if (transactions.length > MAX_IMPORT_ROWS) {
+    return res.status(400).json({ error: `Too many rows (max ${MAX_IMPORT_ROWS})` });
+  }
+
+  const client = await pool.connect();
   try {
-    const { transactions, account_id } = req.body;
-    const budgetUserId = (req as any).budgetUserId;
+    // Verify the target account belongs to the budget owner (IDOR protection)
+    let verifiedAccountId: number | null = null;
+    if (account_id) {
+      const acct = await client.query(
+        'SELECT id FROM bank_accounts WHERE id = $1 AND user_id = $2',
+        [account_id, budgetUserId]
+      );
+      if (acct.rows.length === 0) {
+        return res.status(400).json({ error: 'Invalid account' });
+      }
+      verifiedAccountId = acct.rows[0].id;
+    }
+
+    await client.query('BEGIN');
 
     let imported = 0;
     let billsMatched = 0;
     let debtPayments = 0;
     let skipped = 0;
 
-    for (const row of (transactions || [])) {
+    // Ownership caches to avoid repeated lookups
+    const categoryOwned = new Map<number, boolean>();
+    const billOwned = new Map<number, boolean>();
+    const debtOwned = new Map<number, boolean>();
+
+    for (const row of transactions) {
+      // Guard date parsing — skip rows with an invalid/unparseable date rather than 500
+      const parsedDate = new Date(row.date);
+      if (isNaN(parsedDate.getTime())) {
+        skipped++;
+        continue;
+      }
+
       // Determine category_id - use categoryId if it's for a bill match, otherwise use matchId if type is category
-      const categoryId = row.matchType === 'category' ? row.matchId :
+      let categoryId: number | null = row.matchType === 'category' ? row.matchId :
                         (row.matchType === 'bill' && row.categoryId) ? row.categoryId :
                         null;
 
-      // Insert transaction with account_id
-      const txResult = await query(
+      // Verify category ownership; drop unowned categories rather than attaching them
+      if (categoryId != null) {
+        if (!categoryOwned.has(categoryId)) {
+          const c = await client.query(
+            'SELECT id FROM categories WHERE id = $1 AND user_id = $2',
+            [categoryId, budgetUserId]
+          );
+          categoryOwned.set(categoryId, c.rows.length > 0);
+        }
+        if (!categoryOwned.get(categoryId)) {
+          skipped++;
+          continue;
+        }
+      }
+
+      // Verify match (bill/debt) ownership before referencing it
+      if (row.matchId && row.matchType === 'bill') {
+        if (!billOwned.has(row.matchId)) {
+          const b = await client.query(
+            'SELECT id FROM bills WHERE id = $1 AND user_id = $2',
+            [row.matchId, budgetUserId]
+          );
+          billOwned.set(row.matchId, b.rows.length > 0);
+        }
+        if (!billOwned.get(row.matchId)) {
+          skipped++;
+          continue;
+        }
+      } else if (row.matchId && row.matchType === 'debt') {
+        if (!debtOwned.has(row.matchId)) {
+          const d = await client.query(
+            'SELECT id FROM debts WHERE id = $1 AND user_id = $2',
+            [row.matchId, budgetUserId]
+          );
+          debtOwned.set(row.matchId, d.rows.length > 0);
+        }
+        if (!debtOwned.get(row.matchId)) {
+          skipped++;
+          continue;
+        }
+      }
+
+      // Insert transaction with verified account_id
+      const txResult = await client.query(
         `INSERT INTO transactions (user_id, category_id, account_id, amount, description, date, type)
          VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-        [budgetUserId, categoryId, account_id || null, row.amount, row.description, row.date, row.type || 'expense']
+        [budgetUserId, categoryId, verifiedAccountId, row.amount, row.description, row.date, row.type || 'expense']
       );
 
       imported++;
@@ -255,16 +336,15 @@ router.post('/confirm', requireEditAccess, async (req: AuthRequest, res: Respons
       // Process match if any
       if (row.matchId && row.matchType) {
         if (row.matchType === 'bill') {
-          const billDate = new Date(row.date);
-          await query(
+          await client.query(
             `INSERT INTO bill_payments (bill_id, transaction_id, amount_paid, payment_date, month, year)
              VALUES ($1, $2, $3, $4, $5, $6)
              ON CONFLICT (bill_id, month, year) DO NOTHING`,
-            [row.matchId, tx.id, row.amount, row.date, billDate.getMonth() + 1, billDate.getFullYear()]
+            [row.matchId, tx.id, row.amount, row.date, parsedDate.getMonth() + 1, parsedDate.getFullYear()]
           );
           billsMatched++;
         } else if (row.matchType === 'debt') {
-          await query(
+          await client.query(
             `UPDATE debts SET balance = GREATEST(0, balance - $1),
              is_paid = CASE WHEN balance - $1 <= 0 THEN true ELSE false END
              WHERE id = $2 AND user_id = $3`,
@@ -275,10 +355,14 @@ router.post('/confirm', requireEditAccess, async (req: AuthRequest, res: Respons
       }
     }
 
+    await client.query('COMMIT');
     res.json({ imported, billsMatched, debtPayments, skipped });
   } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
     logger.error('Import confirm error:', error as Error);
     res.status(500).json({ error: 'Server error' });
+  } finally {
+    client.release();
   }
 });
 

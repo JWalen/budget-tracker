@@ -114,6 +114,51 @@ const USER_TABLES = [
   'budget_shares',
 ];
 
+// Explicit non-secret columns for the users table — password_hash and
+// mfa_secret must never be included in any export.
+const USERS_EXPORT_COLUMNS = [
+  'id',
+  'email',
+  'name',
+  'mfa_enabled',
+  'is_admin',
+  'active_sessions',
+  'last_login',
+  'last_activity',
+  'created_at',
+].join(', ');
+
+// Allow-listed columns per restorable user table. Column identifiers parsed
+// from an uploaded backup file are attacker-controlled, so only names present
+// in these sets are ever interpolated into SQL. Values stay parameterized.
+const RESTORE_ALLOWED_COLUMNS: Record<string, Set<string>> = {
+  categories: new Set([
+    'id', 'user_id', 'name', 'type', 'color', 'icon', 'exclude_from_income', 'created_at'
+  ]),
+  transactions: new Set([
+    'id', 'user_id', 'category_id', 'account_id', 'member_id', 'amount', 'description', 'date', 'type', 'created_at'
+  ]),
+  budgets: new Set([
+    'id', 'user_id', 'category_id', 'amount_limit', 'month', 'year', 'created_at'
+  ]),
+  recurring_transactions: new Set([
+    'id', 'user_id', 'category_id', 'amount', 'description', 'type', 'frequency', 'next_date', 'active', 'created_at'
+  ]),
+  debts: new Set([
+    'id', 'user_id', 'name', 'type', 'balance', 'original_amount', 'interest_rate',
+    'minimum_payment', 'due_date', 'contact', 'notes', 'is_paid', 'created_at'
+  ]),
+  bills: new Set([
+    'id', 'user_id', 'name', 'amount', 'due_date', 'category_id', 'auto_match_pattern', 'is_active', 'created_at'
+  ]),
+  bill_payments: new Set([
+    'id', 'bill_id', 'transaction_id', 'amount_paid', 'payment_date', 'month', 'year', 'created_at'
+  ]),
+  match_rules: new Set([
+    'id', 'user_id', 'name', 'pattern', 'target_type', 'target_id', 'category_id', 'created_at'
+  ]),
+};
+
 // All tables for admin backup (in FK order)
 const ALL_TABLES = [
   'users',
@@ -271,11 +316,18 @@ router.post('/restore', upload.single('file'), async (req: AuthRequest, res: Res
       const rows = grouped[table];
       if (!rows) continue;
 
+      const allowedColumns = RESTORE_ALLOWED_COLUMNS[table];
+      if (!allowedColumns) continue; // never touch a non-allow-listed table
+
       for (const row of rows) {
         const vals = parseValues(row.values);
         const colVals: Record<string, any> = {};
         row.columns.forEach((col, i) => {
-          colVals[col] = sqlToJs(vals[i]);
+          // Only accept allow-listed column identifiers — never arbitrary keys
+          // parsed from the uploaded file.
+          if (allowedColumns.has(col)) {
+            colVals[col] = sqlToJs(vals[i]);
+          }
         });
 
         // Store original ID for remapping
@@ -402,7 +454,9 @@ adminRouter.get('/export', async (req: AuthRequest, res: Response) => {
 
     // Insert data for all tables
     for (const table of ALL_TABLES) {
-      const result = await query(`SELECT * FROM ${table} ORDER BY id`);
+      // Never export password_hash / mfa_secret — select explicit columns for users.
+      const selectCols = table === 'users' ? USERS_EXPORT_COLUMNS : '*';
+      const result = await query(`SELECT ${selectCols} FROM ${table} ORDER BY id`);
       if (result.rows.length) {
         sql += `-- Table: ${table} (${result.rows.length} rows)\n`;
         sql += generateInserts(table, result.rows);
@@ -437,49 +491,18 @@ adminRouter.get('/export', async (req: AuthRequest, res: Response) => {
 
 // ── Admin full restore ───────────────────────────────────────────────────────
 
-adminRouter.post('/restore', adminUpload.single('file'), async (req: AuthRequest, res: Response) => {
-  const client = await pool.connect();
-  try {
-    if (!req.file) {
-      return res.status(400).json({ error: 'No file uploaded' });
-    }
-
-    const sql = req.file.buffer.toString('utf-8');
-    if (!sql.includes('-- Format: admin-full')) {
-      return res.status(400).json({ error: 'Invalid backup file. Expected admin-full format.' });
-    }
-
-    // Split into statements and execute sequentially
-    const statements = sql
-      .split(';')
-      .map(s => s.trim())
-      .filter(s => s && !s.startsWith('--'));
-
-    let statementsExecuted = 0;
-
-    await client.query('BEGIN');
-
-    for (const stmt of statements) {
-      if (!stmt) continue;
-      try {
-        await client.query(stmt);
-        statementsExecuted++;
-      } catch (stmtError: any) {
-        // Skip benign errors (e.g. dropping non-existent tables)
-        if (stmtError.code === '42P01') continue; // undefined table
-        throw stmtError;
-      }
-    }
-
-    await client.query('COMMIT');
-    res.json({ statementsExecuted });
-  } catch (error) {
-    await client.query('ROLLBACK');
-    logger.error('Admin backup restore error:', error);
-    res.status(500).json({ error: 'Failed to restore database backup' });
-  } finally {
-    client.release();
-  }
+adminRouter.post('/restore', adminUpload.single('file'), async (_req: AuthRequest, res: Response) => {
+  // SECURITY: This handler previously read an uploaded file, split it on ';',
+  // and executed each fragment via client.query(stmt) — i.e. it ran arbitrary,
+  // attacker-supplied SQL (DROP TABLE, arbitrary DDL/DML, etc.) with full DB
+  // privileges. There is no safe way to whitelist arbitrary SQL statements, so
+  // the feature has been disabled. A safe replacement would parse a known JSON
+  // structure and insert only allow-listed table + column identifiers (the same
+  // approach used by the per-user /restore and backupSchedule restore handlers).
+  logger.warn('Admin backup restore invoked but is disabled for safety (arbitrary SQL execution)');
+  return res.status(501).json({
+    error: 'Admin full restore is disabled for security reasons. Arbitrary SQL execution from uploaded files is not supported.'
+  });
 });
 
 router.use('/admin', adminRouter);
