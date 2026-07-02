@@ -1,26 +1,38 @@
-export const formatCurrency = (amount) => {
-  if (amount === null || amount === undefined) return '$0.00';
+// Parse a date value safely. Date-only strings ("YYYY-MM-DD") are parsed as
+// LOCAL dates to avoid the UTC-midnight off-by-one that shifts the day in
+// negative-UTC timezones. Returns a Date or null.
+const parseDateValue = (date) => {
+  if (!date) return null;
+  if (date instanceof Date) return isNaN(date.getTime()) ? null : date;
+  if (typeof date === 'string') {
+    const dateOnly = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+    if (dateOnly) {
+      const d = new Date(Number(dateOnly[1]), Number(dateOnly[2]) - 1, Number(dateOnly[3]));
+      return isNaN(d.getTime()) ? null : d;
+    }
+    const d = new Date(date);
+    return isNaN(d.getTime()) ? null : d;
+  }
+  return null;
+};
 
-  const absAmount = Math.abs(amount);
+export const formatCurrency = (amount) => {
+  const n = Number(amount);
+  if (!Number.isFinite(n)) return '$0.00';
+
   const formatted = new Intl.NumberFormat('en-US', {
     style: 'currency',
     currency: 'USD',
     minimumFractionDigits: 2,
     maximumFractionDigits: 2
-  }).format(absAmount);
+  }).format(Math.abs(n));
 
-  return amount < 0 ? `-${formatted}` : formatted;
+  return n < 0 ? `-${formatted}` : formatted;
 };
 
 export const formatDate = (date) => {
-  if (!date) return '';
-
-  const dateObj = typeof date === 'string' ? new Date(date) : date;
-
-  // Check if it's a valid date
-  if (isNaN(dateObj.getTime())) return '';
-
-  // Format as readable date and time
+  const dateObj = parseDateValue(date);
+  if (!dateObj) return '';
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
@@ -31,14 +43,8 @@ export const formatDate = (date) => {
 };
 
 export const formatDateOnly = (date) => {
-  if (!date) return '';
-
-  const dateObj = typeof date === 'string' ? new Date(date) : date;
-
-  // Check if it's a valid date
-  if (isNaN(dateObj.getTime())) return '';
-
-  // Format as date only
+  const dateObj = parseDateValue(date);
+  if (!dateObj) return '';
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric',
@@ -47,16 +53,18 @@ export const formatDateOnly = (date) => {
 };
 
 export const formatPercent = (value, decimals = 1) => {
-  if (value === null || value === undefined) return '0%';
-  return `${value.toFixed(decimals)}%`;
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '0%';
+  return `${n.toFixed(decimals)}%`;
 };
 
 export const formatNumber = (value, decimals = 0) => {
-  if (value === null || value === undefined) return '0';
+  const n = Number(value);
+  if (!Number.isFinite(n)) return '0';
   return new Intl.NumberFormat('en-US', {
     minimumFractionDigits: decimals,
     maximumFractionDigits: decimals
-  }).format(value);
+  }).format(n);
 };
 
 export const MONTHS = [
@@ -65,9 +73,8 @@ export const MONTHS = [
 ];
 
 export const formatShortDate = (date) => {
-  if (!date) return '';
-  const dateObj = typeof date === 'string' ? new Date(date) : date;
-  if (isNaN(dateObj.getTime())) return '';
+  const dateObj = parseDateValue(date);
+  if (!dateObj) return '';
   return new Intl.DateTimeFormat('en-US', {
     month: 'short',
     day: 'numeric'

@@ -23,9 +23,15 @@ export default function Register() {
       return;
     }
 
-    // Validate password length
-    if (password.length < 6) {
-      setError('Password must be at least 6 characters');
+    // Validate password against backend policy:
+    // min 12 chars including uppercase, lowercase, and a number
+    if (
+      password.length < 12 ||
+      !/[A-Z]/.test(password) ||
+      !/[a-z]/.test(password) ||
+      !/[0-9]/.test(password)
+    ) {
+      setError('Password must be at least 12 characters and include an uppercase letter, a lowercase letter, and a number');
       return;
     }
 
@@ -95,8 +101,11 @@ export default function Register() {
                 className="input"
                 placeholder="Create a password"
                 required
-                minLength={6}
+                minLength={12}
               />
+              <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                At least 12 characters, including an uppercase letter, a lowercase letter, and a number.
+              </p>
             </div>
 
             <div>
@@ -108,7 +117,7 @@ export default function Register() {
                 className="input"
                 placeholder="Confirm your password"
                 required
-                minLength={6}
+                minLength={12}
               />
             </div>
 

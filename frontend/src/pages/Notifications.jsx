@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { Bell, Check, X, Settings as SettingsIcon } from 'lucide-react';
 import api from '../api/client';
+import { useToast } from '../context/ToastContext';
 
 export default function Notifications() {
+  const toast = useToast();
   const [notifications, setNotifications] = useState([]);
   const [preferences, setPreferences] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -21,6 +23,7 @@ export default function Notifications() {
       setPreferences(prefs);
     } catch (error) {
       console.error('Failed to load notifications:', error);
+      toast.error(error.message || 'Failed to load notifications.');
     } finally {
       setLoading(false);
     }
@@ -147,19 +150,19 @@ export default function Notifications() {
           <div className="space-y-3">
             <label className="flex items-center justify-between cursor-pointer">
               <span className="text-gray-700 dark:text-gray-300">Email Notifications</span>
-              <input type="checkbox" checked={preferences.email_enabled} onChange={() => handlePreferenceChange('email_enabled')} className="toggle" />
+              <input type="checkbox" checked={!!preferences.email_enabled} onChange={() => handlePreferenceChange('email_enabled')} className="toggle" />
             </label>
             <label className="flex items-center justify-between cursor-pointer">
               <span className="text-gray-700 dark:text-gray-300">Budget Alerts</span>
-              <input type="checkbox" checked={preferences.budget_alerts} onChange={() => handlePreferenceChange('budget_alerts')} className="toggle" />
+              <input type="checkbox" checked={!!preferences.budget_alerts} onChange={() => handlePreferenceChange('budget_alerts')} className="toggle" />
             </label>
             <label className="flex items-center justify-between cursor-pointer">
               <span className="text-gray-700 dark:text-gray-300">Transaction Alerts</span>
-              <input type="checkbox" checked={preferences.transaction_alerts} onChange={() => handlePreferenceChange('transaction_alerts')} className="toggle" />
+              <input type="checkbox" checked={!!preferences.transaction_alerts} onChange={() => handlePreferenceChange('transaction_alerts')} className="toggle" />
             </label>
             <label className="flex items-center justify-between cursor-pointer">
               <span className="text-gray-700 dark:text-gray-300">Collaboration Alerts</span>
-              <input type="checkbox" checked={preferences.collaboration_alerts} onChange={() => handlePreferenceChange('collaboration_alerts')} className="toggle" />
+              <input type="checkbox" checked={!!preferences.collaboration_alerts} onChange={() => handlePreferenceChange('collaboration_alerts')} className="toggle" />
             </label>
           </div>
         </div>

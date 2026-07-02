@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 
 import { formatCurrency, formatDateOnly } from '../utils/format';
+import { useToast } from '../context/ToastContext';
 
 const debtTypes = [
   { value: 'owe', label: 'I Owe' },
@@ -35,6 +36,7 @@ const defaultForm = {
 };
 
 export default function Debts() {
+  const toast = useToast();
   const [debts, setDebts] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeTab, setActiveTab] = useState('people');
@@ -44,6 +46,9 @@ export default function Debts() {
   const [payingDebt, setPayingDebt] = useState(null);
   const [form, setForm] = useState({ ...defaultForm });
   const [paymentForm, setPaymentForm] = useState({ amount: '', create_expense: false });
+  const [submitting, setSubmitting] = useState(false);
+  const [paymentSubmitting, setPaymentSubmitting] = useState(false);
+  const [markPaidId, setMarkPaidId] = useState(null);
   const { activeBudgetOwner, isReadOnly } = useBudget();
 
   useEffect(() => {
@@ -51,6 +56,7 @@ export default function Debts() {
   }, [activeBudgetOwner?.id]);
 
   const loadDebts = async () => {
+    setLoading(true);
     try {
       const data = await api.getDebts();
       setDebts(data);
@@ -120,6 +126,8 @@ export default function Debts() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
     try {
       const data = {
         type: form.type,
@@ -141,40 +149,54 @@ export default function Debts() {
 
       if (editing) {
         await api.updateDebt(editing.id, data);
+        toast.success('Debt updated');
       } else {
         await api.createDebt(data);
+        toast.success('Debt added');
       }
       closeModal();
       loadDebts();
     } catch (error) {
-      console.error('Failed to save debt:', error);
+      toast.error(error.message || 'Something went wrong');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handlePayment = async (e) => {
     e.preventDefault();
-    if (!payingDebt) return;
+    if (!payingDebt || paymentSubmitting) return;
+    setPaymentSubmitting(true);
     try {
       await api.payDebt(payingDebt.id, {
         amount: parseFloat(paymentForm.amount),
         create_expense: paymentForm.create_expense,
       });
+      toast.success('Payment recorded');
       closePaymentModal();
       loadDebts();
     } catch (error) {
-      console.error('Failed to process payment:', error);
+      toast.error(error.message || 'Something went wrong');
+    } finally {
+      setPaymentSubmitting(false);
     }
   };
 
   const handleMarkPaid = async (debt) => {
+    if (markPaidId) return;
+    if (!confirm(`Mark "${debt.name}" as fully paid? This will pay the full balance of ${formatCurrency(debt.balance)}.`)) return;
+    setMarkPaidId(debt.id);
     try {
       await api.payDebt(debt.id, {
-        amount: parseFloat(debt.balance),
+        amount: parseFloat(debt.balance) || 0,
         create_expense: false,
       });
+      toast.success('Marked as paid');
       loadDebts();
     } catch (error) {
-      console.error('Failed to mark as paid:', error);
+      toast.error(error.message || 'Something went wrong');
+    } finally {
+      setMarkPaidId(null);
     }
   };
 
@@ -182,9 +204,10 @@ export default function Debts() {
     if (!confirm('Delete this debt?')) return;
     try {
       await api.deleteDebt(id);
+      toast.success('Debt deleted');
       loadDebts();
     } catch (error) {
-      console.error('Failed to delete debt:', error);
+      toast.error(error.message || 'Something went wrong');
     }
   };
 
@@ -358,7 +381,8 @@ export default function Debts() {
                         </button>
                         <button
                           onClick={() => handleMarkPaid(debt)}
-                          className="p-2 text-gray-400 dark:text-gray-500 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg"
+                          disabled={markPaidId === debt.id}
+                          className="p-2 text-gray-400 dark:text-gray-500 hover:text-green-600 dark:hover:text-green-400 hover:bg-green-50 dark:hover:bg-green-900/30 rounded-lg disabled:opacity-50 disabled:cursor-not-allowed"
                           title="Mark as paid"
                         >
                           <UserCheck size={16} />
@@ -720,7 +744,7 @@ export default function Debts() {
                 <button type="button" onClick={closeModal} className="flex-1 btn-secondary">
                   Cancel
                 </button>
-                <button type="submit" className="flex-1 btn-primary">
+                <button type="submit" disabled={submitting} className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed">
                   {editing ? 'Update' : 'Add'}
                 </button>
               </div>
@@ -789,7 +813,7 @@ export default function Debts() {
                 <button type="button" onClick={closePaymentModal} className="flex-1 btn-secondary">
                   Cancel
                 </button>
-                <button type="submit" className="flex-1 btn-primary">
+                <button type="submit" disabled={paymentSubmitting} className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed">
                   Pay {paymentForm.amount ? formatCurrency(parseFloat(paymentForm.amount)) : '$0.00'}
                 </button>
               </div>

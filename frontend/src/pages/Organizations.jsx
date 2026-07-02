@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
-import { Building2, UserPlus, Mail, Crown, Users, MoreVertical, X } from 'lucide-react';
+import { Building2, Mail, MoreVertical, Trash2 } from 'lucide-react';
 import api from '../api/client';
+import { useToast } from '../context/ToastContext';
 
 export default function Organizations() {
+  const toast = useToast();
   const [organizations, setOrganizations] = useState([]);
   const [currentOrg, setCurrentOrg] = useState(null);
   const [members, setMembers] = useState([]);
@@ -11,6 +13,9 @@ export default function Organizations() {
   const [loading, setLoading] = useState(true);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [newOrgName, setNewOrgName] = useState('');
+  const [creating, setCreating] = useState(false);
+  const [inviting, setInviting] = useState(false);
+  const [openMenuId, setOpenMenuId] = useState(null);
 
   useEffect(() => {
     loadOrganizations();
@@ -24,8 +29,8 @@ export default function Organizations() {
         setCurrentOrg(data[0]);
         loadMembers(data[0].id);
       }
-    } catch (error) {
-      console.error('Failed to load households:', error);
+    } catch (err) {
+      toast.error(err.message || 'Failed to load households');
     } finally {
       setLoading(false);
     }
@@ -35,38 +40,57 @@ export default function Organizations() {
     try {
       const data = await api.getOrganizationMembers(orgId);
       setMembers(data);
-    } catch (error) {
-      console.error('Failed to load members:', error);
+    } catch (err) {
+      toast.error(err.message || 'Failed to load members');
     }
   };
 
   const handleCreateOrg = async (e) => {
     e.preventDefault();
-    if (!newOrgName.trim()) return;
+    if (!newOrgName.trim() || creating) return;
 
+    setCreating(true);
     try {
       await api.createOrganization(newOrgName);
+      toast.success('Household created');
       setShowCreateModal(false);
       setNewOrgName('');
       await loadOrganizations();
-    } catch (error) {
-      console.error('Failed to create household:', error);
-      alert(`Failed to create household: ${error.message || 'Unknown error'}`);
+    } catch (err) {
+      toast.error(err.message || 'Failed to create household');
+    } finally {
+      setCreating(false);
     }
   };
 
   const handleInvite = async (e) => {
     e.preventDefault();
-    if (!currentOrg || !inviteEmail) return;
+    if (!currentOrg || !inviteEmail || inviting) return;
 
+    setInviting(true);
     try {
       await api.inviteOrganizationMember(currentOrg.id, inviteEmail, inviteRole);
-      alert('Invitation sent!');
+      toast.success('Invitation sent');
       setInviteEmail('');
       loadMembers(currentOrg.id);
-    } catch (error) {
-      console.error('Failed to send invitation:', error);
-      alert('Failed to send invitation');
+    } catch (err) {
+      toast.error(err.message || 'Failed to send invitation');
+    } finally {
+      setInviting(false);
+    }
+  };
+
+  const handleRemoveMember = async (memberId) => {
+    setOpenMenuId(null);
+    if (!currentOrg) return;
+    if (!window.confirm('Remove this member from the household?')) return;
+
+    try {
+      await api.removeOrganizationMember(currentOrg.id, memberId);
+      toast.success('Member removed');
+      loadMembers(currentOrg.id);
+    } catch (err) {
+      toast.error(err.message || 'Failed to remove member');
     }
   };
 
@@ -148,9 +172,9 @@ export default function Organizations() {
                     <option value="member">Member</option>
                     <option value="admin">Admin</option>
                   </select>
-                  <button type="submit" className="btn btn-primary">
+                  <button type="submit" className="btn btn-primary" disabled={inviting}>
                     <Mail size={18} />
-                    Invite
+                    {inviting ? 'Sending...' : 'Invite'}
                   </button>
                 </form>
               </div>
@@ -190,9 +214,38 @@ export default function Organizations() {
                       {member.role}
                     </span>
                     {member.role !== 'owner' && (
-                      <button className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded">
-                        <MoreVertical size={16} />
-                      </button>
+                      <div className="relative">
+                        <button
+                          onClick={() => setOpenMenuId(openMenuId === member.id ? null : member.id)}
+                          className="p-1 hover:bg-gray-200 dark:hover:bg-gray-700 rounded"
+                          aria-label="Member actions"
+                          aria-haspopup="menu"
+                          aria-expanded={openMenuId === member.id}
+                        >
+                          <MoreVertical size={16} />
+                        </button>
+                        {openMenuId === member.id && (
+                          <>
+                            <div
+                              className="fixed inset-0 z-10"
+                              onClick={() => setOpenMenuId(null)}
+                            />
+                            <div
+                              role="menu"
+                              className="absolute right-0 mt-1 w-44 bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg shadow-lg z-20 py-1"
+                            >
+                              <button
+                                role="menuitem"
+                                onClick={() => handleRemoveMember(member.id)}
+                                className="w-full flex items-center gap-2 px-3 py-2 text-sm text-red-600 dark:text-red-400 hover:bg-gray-100 dark:hover:bg-gray-700"
+                              >
+                                <Trash2 size={14} />
+                                Remove member
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
                     )}
                   </div>
                 </div>
@@ -232,8 +285,8 @@ export default function Organizations() {
                 >
                   Cancel
                 </button>
-                <button type="submit" className="btn btn-primary flex-1">
-                  Create
+                <button type="submit" className="btn btn-primary flex-1" disabled={creating}>
+                  {creating ? 'Creating...' : 'Create'}
                 </button>
               </div>
             </form>

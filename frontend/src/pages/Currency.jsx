@@ -1,24 +1,47 @@
 import { useState, useEffect } from 'react';
-import { DollarSign, TrendingUp } from 'lucide-react';
+import { DollarSign } from 'lucide-react';
 import api from '../api/client';
+import { useToast } from '../context/ToastContext';
 
 export default function Currency() {
+  const toast = useToast();
   const [currencies, setCurrencies] = useState([]);
   const [defaultCurrency, setDefaultCurrency] = useState('USD');
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    loadCurrencies();
+    loadData();
   }, []);
 
-  const loadCurrencies = async () => {
+  const loadData = async () => {
     try {
-      const data = await api.getCurrencies();
-      setCurrencies(data);
-    } catch (error) {
-      console.error('Failed to load currencies:', error);
+      const [currencyList, userCurrency] = await Promise.all([
+        api.getCurrencies(),
+        api.getUserCurrency().catch(() => null),
+      ]);
+      setCurrencies(currencyList || []);
+      const code = userCurrency?.currency_code || userCurrency?.code;
+      if (code) setDefaultCurrency(code);
+    } catch (err) {
+      toast.error(err.message || 'Failed to load currencies');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleChangeDefault = async (code) => {
+    const previous = defaultCurrency;
+    setDefaultCurrency(code);
+    setSaving(true);
+    try {
+      await api.setUserCurrency(code);
+      toast.success('Default currency updated');
+    } catch (err) {
+      setDefaultCurrency(previous);
+      toast.error(err.message || 'Failed to update default currency');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -45,8 +68,9 @@ export default function Currency() {
         </h3>
         <select
           value={defaultCurrency}
-          onChange={(e) => setDefaultCurrency(e.target.value)}
+          onChange={(e) => handleChangeDefault(e.target.value)}
           className="input w-full max-w-xs"
+          disabled={saving}
         >
           {currencies.map((curr) => (
             <option key={curr.code} value={curr.code}>
@@ -54,6 +78,9 @@ export default function Currency() {
             </option>
           ))}
         </select>
+        {saving && (
+          <p className="text-sm text-gray-500 dark:text-gray-400 mt-2">Saving...</p>
+        )}
       </div>
 
       <div className="card">

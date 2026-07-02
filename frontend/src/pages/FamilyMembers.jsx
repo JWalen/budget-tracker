@@ -18,11 +18,13 @@ import {
 } from 'lucide-react';
 import { api } from '../api/client';
 import { formatCurrency } from '../utils/format';
+import { useToast } from '../context/ToastContext';
 
 export default function FamilyMembers() {
+  const toast = useToast();
   const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
   const [showAddMember, setShowAddMember] = useState(false);
   const [editingMember, setEditingMember] = useState(null);
   const [activeTab, setActiveTab] = useState('members'); // members, spending, limits
@@ -48,7 +50,7 @@ export default function FamilyMembers() {
       const data = await api.getFamilyMembers();
       setMembers(data);
     } catch (err) {
-      setError('Failed to load family members');
+      toast.error(err.message || 'Failed to load family members');
     } finally {
       setLoading(false);
     }
@@ -56,16 +58,22 @@ export default function FamilyMembers() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
     try {
       if (editingMember) {
         await api.updateFamilyMember(editingMember.id, formData);
+        toast.success('Family member updated');
       } else {
         await api.createFamilyMember(formData);
+        toast.success('Family member added');
       }
       await fetchMembers();
       resetForm();
     } catch (err) {
-      setError('Failed to save family member');
+      toast.error(err.message || 'Failed to save family member');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -73,11 +81,27 @@ export default function FamilyMembers() {
     if (window.confirm('Are you sure you want to remove this family member?')) {
       try {
         await api.deleteFamilyMember(id);
+        toast.success('Family member removed');
         await fetchMembers();
       } catch (err) {
-        setError('Failed to delete family member');
+        toast.error(err.message || 'Failed to delete family member');
       }
     }
+  };
+
+  const startEdit = (member) => {
+    setFormData({
+      name: member.name || '',
+      role: member.role || 'child',
+      email: member.email || '',
+      birth_date: member.birth_date ? String(member.birth_date).slice(0, 10) : '',
+      allowance_amount: member.allowance_amount ?? '',
+      allowance_frequency: member.allowance_frequency || 'weekly',
+      spending_limit: member.spending_limit ?? '',
+      avatar_color: member.avatar_color || '#0ea5e9',
+    });
+    setEditingMember(member);
+    setShowAddMember(true);
   };
 
   const resetForm = () => {
@@ -148,13 +172,6 @@ export default function FamilyMembers() {
         </button>
       </div>
 
-      {error && (
-        <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 flex items-center gap-3">
-          <AlertCircle className="text-red-600 dark:text-red-400" size={20} />
-          <span className="text-red-700 dark:text-red-300">{error}</span>
-        </div>
-      )}
-
       {/* Tabs */}
       <div className="border-b border-gray-200 dark:border-gray-700">
         <nav className="-mb-px flex space-x-8">
@@ -182,7 +199,26 @@ export default function FamilyMembers() {
       </div>
 
       {/* Members Tab */}
-      {activeTab === 'members' && (
+      {activeTab === 'members' && members.length === 0 && (
+        <div className="card text-center py-12">
+          <Users className="w-16 h-16 mx-auto text-gray-400 mb-4" />
+          <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-2">
+            No Family Members Yet
+          </h3>
+          <p className="text-gray-600 dark:text-gray-400 mb-4">
+            Add family members to track allowances and spending limits
+          </p>
+          <button
+            onClick={() => setShowAddMember(true)}
+            className="btn btn-primary inline-flex items-center gap-2"
+          >
+            <UserPlus size={20} />
+            Add Member
+          </button>
+        </div>
+      )}
+
+      {activeTab === 'members' && members.length > 0 && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {members.map(member => (
             <div key={member.id} className="card hover:shadow-lg transition-shadow">
@@ -206,11 +242,7 @@ export default function FamilyMembers() {
                 </div>
                 <div className="flex gap-1">
                   <button
-                    onClick={() => {
-                      setFormData(member);
-                      setEditingMember(member);
-                      setShowAddMember(true);
-                    }}
+                    onClick={() => startEdit(member)}
                     className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                   >
                     <Edit2 size={16} className="text-gray-500" />
@@ -465,14 +497,18 @@ export default function FamilyMembers() {
                   type="button"
                   onClick={resetForm}
                   className="btn btn-secondary"
+                  disabled={submitting}
                 >
                   Cancel
                 </button>
                 <button
                   type="submit"
                   className="btn btn-primary"
+                  disabled={submitting}
                 >
-                  {editingMember ? 'Update' : 'Add'} Member
+                  {submitting
+                    ? 'Saving...'
+                    : `${editingMember ? 'Update' : 'Add'} Member`}
                 </button>
               </div>
             </form>

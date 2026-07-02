@@ -1,9 +1,11 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { useBudget } from '../context/BudgetContext';
+import { useToast } from '../context/ToastContext';
 import { Plus, Trash2, X, Target, Zap, FileText, DollarSign, PlayCircle, Edit2 } from 'lucide-react';
 
 export default function MatchRules() {
+  const toast = useToast();
   const [rules, setRules] = useState([]);
   const [categories, setCategories] = useState([]);
   const [bills, setBills] = useState([]);
@@ -11,6 +13,7 @@ export default function MatchRules() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [applyingRules, setApplyingRules] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
   const [editingRule, setEditingRule] = useState(null);
   const { isReadOnly } = useBudget();
 
@@ -38,7 +41,7 @@ export default function MatchRules() {
       setBills(billsData.filter(b => b.is_active));
       setDebts(debtsData.filter(d => !d.is_paid));
     } catch (error) {
-      console.error('Failed to load data:', error);
+      toast.error(error.message || 'Failed to load rules');
     } finally {
       setLoading(false);
     }
@@ -74,6 +77,8 @@ export default function MatchRules() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
     try {
       const ruleData = {
         name: form.name,
@@ -86,15 +91,18 @@ export default function MatchRules() {
       if (editingRule) {
         // Update existing rule
         await api.updateImportRule(editingRule.id, ruleData);
+        toast.success('Rule updated');
       } else {
         // Create new rule
         await api.createImportRule(ruleData);
+        toast.success('Rule created');
       }
       closeModal();
       loadData();
     } catch (error) {
-      console.error('Failed to save rule:', error);
-      alert('Failed to save rule. Please try again.');
+      toast.error(error.message || 'Failed to save rule');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -102,9 +110,10 @@ export default function MatchRules() {
     if (!confirm('Delete this auto-categorization rule?')) return;
     try {
       await api.deleteImportRule(id);
+      toast.success('Rule deleted');
       loadData();
     } catch (error) {
-      console.error('Failed to delete rule:', error);
+      toast.error(error.message || 'Failed to delete rule');
     }
   };
 
@@ -117,13 +126,12 @@ export default function MatchRules() {
     try {
       const result = await api.applyRulesToExisting();
       if (result.updatedCount > 0) {
-        alert(`Successfully categorized ${result.updatedCount} transaction(s)!`);
+        toast.success(`Successfully categorized ${result.updatedCount} transaction(s)!`);
       } else {
-        alert('No uncategorized transactions matched your rules.');
+        toast.info('No uncategorized transactions matched your rules.');
       }
     } catch (error) {
-      console.error('Failed to apply rules:', error);
-      alert('Failed to apply rules. Please try again.');
+      toast.error(error.message || 'Failed to apply rules');
     } finally {
       setApplyingRules(false);
     }
@@ -476,11 +484,11 @@ export default function MatchRules() {
               </div>
 
               <div className="flex gap-3 p-4 border-t border-gray-200 dark:border-gray-700 flex-shrink-0">
-                <button type="button" onClick={closeModal} className="flex-1 btn-secondary">
+                <button type="button" onClick={closeModal} className="flex-1 btn-secondary" disabled={submitting}>
                   Cancel
                 </button>
-                <button type="submit" className="flex-1 btn-primary">
-                  {editingRule ? 'Update Rule' : 'Create Rule'}
+                <button type="submit" className="flex-1 btn-primary" disabled={submitting}>
+                  {submitting ? 'Saving...' : editingRule ? 'Update Rule' : 'Create Rule'}
                 </button>
               </div>
             </form>

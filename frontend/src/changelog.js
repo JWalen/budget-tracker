@@ -1,5 +1,20 @@
 export const changelog = [
   {
+    version: '2.6.0',
+    date: '2026-07-02',
+    changes: [
+      'Security & stability hardening pass across the whole app',
+      'Shared budgets rebuilt on Households (organizations); legacy budget_shares removed',
+      'Fixed the database bootstrap so fresh and existing installs converge automatically on startup',
+      'Removed the in-app one-click update endpoint (host-RCE risk); deploys are now operator-driven',
+      'Fixed SQL-injection and ownership (IDOR) gaps; added server-side input validation across routes',
+      'Receipts are now served through an authenticated, ownership-checked route (no more public /uploads)',
+      'All sessions are revoked on password change / admin reset; stronger password policy',
+      'App-wide error toasts + double-submit protection; safer money/date formatting',
+      'Built out previously non-functional controls (receipt download/delete, currency default, more reports, household member management)',
+    ],
+  },
+  {
     version: '2.5.0',
     date: '2026-02-16',
     changes: [

@@ -15,8 +15,10 @@ import {
 } from 'lucide-react';
 
 import { formatCurrency, MONTHS } from '../utils/format';
+import { useToast } from '../context/ToastContext';
 
 export default function Budgets() {
+  const toast = useToast();
   const [budgets, setBudgets] = useState([]);
   const [categories, setCategories] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -29,6 +31,9 @@ export default function Budgets() {
     applyToAllMonths: true,  // Default to syncing across all months
   });
   const [currentDate, setCurrentDate] = useState(new Date());
+  const [submitting, setSubmitting] = useState(false);
+  const [editSubmitting, setEditSubmitting] = useState(false);
+  const [copying, setCopying] = useState(false);
   const { activeBudgetOwner, isReadOnly } = useBudget();
 
   const month = currentDate.getMonth() + 1;
@@ -50,6 +55,7 @@ export default function Budgets() {
   }, [month, year, activeBudgetOwner?.id]);
 
   const loadData = async () => {
+    setLoading(true);
     try {
       const [budgetData, catData] = await Promise.all([
         api.getBudgets({ month, year }),
@@ -76,6 +82,8 @@ export default function Budgets() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
     try {
       await api.createBudget({
         category_id: parseInt(form.category_id),
@@ -83,10 +91,13 @@ export default function Budgets() {
         month,
         year,
       });
+      toast.success('Budget set');
       closeModal();
       loadData();
     } catch (error) {
-      console.error('Failed to create budget:', error);
+      toast.error(error.message || 'Something went wrong');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -94,9 +105,10 @@ export default function Budgets() {
     if (!confirm('Remove this budget limit?')) return;
     try {
       await api.deleteBudget(id);
+      toast.success('Budget removed');
       loadData();
     } catch (error) {
-      console.error('Failed to delete budget:', error);
+      toast.error(error.message || 'Something went wrong');
     }
   };
 
@@ -111,6 +123,8 @@ export default function Budgets() {
 
   const handleEdit = async (e) => {
     e.preventDefault();
+    if (editSubmitting) return;
+    setEditSubmitting(true);
     try {
       if (editForm.applyToAllMonths) {
         // Update this category's budget for all months in the year
@@ -127,17 +141,20 @@ export default function Budgets() {
       }
       setShowEditModal(false);
       loadData();
-
-      if (editForm.applyToAllMonths) {
-        alert(`Budget updated for all months in ${year}`);
-      }
+      toast.success(
+        editForm.applyToAllMonths
+          ? `Budget updated for all months in ${year}`
+          : 'Budget updated'
+      );
     } catch (error) {
-      console.error('Failed to update budget:', error);
-      alert('Failed to update budget. Please try again.');
+      toast.error(error.message || 'Something went wrong');
+    } finally {
+      setEditSubmitting(false);
     }
   };
 
   const handleCopyBudgets = async () => {
+    if (copying) return;
     try {
       let targetMonths = [];
 
@@ -157,9 +174,11 @@ export default function Budgets() {
       }
 
       if (targetMonths.length === 0) {
-        alert('Please select at least one month to copy to.');
+        toast.error('Please select at least one month to copy to.');
         return;
       }
+
+      setCopying(true);
 
       // Copy budgets to each selected month
       await api.copyBudgets({
@@ -173,10 +192,11 @@ export default function Budgets() {
       setCopyForm({ targetMonths: [], copyMode: 'rest-of-year' });
 
       // Show success message
-      alert(`Budgets copied to ${targetMonths.length} month(s) successfully!`);
+      toast.success(`Budgets copied to ${targetMonths.length} month(s) successfully!`);
     } catch (error) {
-      console.error('Failed to copy budgets:', error);
-      alert('Failed to copy budgets. Please try again.');
+      toast.error(error.message || 'Something went wrong');
+    } finally {
+      setCopying(false);
     }
   };
 
@@ -249,9 +269,9 @@ export default function Budgets() {
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {budgets.map((budget) => {
-            const spent = parseFloat(budget.spent);
-            const limit = parseFloat(budget.amount_limit);
-            const percent = Math.min((spent / limit) * 100, 100);
+            const spent = parseFloat(budget.spent) || 0;
+            const limit = parseFloat(budget.amount_limit) || 0;
+            const percent = limit === 0 ? 0 : Math.min((spent / limit) * 100, 100);
             const remaining = limit - spent;
             const isOver = spent > limit;
 
@@ -366,7 +386,7 @@ export default function Budgets() {
                 <button type="button" onClick={closeModal} className="flex-1 btn-secondary">
                   Cancel
                 </button>
-                <button type="submit" className="flex-1 btn-primary">
+                <button type="submit" disabled={submitting} className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed">
                   Set Budget
                 </button>
               </div>
@@ -438,7 +458,7 @@ export default function Budgets() {
                 <button type="button" onClick={() => setShowEditModal(false)} className="flex-1 btn-secondary">
                   Cancel
                 </button>
-                <button type="submit" className="flex-1 btn-primary">
+                <button type="submit" disabled={editSubmitting} className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed">
                   Update Budget
                 </button>
               </div>
@@ -569,7 +589,8 @@ export default function Budgets() {
                 </button>
                 <button
                   onClick={handleCopyBudgets}
-                  className="flex-1 btn-primary flex items-center justify-center gap-2"
+                  disabled={copying}
+                  className="flex-1 btn-primary flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   <Check size={16} />
                   <span>Copy Budgets</span>

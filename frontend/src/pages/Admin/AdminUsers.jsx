@@ -1,17 +1,19 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../api/client';
+import { useToast } from '../../context/ToastContext';
 import { formatDate } from '../../utils/format';
 import {
   Users, Search, Edit2, Trash2, Key, Shield, ShieldOff,
-  Eye, MoreVertical, CheckCircle, XCircle, Mail, Clock,
-  UserPlus, RefreshCw, ChevronLeft, ChevronRight
+  CheckCircle, XCircle, RefreshCw, ChevronLeft, ChevronRight
 } from 'lucide-react';
 
 export default function AdminUsers() {
+  const toast = useToast();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [search, setSearch] = useState('');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
   const [page, setPage] = useState(1);
   const [pagination, setPagination] = useState(null);
   const [selectedUser, setSelectedUser] = useState(null);
@@ -20,15 +22,17 @@ export default function AdminUsers() {
   const [showDeleteModal, setShowDeleteModal] = useState(false);
   const [editForm, setEditForm] = useState({ email: '', name: '', is_admin: false });
   const [newPassword, setNewPassword] = useState('');
+  const [submitting, setSubmitting] = useState(false);
 
   const fetchUsers = async () => {
     try {
       setError(null);
-      const data = await api.getAdminUsers({ search, page, limit: 20 });
-      setUsers(data.users);
+      const data = await api.getAdminUsers({ search: debouncedSearch, page, limit: 20 });
+      setUsers(data.users || []);
       setPagination(data.pagination);
     } catch (err) {
       setError(err.message);
+      toast.error('Failed to load users: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -36,11 +40,19 @@ export default function AdminUsers() {
 
   useEffect(() => {
     fetchUsers();
-  }, [page, search]);
+  }, [page, debouncedSearch]);
+
+  // Debounce the search input so we don't fire a request per keystroke
+  useEffect(() => {
+    const t = setTimeout(() => {
+      setDebouncedSearch(search);
+      setPage(1);
+    }, 300);
+    return () => clearTimeout(t);
+  }, [search]);
 
   const handleSearch = (e) => {
     setSearch(e.target.value);
-    setPage(1);
   };
 
   const handleEdit = (user) => {
@@ -54,58 +66,78 @@ export default function AdminUsers() {
   };
 
   const handleSaveEdit = async () => {
+    if (submitting) return;
+    // Confirm sensitive admin privilege changes
+    if (editForm.is_admin !== selectedUser.is_admin) {
+      const action = editForm.is_admin ? 'GRANT admin privileges to' : 'REVOKE admin privileges from';
+      if (!window.confirm(`Are you sure you want to ${action} ${selectedUser.email}?`)) return;
+    }
+    setSubmitting(true);
     try {
       await api.updateAdminUser(selectedUser.id, editForm);
       setShowEditModal(false);
+      toast.success('User updated');
       fetchUsers();
     } catch (err) {
-      alert('Failed to update user: ' + err.message);
+      toast.error('Failed to update user: ' + err.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleResetPassword = async () => {
+    if (submitting) return;
     if (newPassword.length < 8) {
-      alert('Password must be at least 8 characters');
+      toast.error('Password must be at least 8 characters');
       return;
     }
+    if (!window.confirm(`Reset the password for ${selectedUser?.email}? They will need the new password to log in.`)) return;
 
+    setSubmitting(true);
     try {
       await api.resetUserPassword(selectedUser.id, newPassword);
       setShowPasswordModal(false);
       setNewPassword('');
-      alert('Password reset successfully');
+      toast.success('Password reset successfully');
     } catch (err) {
-      alert('Failed to reset password: ' + err.message);
+      toast.error('Failed to reset password: ' + err.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleToggleMFA = async (user) => {
+    if (submitting) return;
+    const action = user.mfa_enabled ? 'DISABLE' : 'ENABLE';
+    if (!window.confirm(`Are you sure you want to ${action} MFA for ${user.email}?`)) return;
+    setSubmitting(true);
     try {
       await api.toggleUserMfa(user.id);
+      toast.success('MFA updated');
       fetchUsers();
     } catch (err) {
-      alert('Failed to toggle MFA: ' + err.message);
+      toast.error('Failed to toggle MFA: ' + err.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleDelete = async () => {
+    if (submitting) return;
+    setSubmitting(true);
     try {
       await api.deleteAdminUser(selectedUser.id);
       setShowDeleteModal(false);
+      toast.success('User deleted');
       fetchUsers();
     } catch (err) {
-      alert('Failed to delete user: ' + err.message);
+      toast.error('Failed to delete user: ' + err.message);
+    } finally {
+      setSubmitting(false);
     }
   };
 
-  const handleImpersonate = async (user) => {
-    try {
-      const result = await api.impersonateUser(user.id);
-      alert(result.message + '\n' + result.note);
-    } catch (err) {
-      alert('Failed to impersonate user: ' + err.message);
-    }
-  };
+  // Impersonation intentionally not implemented — see security notes
 
   if (loading) {
     return (
@@ -183,7 +215,7 @@ export default function AdminUsers() {
                       <div className="flex items-center space-x-3">
                         <div className="flex-shrink-0 w-10 h-10 bg-primary-100 dark:bg-primary-900 rounded-full flex items-center justify-center">
                           <span className="text-primary-600 dark:text-primary-400 font-medium">
-                            {user.name?.[0]?.toUpperCase() || user.email[0].toUpperCase()}
+                            {user.name?.[0]?.toUpperCase() || user.email?.[0]?.toUpperCase() || '?'}
                           </span>
                         </div>
                         <div>
@@ -268,18 +300,13 @@ export default function AdminUsers() {
                       </button>
                       <button
                         onClick={() => handleToggleMFA(user)}
-                        className="p-1 text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400"
+                        disabled={submitting}
+                        className="p-1 text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 disabled:opacity-50"
                         title="Toggle MFA"
                       >
                         {user.mfa_enabled ? <ShieldOff className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
                       </button>
-                      <button
-                        onClick={() => handleImpersonate(user)}
-                        className="p-1 text-gray-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400"
-                        title="View as user"
-                      >
-                        <Eye className="w-4 h-4" />
-                      </button>
+                      {/* Impersonation intentionally not implemented — see security notes */}
                       <button
                         onClick={() => {
                           setSelectedUser(user);
@@ -380,9 +407,10 @@ export default function AdminUsers() {
               </button>
               <button
                 onClick={handleSaveEdit}
-                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700"
+                disabled={submitting}
+                className="px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
               >
-                Save Changes
+                {submitting ? 'Saving...' : 'Save Changes'}
               </button>
             </div>
           </div>
@@ -420,9 +448,10 @@ export default function AdminUsers() {
               </button>
               <button
                 onClick={handleResetPassword}
-                className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700"
+                disabled={submitting}
+                className="px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 disabled:opacity-50"
               >
-                Reset Password
+                {submitting ? 'Resetting...' : 'Reset Password'}
               </button>
             </div>
           </div>
@@ -449,9 +478,10 @@ export default function AdminUsers() {
               </button>
               <button
                 onClick={handleDelete}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700"
+                disabled={submitting}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50"
               >
-                Delete User
+                {submitting ? 'Deleting...' : 'Delete User'}
               </button>
             </div>
           </div>

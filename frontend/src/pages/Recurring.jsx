@@ -14,6 +14,7 @@ import {
 } from 'lucide-react';
 
 import { formatCurrency, formatDateOnly } from '../utils/format';
+import { useToast } from '../context/ToastContext';
 
 const frequencies = [
   { value: 'daily', label: 'Daily' },
@@ -29,8 +30,12 @@ export default function Recurring() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [processing, setProcessing] = useState(false);
+  const [togglingId, setTogglingId] = useState(null);
 
   const { activeBudgetOwner, isReadOnly } = useBudget();
+  const toast = useToast();
 
   const [form, setForm] = useState({
     type: 'expense',
@@ -46,6 +51,7 @@ export default function Recurring() {
   }, [activeBudgetOwner?.id]);
 
   const loadData = async () => {
+    setLoading(true);
     try {
       const [recData, catData] = await Promise.all([
         api.getRecurring(),
@@ -53,8 +59,8 @@ export default function Recurring() {
       ]);
       setRecurring(recData);
       setCategories(catData);
-    } catch (error) {
-      console.error('Failed to load recurring:', error);
+    } catch (err) {
+      toast.error(err.message || 'Something went wrong');
     } finally {
       setLoading(false);
     }
@@ -69,7 +75,9 @@ export default function Recurring() {
         amount: item.amount,
         description: item.description || '',
         frequency: item.frequency,
-        next_date: item.next_date.split('T')[0],
+        next_date: item.next_date
+          ? item.next_date.split('T')[0]
+          : new Date().toISOString().split('T')[0],
       });
     } else {
       setEditing(null);
@@ -92,34 +100,45 @@ export default function Recurring() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
     try {
       const data = {
         ...form,
-        amount: parseFloat(form.amount),
+        amount: parseFloat(form.amount) || 0,
         category_id: form.category_id || null,
       };
 
       if (editing) {
         await api.updateRecurring(editing.id, { ...data, active: editing.active });
+        toast.success('Recurring transaction updated');
       } else {
         await api.createRecurring(data);
+        toast.success('Recurring transaction created');
       }
       closeModal();
       loadData();
-    } catch (error) {
-      console.error('Failed to save recurring:', error);
+    } catch (err) {
+      toast.error(err.message || 'Something went wrong');
+    } finally {
+      setSubmitting(false);
     }
   };
 
   const handleToggleActive = async (item) => {
+    if (togglingId === item.id) return;
+    setTogglingId(item.id);
     try {
       await api.updateRecurring(item.id, {
         ...item,
         active: !item.active,
       });
+      toast.success(item.active ? 'Recurring paused' : 'Recurring resumed');
       loadData();
-    } catch (error) {
-      console.error('Failed to toggle recurring:', error);
+    } catch (err) {
+      toast.error(err.message || 'Something went wrong');
+    } finally {
+      setTogglingId(null);
     }
   };
 
@@ -127,23 +146,28 @@ export default function Recurring() {
     if (!confirm('Delete this recurring transaction?')) return;
     try {
       await api.deleteRecurring(id);
+      toast.success('Recurring transaction deleted');
       loadData();
-    } catch (error) {
-      console.error('Failed to delete recurring:', error);
+    } catch (err) {
+      toast.error(err.message || 'Something went wrong');
     }
   };
 
   const handleProcess = async () => {
+    if (processing) return;
+    setProcessing(true);
     try {
       const result = await api.processRecurring();
       if (result.processed > 0) {
-        alert(`Created ${result.processed} transaction(s) from recurring items.`);
+        toast.success(`Created ${result.processed} transaction(s) from recurring items.`);
       } else {
-        alert('No recurring transactions are due yet.');
+        toast.info('No recurring transactions are due yet.');
       }
       loadData();
-    } catch (error) {
-      console.error('Failed to process recurring:', error);
+    } catch (err) {
+      toast.error(err.message || 'Something went wrong');
+    } finally {
+      setProcessing(false);
     }
   };
 
@@ -164,9 +188,9 @@ export default function Recurring() {
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Recurring Transactions</h1>
         <div className="flex items-center gap-3">
           {!isReadOnly && (
-            <button onClick={handleProcess} className="btn-secondary flex items-center gap-2">
+            <button onClick={handleProcess} disabled={processing} className="btn-secondary flex items-center gap-2 disabled:opacity-50">
               <RefreshCw size={20} />
-              <span>Process Due</span>
+              <span>{processing ? 'Processing...' : 'Process Due'}</span>
             </button>
           )}
           {!isReadOnly && (
@@ -253,7 +277,8 @@ export default function Recurring() {
                   <div className="flex items-center gap-1">
                     <button
                       onClick={() => handleToggleActive(item)}
-                      className={`p-2 rounded-lg ${
+                      disabled={togglingId === item.id}
+                      className={`p-2 rounded-lg disabled:opacity-50 ${
                         item.active
                           ? 'text-green-600 hover:bg-green-50 dark:hover:bg-green-900/30'
                           : 'text-gray-400 dark:text-gray-500 hover:bg-gray-100 dark:hover:bg-gray-700'
@@ -394,8 +419,8 @@ export default function Recurring() {
                 <button type="button" onClick={closeModal} className="flex-1 btn-secondary">
                   Cancel
                 </button>
-                <button type="submit" className="flex-1 btn-primary">
-                  {editing ? 'Update' : 'Add'}
+                <button type="submit" className="flex-1 btn-primary" disabled={submitting}>
+                  {submitting ? 'Saving...' : editing ? 'Update' : 'Add'}
                 </button>
               </div>
             </form>

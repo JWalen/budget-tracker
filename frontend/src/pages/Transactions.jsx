@@ -19,8 +19,10 @@ import {
 } from 'lucide-react';
 
 import { formatCurrency, formatShortDate, MONTHS } from '../utils/format';
+import { useToast } from '../context/ToastContext';
 
 export default function Transactions() {
+  const toast = useToast();
   const [transactions, setTransactions] = useState([]);
   const [categories, setCategories] = useState([]);
   const [accounts, setAccounts] = useState([]);
@@ -37,6 +39,8 @@ export default function Transactions() {
   const [showAiModal, setShowAiModal] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [bulkMoving, setBulkMoving] = useState(false);
   const { activeBudgetOwner, isReadOnly } = useBudget();
 
   const month = currentDate.getMonth() + 1;
@@ -105,6 +109,7 @@ export default function Transactions() {
   }, [month, year, activeBudgetOwner?.id]);
 
   const loadData = async () => {
+    setLoading(true);
     try {
       const [txData, catData, accData] = await Promise.all([
         api.getTransactions({ month, year }),
@@ -133,7 +138,7 @@ export default function Transactions() {
         account_id: tx.account_id || '',
         amount: tx.amount,
         description: tx.description || '',
-        date: tx.date.split('T')[0],
+        date: tx.date ? tx.date.split('T')[0] : '',
       });
     } else {
       setEditingTx(null);
@@ -156,6 +161,8 @@ export default function Transactions() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
     try {
       const data = {
         ...form,
@@ -166,13 +173,17 @@ export default function Transactions() {
 
       if (editingTx) {
         await api.updateTransaction(editingTx.id, data);
+        toast.success('Transaction updated');
       } else {
         await api.createTransaction(data);
+        toast.success('Transaction added');
       }
       closeModal();
       loadData();
     } catch (error) {
-      console.error('Failed to save transaction:', error);
+      toast.error(error.message || 'Something went wrong');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -180,9 +191,10 @@ export default function Transactions() {
     if (!confirm('Delete this transaction?')) return;
     try {
       await api.deleteTransaction(id);
+      toast.success('Transaction deleted');
       loadData();
     } catch (error) {
-      console.error('Failed to delete transaction:', error);
+      toast.error(error.message || 'Something went wrong');
     }
   };
 
@@ -190,30 +202,27 @@ export default function Transactions() {
 
   // Handle bulk move to account
   const handleBulkMoveToAccount = async () => {
-    if (!bulkAccountId || selectedTransactions.size === 0) return;
+    if (!bulkAccountId || selectedTransactions.size === 0 || bulkMoving) return;
 
+    setBulkMoving(true);
     try {
-      // Update each selected transaction
-      const promises = Array.from(selectedTransactions).map(txId => {
-        const tx = transactions.find(t => t.id === txId);
-        if (tx) {
-          return api.updateTransaction(txId, {
-            ...tx,
-            account_id: parseInt(bulkAccountId)
-          });
-        }
-        return Promise.resolve();
-      });
+      // Update each selected transaction (send only the field being changed)
+      const promises = Array.from(selectedTransactions).map(txId =>
+        api.updateTransaction(txId, { account_id: parseInt(bulkAccountId) })
+      );
 
       await Promise.all(promises);
 
       // Clear selection and reload
+      const movedCount = selectedTransactions.size;
       setSelectedTransactions(new Set());
       setBulkAccountId('');
+      toast.success(`Moved ${movedCount} transaction${movedCount !== 1 ? 's' : ''}`);
       loadData();
     } catch (error) {
-      console.error('Failed to update transactions:', error);
-      alert('Failed to move transactions to account');
+      toast.error(error.message || 'Something went wrong');
+    } finally {
+      setBulkMoving(false);
     }
   };
 
@@ -285,24 +294,18 @@ export default function Transactions() {
     setAiLoading(true);
     try {
       const promises = toApply.map(s => {
-        const tx = transactions.find(t => t.id === s.transactionId);
-        if (tx) {
-          const categoryId = s.overrideCategoryId || s.categoryId;
-          return api.updateTransaction(s.transactionId, {
-            ...tx,
-            category_id: categoryId,
-          });
-        }
-        return Promise.resolve();
+        const categoryId = s.overrideCategoryId || s.categoryId;
+        return api.updateTransaction(s.transactionId, { category_id: categoryId });
       });
 
       await Promise.all(promises);
       setShowAiModal(false);
       setAiSuggestions([]);
       setSelectedTransactions(new Set());
+      toast.success(`Applied ${toApply.length} categorization${toApply.length !== 1 ? 's' : ''}`);
       loadData();
     } catch (error) {
-      console.error('Failed to apply AI suggestions:', error);
+      toast.error(error.message || 'Failed to apply some suggestions.');
       setAiError('Failed to apply some suggestions.');
     } finally {
       setAiLoading(false);
@@ -424,9 +427,10 @@ export default function Transactions() {
               </select>
               <button
                 onClick={handleBulkMoveToAccount}
-                disabled={!bulkAccountId}
-                className="btn-primary px-4 py-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                disabled={!bulkAccountId || bulkMoving}
+                className="btn-primary px-4 py-2 text-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1.5"
               >
+                {bulkMoving && <Loader2 size={14} className="animate-spin" />}
                 Move to Account
               </button>
               <button
@@ -755,7 +759,12 @@ export default function Transactions() {
                 <button type="button" onClick={closeModal} className="flex-1 btn-secondary">
                   Cancel
                 </button>
-                <button type="submit" className="flex-1 btn-primary">
+                <button
+                  type="submit"
+                  disabled={submitting}
+                  className="flex-1 btn-primary flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  {submitting && <Loader2 size={16} className="animate-spin" />}
                   {editingTx ? 'Update' : 'Add'}
                 </button>
               </div>

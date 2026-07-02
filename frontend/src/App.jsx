@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { BudgetProvider } from './context/BudgetContext';
+import { ToastProvider } from './context/ToastContext';
 import Layout from './components/Layout';
 import Login from './pages/Login';
 import Register from './pages/Register';
@@ -128,11 +129,13 @@ function App() {
   return (
     <BrowserRouter>
       <ThemeProvider>
-        <AuthProvider>
-          <BudgetProvider>
-            <AppRoutes />
-          </BudgetProvider>
-        </AuthProvider>
+        <ToastProvider>
+          <AuthProvider>
+            <BudgetProvider>
+              <AppRoutes />
+            </BudgetProvider>
+          </AuthProvider>
+        </ToastProvider>
       </ThemeProvider>
     </BrowserRouter>
   );

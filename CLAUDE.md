@@ -66,18 +66,29 @@ When a user views someone else's budget, `BudgetContext` sets `activeBudgetOwner
 
 ### Database changes
 
-No migration system — schema lives in `database/init.sql` (used on fresh `docker compose up`). For existing databases, run ALTER TABLE statements manually via psql or a one-off script.
+The schema is applied automatically on backend startup. `backend/src/db/schema.sql` is an
+**idempotent** bootstrap (all `CREATE TABLE IF NOT EXISTS` / `ADD COLUMN IF NOT EXISTS` /
+`ON CONFLICT`) run by `backend/src/config/runMigrations.ts` before the server listens. It is
+safe to run on every boot against both fresh and existing databases, and it converges the two
+(it also backfills a personal Household per user and drops the legacy `budget_shares` table).
 
-**Important:** When adding new tables/columns that appear in `database/init.sql`, existing databases won't have them. You must create a migration script and run it:
-
-```bash
-# Example: Adding pay_periods tables to existing database
-docker exec -i budget-db psql -U budget_user -d budget_db < database/add_pay_periods.sql
-```
+To add a table/column: add it to `backend/src/db/schema.sql` using `IF NOT EXISTS` semantics
+so the change applies cleanly to existing databases on the next restart. (`database/init.sql`
+still seeds the base tables via the Postgres docker-entrypoint on first init; `schema.sql` is
+the source of truth for everything additive.) The build copies `schema.sql` into `dist/db/`.
 
 Common issues:
-- **"relation does not exist" errors** — The table is missing from your existing database. Check if it's defined in `init.sql` but not in your running database, then create a migration script.
+- **"relation does not exist" errors** — The table is missing; add it to `schema.sql` (IF NOT
+  EXISTS) and restart the backend so the bootstrap creates it.
 - **Database credentials:** User = `budget_user`, Password = `budget_pass`, Database = `budget_db`
+
+### Shared budgets / Households
+
+Budget sharing is modeled on **Households** (the `organizations` / `organization_members`
+tables). `sharingMiddleware` resolves `budgetUserId` by checking whether the caller and the
+`X-Budget-Owner` target are members of the same household (role `viewer` → `view`, else
+`edit`). The legacy `budget_shares` table and `/api/sharing` invite/accept endpoints were
+removed; household membership is managed via `/api/organizations`.
 
 ## Versioning
 

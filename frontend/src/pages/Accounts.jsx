@@ -15,7 +15,8 @@ import {
   AlertCircle
 } from 'lucide-react';
 
-import { formatCurrency } from '../utils/format';
+import { formatCurrency, formatDateOnly } from '../utils/format';
+import { useToast } from '../context/ToastContext';
 
 const accountTypes = [
   { value: 'checking', label: 'Checking', icon: Wallet },
@@ -40,7 +41,14 @@ export default function Accounts() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingAccount, setEditingAccount] = useState(null);
-  const { isReadOnly } = useBudget();
+  const [submitting, setSubmitting] = useState(false);
+  const { isReadOnly, activeBudgetOwner } = useBudget();
+  const toast = useToast();
+
+  // Reconcile modal state
+  const [reconciling, setReconciling] = useState(null); // account being reconciled
+  const [newBalance, setNewBalance] = useState('');
+  const [reconcileSubmitting, setReconcileSubmitting] = useState(false);
 
   const [form, setForm] = useState({
     name: '',
@@ -54,14 +62,15 @@ export default function Accounts() {
 
   useEffect(() => {
     loadAccounts();
-  }, []);
+  }, [activeBudgetOwner?.id]);
 
   const loadAccounts = async () => {
+    setLoading(true);
     try {
       const data = await api.getAccounts();
-      setAccounts(data);
-    } catch (error) {
-      console.error('Failed to load accounts:', error);
+      setAccounts(Array.isArray(data) ? data : []);
+    } catch (err) {
+      toast.error(err.message || 'Something went wrong');
     } finally {
       setLoading(false);
     }
@@ -101,6 +110,8 @@ export default function Accounts() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
     try {
       const data = {
         ...form,
@@ -109,13 +120,17 @@ export default function Accounts() {
 
       if (editingAccount) {
         await api.updateAccount(editingAccount.id, data);
+        toast.success('Account updated');
       } else {
         await api.createAccount(data);
+        toast.success('Account created');
       }
       closeModal();
       loadAccounts();
-    } catch (error) {
-      console.error('Failed to save account:', error);
+    } catch (err) {
+      toast.error(err.message || 'Something went wrong');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -123,28 +138,43 @@ export default function Accounts() {
     if (!confirm('Delete this account? Transactions will remain but won\'t be linked to any account.')) return;
     try {
       await api.deleteAccount(id);
+      toast.success('Account deleted');
       loadAccounts();
-    } catch (error) {
-      console.error('Failed to delete account:', error);
+    } catch (err) {
+      toast.error(err.message || 'Something went wrong');
     }
   };
 
-  const handleReconcile = async (account) => {
-    const newBalance = prompt(
-      `Enter the current balance for ${account.name}:`,
-      account.balance
-    );
+  const openReconcile = (account) => {
+    setReconciling(account);
+    setNewBalance(account.balance != null ? String(account.balance) : '');
+  };
 
-    if (newBalance !== null && !isNaN(newBalance)) {
-      try {
-        await api.reconcileAccount(account.id, {
-          balance: parseFloat(newBalance),
-          date: new Date().toISOString().split('T')[0]
-        });
-        loadAccounts();
-      } catch (error) {
-        console.error('Failed to reconcile account:', error);
-      }
+  const closeReconcile = () => {
+    setReconciling(null);
+    setNewBalance('');
+  };
+
+  const handleReconcile = async (e) => {
+    e.preventDefault();
+    if (reconcileSubmitting || !reconciling) return;
+    if (newBalance.trim() === '' || isNaN(newBalance)) {
+      toast.error('Please enter a valid balance');
+      return;
+    }
+    setReconcileSubmitting(true);
+    try {
+      await api.reconcileAccount(reconciling.id, {
+        balance: parseFloat(newBalance),
+        date: new Date().toISOString().split('T')[0]
+      });
+      toast.success('Account reconciled');
+      closeReconcile();
+      loadAccounts();
+    } catch (err) {
+      toast.error(err.message || 'Something went wrong');
+    } finally {
+      setReconcileSubmitting(false);
     }
   };
 
@@ -189,6 +219,17 @@ export default function Accounts() {
       {/* Active Accounts */}
       <div>
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">Active Accounts</h2>
+        {activeAccounts.length === 0 ? (
+          <div className="card text-center py-12">
+            <Wallet className="w-12 h-12 text-gray-300 dark:text-gray-500 mx-auto mb-4" />
+            <p className="text-gray-500 dark:text-gray-400">No active accounts yet.</p>
+            {!isReadOnly && (
+              <p className="text-gray-400 dark:text-gray-500 text-sm mt-1">
+                Click &quot;Add Account&quot; to add your first bank account.
+              </p>
+            )}
+          </div>
+        ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           {activeAccounts.map((account) => {
             const AccountIcon = accountTypes.find(t => t.value === account.account_type)?.icon || Wallet;
@@ -251,7 +292,7 @@ export default function Accounts() {
                       </p>
                       {account.last_transaction_date && (
                         <p className="text-xs text-gray-500 dark:text-gray-400">
-                          Last: {new Date(account.last_transaction_date).toLocaleDateString()}
+                          Last: {formatDateOnly(account.last_transaction_date)}
                         </p>
                       )}
                     </div>
@@ -259,7 +300,7 @@ export default function Accounts() {
 
                   {!isReadOnly && (
                     <button
-                      onClick={() => handleReconcile(account)}
+                      onClick={() => openReconcile(account)}
                       className="w-full btn-secondary text-sm flex items-center justify-center gap-2"
                     >
                       <Check size={14} />
@@ -271,6 +312,7 @@ export default function Accounts() {
             );
           })}
         </div>
+        )}
       </div>
 
       {/* Inactive Accounts */}
@@ -424,8 +466,50 @@ export default function Accounts() {
                 <button type="button" onClick={closeModal} className="flex-1 btn-secondary">
                   Cancel
                 </button>
-                <button type="submit" className="flex-1 btn-primary">
-                  {editingAccount ? 'Update' : 'Add'} Account
+                <button type="submit" className="flex-1 btn-primary" disabled={submitting}>
+                  {submitting ? 'Saving...' : `${editingAccount ? 'Update' : 'Add'} Account`}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Reconcile Modal */}
+      {!isReadOnly && reconciling && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full">
+            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
+              <h2 className="text-lg font-semibold">Reconcile {reconciling.name}</h2>
+              <button onClick={closeReconcile} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={handleReconcile} className="p-4 space-y-4">
+              <div>
+                <label className="label">Current Balance</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  value={newBalance}
+                  onChange={(e) => setNewBalance(e.target.value)}
+                  className="input"
+                  placeholder="0.00"
+                  autoFocus
+                  required
+                />
+                <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                  Enter the balance shown by your bank to reconcile this account.
+                </p>
+              </div>
+
+              <div className="flex gap-3 pt-2">
+                <button type="button" onClick={closeReconcile} className="flex-1 btn-secondary">
+                  Cancel
+                </button>
+                <button type="submit" className="flex-1 btn-primary" disabled={reconcileSubmitting}>
+                  {reconcileSubmitting ? 'Reconciling...' : 'Reconcile'}
                 </button>
               </div>
             </form>

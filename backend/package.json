@@ -1,6 +1,6 @@
 {
   "name": "budget-api",
-  "version": "2.5.0",
+  "version": "2.6.0",
   "description": "Budget tracking API",
   "main": "dist/index.js",
   "scripts": {

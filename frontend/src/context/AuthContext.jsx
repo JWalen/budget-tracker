@@ -19,6 +19,17 @@ export const AuthProvider = ({ children }) => {
     }
   }, []);
 
+  // React to session expiry (401) surfaced by the API client.
+  useEffect(() => {
+    const onUnauthorized = () => {
+      localStorage.removeItem('token');
+      localStorage.removeItem('budgetOwnerId');
+      setUser(null);
+    };
+    window.addEventListener('auth:unauthorized', onUnauthorized);
+    return () => window.removeEventListener('auth:unauthorized', onUnauthorized);
+  }, []);
+
   const login = async (email, password, mfaCode = null) => {
     const result = await api.login(email, password, mfaCode);
 
@@ -26,22 +37,29 @@ export const AuthProvider = ({ children }) => {
       return { requiresMfa: true };
     }
 
-    // Use accessToken from the new auth system (fallback to token for compatibility)
-    localStorage.setItem('token', result.accessToken || result.token);
+    const token = result.accessToken || result.token;
+    if (!token) {
+      throw new Error('Login failed: no token returned');
+    }
+    localStorage.setItem('token', token);
     setUser(result.user);
     return result.user;
   };
 
   const register = async (email, password, name) => {
     const result = await api.register(email, password, name);
-    // Use accessToken from the new auth system (fallback to token for compatibility)
-    localStorage.setItem('token', result.accessToken || result.token);
+    const token = result.accessToken || result.token;
+    if (!token) {
+      throw new Error('Registration failed: no token returned');
+    }
+    localStorage.setItem('token', token);
     setUser(result.user);
     return result.user;
   };
 
   const logout = () => {
     localStorage.removeItem('token');
+    localStorage.removeItem('budgetOwnerId');
     setUser(null);
   };
 

@@ -27,14 +27,7 @@ export default function Login() {
         return;
       }
 
-      // Check if there's a pending invite token to handle after login
-      const pendingInviteToken = sessionStorage.getItem('pendingInviteToken');
-      if (pendingInviteToken) {
-        sessionStorage.removeItem('pendingInviteToken');
-        navigate(`/invite/${pendingInviteToken}`);
-      } else {
-        navigate('/');
-      }
+      navigate('/');
     } catch (err) {
       setError(err.message);
     } finally {

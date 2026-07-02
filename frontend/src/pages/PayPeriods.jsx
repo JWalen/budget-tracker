@@ -14,7 +14,8 @@ import {
   RefreshCw,
 } from 'lucide-react';
 
-import { formatCurrency, MONTHS } from '../utils/format';
+import { formatCurrency, formatShortDate, MONTHS } from '../utils/format';
+import { useToast } from '../context/ToastContext';
 
 export default function PayPeriods() {
   const [payPeriods, setPayPeriods] = useState([]);
@@ -23,10 +24,14 @@ export default function PayPeriods() {
   const [error, setError] = useState(null);
   const [currentDate, setCurrentDate] = useState(new Date());
   const { activeBudgetOwner, isReadOnly } = useBudget();
+  const toast = useToast();
 
   // Modals
   const [showModal, setShowModal] = useState(false);
   const [editingPP, setEditingPP] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [generating, setGenerating] = useState(false);
+  const [assigning, setAssigning] = useState(false);
 
   // Inline assign state: which pay period has the dropdown open
   const [assigningPPId, setAssigningPPId] = useState(null);
@@ -58,8 +63,8 @@ export default function PayPeriods() {
       setPayPeriods(Array.isArray(ppData) ? ppData : []);
       setBills(Array.isArray(billData) ? billData : billData.bills || []);
     } catch (err) {
-      console.error('Failed to load pay periods:', err);
       setError(err.message || 'Failed to load pay periods');
+      toast.error(err.message || 'Something went wrong');
     } finally {
       setLoading(false);
     }
@@ -69,12 +74,12 @@ export default function PayPeriods() {
   const goToNextMonth = () => setCurrentDate(new Date(year, month, 1));
 
   // Summary calculations
-  const totalIncome = payPeriods.reduce((sum, pp) => sum + parseFloat(pp.amount || 0), 0);
+  const totalIncome = payPeriods.reduce((sum, pp) => sum + (parseFloat(pp.amount) || 0), 0);
   const totalAssigned = payPeriods.reduce(
     (sum, pp) =>
       sum +
       (pp.bills || []).reduce(
-        (s, b) => s + parseFloat(b.amount_override || b.bill_amount || 0),
+        (s, b) => s + (parseFloat(b.amount_override ?? b.bill_amount) || 0),
         0
       ),
     0
@@ -124,10 +129,12 @@ export default function PayPeriods() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
     try {
       const payload = {
         name: form.name,
-        amount: parseFloat(form.amount),
+        amount: parseFloat(form.amount) || 0,
         date: form.date,
         is_recurring: form.is_recurring,
         frequency: form.is_recurring ? form.frequency : null,
@@ -135,14 +142,19 @@ export default function PayPeriods() {
 
       if (editingPP) {
         await api.updatePayPeriod(editingPP.id, payload);
+        toast.success('Pay period updated');
       } else {
         await api.createPayPeriod(payload);
+        toast.success('Pay period created');
       }
+      setError(null);
       closeModal();
       loadData();
     } catch (err) {
-      console.error('Failed to save pay period:', err);
       setError(err.message || 'Failed to save pay period');
+      toast.error(err.message || 'Something went wrong');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -150,14 +162,17 @@ export default function PayPeriods() {
     if (!confirm(`Delete pay period "${pp.name}"? Assigned bills will be unassigned.`)) return;
     try {
       await api.deletePayPeriod(pp.id);
+      toast.success('Pay period deleted');
       loadData();
     } catch (err) {
-      console.error('Failed to delete pay period:', err);
       setError(err.message || 'Failed to delete pay period');
+      toast.error(err.message || 'Something went wrong');
     }
   };
 
   const handleAssignBill = async (payPeriodId, billId) => {
+    if (assigning) return;
+    setAssigning(true);
     try {
       await api.assignBillToPayPeriod(payPeriodId, {
         bill_id: billId,
@@ -165,34 +180,47 @@ export default function PayPeriods() {
         year,
       });
       setAssigningPPId(null);
+      toast.success('Bill assigned');
       loadData();
     } catch (err) {
-      console.error('Failed to assign bill:', err);
       setError(err.message || 'Failed to assign bill');
+      toast.error(err.message || 'Something went wrong');
+    } finally {
+      setAssigning(false);
     }
   };
 
   const handleUnassignBill = async (payPeriodId, billId) => {
+    if (assigning) return;
+    setAssigning(true);
     try {
       await api.unassignBillFromPayPeriod(payPeriodId, billId, {
         month: String(month),
         year: String(year),
       });
+      toast.success('Bill unassigned');
       loadData();
     } catch (err) {
-      console.error('Failed to unassign bill:', err);
       setError(err.message || 'Failed to unassign bill');
+      toast.error(err.message || 'Something went wrong');
+    } finally {
+      setAssigning(false);
     }
   };
 
   const handleGenerate = async () => {
+    if (generating) return;
+    setGenerating(true);
     try {
-      const result = await api.generatePayPeriods();
+      await api.generatePayPeriods();
       setError(null);
+      toast.success('Pay periods generated');
       loadData();
     } catch (err) {
-      console.error('Failed to generate pay periods:', err);
       setError(err.message || 'Failed to generate pay periods');
+      toast.error(err.message || 'Something went wrong');
+    } finally {
+      setGenerating(false);
     }
   };
 
@@ -237,11 +265,12 @@ export default function PayPeriods() {
             <>
               <button
                 onClick={handleGenerate}
-                className="btn-secondary flex items-center gap-2"
+                disabled={generating}
+                className="btn-secondary flex items-center gap-2 disabled:opacity-50"
                 title="Generate future recurring pay periods"
               >
                 <RefreshCw size={16} />
-                <span className="hidden sm:inline">Generate</span>
+                <span className="hidden sm:inline">{generating ? 'Generating...' : 'Generate'}</span>
               </button>
               <button onClick={openAddModal} className="btn-primary flex items-center gap-2">
                 <Plus size={20} />
@@ -302,10 +331,10 @@ export default function PayPeriods() {
           {payPeriods.map((pp) => {
             const ppBills = pp.bills || [];
             const ppAssigned = ppBills.reduce(
-              (sum, b) => sum + parseFloat(b.amount_override || b.bill_amount || 0),
+              (sum, b) => sum + (parseFloat(b.amount_override ?? b.bill_amount) || 0),
               0
             );
-            const ppRemaining = parseFloat(pp.amount) - ppAssigned;
+            const ppRemaining = (parseFloat(pp.amount) || 0) - ppAssigned;
 
             return (
               <div
@@ -324,10 +353,7 @@ export default function PayPeriods() {
                           {formatCurrency(pp.amount)}
                         </span>
                         <span className="text-sm text-green-600 dark:text-green-400">
-                          {new Date(pp.date).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                          })}
+                          {formatShortDate(pp.date)}
                         </span>
                         {pp.is_recurring && (
                           <span className="text-xs px-2 py-0.5 bg-green-200 dark:bg-green-800 text-green-700 dark:text-green-300 rounded-full">
@@ -380,7 +406,7 @@ export default function PayPeriods() {
                           </div>
                           <div className="flex items-center gap-2 ml-2">
                             <span className="text-sm font-medium text-gray-700 dark:text-gray-300">
-                              {formatCurrency(bill.amount_override || bill.bill_amount)}
+                              {formatCurrency(bill.amount_override ?? bill.bill_amount)}
                             </span>
                             {!isReadOnly && (
                               <button
@@ -409,6 +435,7 @@ export default function PayPeriods() {
                             <select
                               className="input text-sm py-1 pr-8"
                               defaultValue=""
+                              disabled={assigning}
                               onChange={(e) => {
                                 if (e.target.value) handleAssignBill(pp.id, parseInt(e.target.value));
                               }}
@@ -471,12 +498,13 @@ export default function PayPeriods() {
                     <select
                       className="input text-sm py-1 pr-8"
                       defaultValue=""
+                      disabled={assigning}
                       onChange={(e) => handleQuickAssign(bill.id, e.target.value)}
                     >
                       <option value="">Assign to...</option>
                       {payPeriods.map((pp) => (
                         <option key={pp.id} value={pp.id}>
-                          {pp.name} ({new Date(pp.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })})
+                          {pp.name} ({formatShortDate(pp.date)})
                         </option>
                       ))}
                     </select>
@@ -583,8 +611,8 @@ export default function PayPeriods() {
                 <button type="button" onClick={closeModal} className="flex-1 btn-secondary">
                   Cancel
                 </button>
-                <button type="submit" className="flex-1 btn-primary">
-                  {editingPP ? 'Save Changes' : 'Add Pay Period'}
+                <button type="submit" className="flex-1 btn-primary" disabled={submitting}>
+                  {submitting ? 'Saving...' : editingPP ? 'Save Changes' : 'Add Pay Period'}
                 </button>
               </div>
             </form>

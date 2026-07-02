@@ -18,6 +18,12 @@ export const BudgetProvider = ({ children }) => {
         setActiveBudgetOwner(null);
         setIsReadOnly(false);
       }
+    } else {
+      // Clear shared-budget state on logout so it doesn't leak into the next session.
+      localStorage.removeItem('budgetOwnerId');
+      setActiveBudgetOwner(null);
+      setSharedBudgets([]);
+      setIsReadOnly(false);
     }
   }, [user]);
 

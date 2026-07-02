@@ -63,9 +63,14 @@ export default function DashboardStats() {
 
   const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
 
+  // Guard nested reads — any of these sections may be missing from the payload
+  const users = stats.users || {};
+  const transactions = stats.transactions || {};
+  const system = stats.system || {};
+
   // Prepare chart data
   const userGrowthData = stats.userGrowth || [];
-  const storageData = stats.system.storageBreakdown?.slice(0, 6) || [];
+  const storageData = system.storageBreakdown?.slice(0, 6) || [];
 
   return (
     <div className="space-y-6">
@@ -86,14 +91,14 @@ export default function DashboardStats() {
       </div>
 
       {/* Security Status */}
-      {stats.system.encryptionWarnings?.length > 0 && (
+      {system.encryptionWarnings?.length > 0 && (
         <div className="bg-yellow-50 dark:bg-yellow-900/20 border border-yellow-200 dark:border-yellow-800 rounded-lg p-4">
           <div className="flex items-start space-x-3">
             <AlertTriangle className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
             <div>
               <h3 className="font-medium text-yellow-900 dark:text-yellow-200">Security Warnings</h3>
               <ul className="mt-2 space-y-1">
-                {stats.system.encryptionWarnings.map((warning, index) => (
+                {system.encryptionWarnings.map((warning, index) => (
                   <li key={index} className="text-yellow-700 dark:text-yellow-300 text-sm">• {warning}</li>
                 ))}
               </ul>
@@ -110,10 +115,10 @@ export default function DashboardStats() {
             <div>
               <p className="text-gray-600 dark:text-gray-400 text-sm">Total Users</p>
               <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-                {stats.users.total}
+                {users.total}
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
-                {stats.users.admins} admins
+                {users.admins} admins
               </p>
             </div>
             <Users className="w-10 h-10 text-primary-500" />
@@ -126,7 +131,7 @@ export default function DashboardStats() {
             <div>
               <p className="text-gray-600 dark:text-gray-400 text-sm">Active Users</p>
               <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-                {stats.users.active24h}
+                {users.active24h}
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                 Last 24 hours
@@ -142,7 +147,7 @@ export default function DashboardStats() {
             <div>
               <p className="text-gray-600 dark:text-gray-400 text-sm">Transactions</p>
               <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-                {stats.transactions.total.toLocaleString()}
+                {(transactions.total ?? 0).toLocaleString()}
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                 Total processed
@@ -158,7 +163,7 @@ export default function DashboardStats() {
             <div>
               <p className="text-gray-600 dark:text-gray-400 text-sm">Active Sessions</p>
               <p className="text-2xl font-bold text-gray-900 dark:text-white mt-1">
-                {stats.system.activeSessions}
+                {system.activeSessions}
               </p>
               <p className="text-sm text-gray-500 dark:text-gray-400 mt-1">
                 Current connections
@@ -178,11 +183,11 @@ export default function DashboardStats() {
             <div className="flex justify-between items-center">
               <span className="text-gray-600 dark:text-gray-400">Active (24h)</span>
               <div className="flex items-center space-x-2">
-                <span className="font-medium text-gray-900 dark:text-white">{stats.users.active24h}</span>
+                <span className="font-medium text-gray-900 dark:text-white">{users.active24h}</span>
                 <div className="w-24 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                   <div
                     className="bg-green-500 h-2 rounded-full"
-                    style={{ width: `${(stats.users.active24h / stats.users.total) * 100}%` }}
+                    style={{ width: `${users.total ? (users.active24h / users.total) * 100 : 0}%` }}
                   />
                 </div>
               </div>
@@ -190,11 +195,11 @@ export default function DashboardStats() {
             <div className="flex justify-between items-center">
               <span className="text-gray-600 dark:text-gray-400">Active (7d)</span>
               <div className="flex items-center space-x-2">
-                <span className="font-medium text-gray-900 dark:text-white">{stats.users.active7d}</span>
+                <span className="font-medium text-gray-900 dark:text-white">{users.active7d}</span>
                 <div className="w-24 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                   <div
                     className="bg-blue-500 h-2 rounded-full"
-                    style={{ width: `${(stats.users.active7d / stats.users.total) * 100}%` }}
+                    style={{ width: `${users.total ? (users.active7d / users.total) * 100 : 0}%` }}
                   />
                 </div>
               </div>
@@ -202,11 +207,11 @@ export default function DashboardStats() {
             <div className="flex justify-between items-center">
               <span className="text-gray-600 dark:text-gray-400">Active (30d)</span>
               <div className="flex items-center space-x-2">
-                <span className="font-medium text-gray-900 dark:text-white">{stats.users.active30d}</span>
+                <span className="font-medium text-gray-900 dark:text-white">{users.active30d}</span>
                 <div className="w-24 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                   <div
                     className="bg-purple-500 h-2 rounded-full"
-                    style={{ width: `${(stats.users.active30d / stats.users.total) * 100}%` }}
+                    style={{ width: `${users.total ? (users.active30d / users.total) * 100 : 0}%` }}
                   />
                 </div>
               </div>
@@ -214,11 +219,11 @@ export default function DashboardStats() {
             <div className="flex justify-between items-center">
               <span className="text-gray-600 dark:text-gray-400">MFA Enabled</span>
               <div className="flex items-center space-x-2">
-                <span className="font-medium text-gray-900 dark:text-white">{stats.users.mfaEnabled}</span>
+                <span className="font-medium text-gray-900 dark:text-white">{users.mfaEnabled}</span>
                 <div className="w-24 bg-gray-200 dark:bg-gray-700 rounded-full h-2">
                   <div
                     className="bg-yellow-500 h-2 rounded-full"
-                    style={{ width: `${(stats.users.mfaEnabled / stats.users.total) * 100}%` }}
+                    style={{ width: `${users.total ? (users.mfaEnabled / users.total) * 100 : 0}%` }}
                   />
                 </div>
               </div>
@@ -234,13 +239,13 @@ export default function DashboardStats() {
               <div className="flex justify-between items-center mb-2">
                 <span className="text-gray-600 dark:text-gray-400">Total Income</span>
                 <span className="font-semibold text-green-600 dark:text-green-400">
-                  {formatCurrency(stats.transactions.totalIncome)}
+                  {formatCurrency(transactions.totalIncome ?? 0)}
                 </span>
               </div>
               <div className="flex justify-between items-center">
                 <span className="text-gray-600 dark:text-gray-400">Total Expenses</span>
                 <span className="font-semibold text-red-600 dark:text-red-400">
-                  {formatCurrency(stats.transactions.totalExpenses)}
+                  {formatCurrency(transactions.totalExpenses ?? 0)}
                 </span>
               </div>
             </div>
@@ -248,11 +253,11 @@ export default function DashboardStats() {
               <div className="flex justify-between items-center">
                 <span className="text-gray-600 dark:text-gray-400">Net Balance</span>
                 <span className={`font-bold text-lg ${
-                  stats.transactions.totalIncome - stats.transactions.totalExpenses >= 0
+                  (transactions.totalIncome ?? 0) - (transactions.totalExpenses ?? 0) >= 0
                     ? 'text-green-600 dark:text-green-400'
                     : 'text-red-600 dark:text-red-400'
                 }`}>
-                  {formatCurrency(stats.transactions.totalIncome - stats.transactions.totalExpenses)}
+                  {formatCurrency((transactions.totalIncome ?? 0) - (transactions.totalExpenses ?? 0))}
                 </span>
               </div>
             </div>
@@ -335,17 +340,17 @@ export default function DashboardStats() {
             <div className="flex justify-between">
               <span className="text-gray-600 dark:text-gray-400">Size</span>
               <span className="font-medium text-gray-900 dark:text-white">
-                {stats.system.databaseSize ?
-                  (typeof stats.system.databaseSize === 'string' ?
-                    stats.system.databaseSize :
-                    `${(stats.system.databaseSize / (1024 * 1024)).toFixed(2)} MB`)
+                {system.databaseSize ?
+                  (typeof system.databaseSize === 'string' ?
+                    system.databaseSize :
+                    `${(system.databaseSize / (1024 * 1024)).toFixed(2)} MB`)
                   : 'N/A'}
               </span>
             </div>
             <div className="flex justify-between">
               <span className="text-gray-600 dark:text-gray-400">Tables</span>
               <span className="font-medium text-gray-900 dark:text-white">
-                {stats.system.storageBreakdown?.length || 0}
+                {system.storageBreakdown?.length || 0}
               </span>
             </div>
           </div>
@@ -360,7 +365,7 @@ export default function DashboardStats() {
           <div className="space-y-2">
             <div className="flex justify-between items-center">
               <span className="text-gray-600 dark:text-gray-400">Encryption</span>
-              {stats.system.encryptionValid ? (
+              {system.encryptionValid ? (
                 <CheckCircle className="w-5 h-5 text-green-500" />
               ) : (
                 <XCircle className="w-5 h-5 text-red-500" />
@@ -369,7 +374,7 @@ export default function DashboardStats() {
             <div className="flex justify-between items-center">
               <span className="text-gray-600 dark:text-gray-400">MFA Users</span>
               <span className="font-medium text-gray-900 dark:text-white">
-                {stats.users.mfaEnabled} / {stats.users.total}
+                {users.mfaEnabled} / {users.total}
               </span>
             </div>
           </div>

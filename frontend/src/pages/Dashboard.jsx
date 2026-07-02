@@ -38,6 +38,7 @@ export default function Dashboard() {
   }, [month, year, activeBudgetOwner?.id]);
 
   const loadData = async () => {
+    setLoading(true);
     try {
       const [summaryData, trendData] = await Promise.all([
         api.getSummary({ month, year }),
@@ -189,8 +190,10 @@ export default function Dashboard() {
           {summary?.budgets?.length > 0 ? (
             <div className="space-y-4">
               {summary.budgets.map((budget) => {
-                const percent = Math.min((parseFloat(budget.spent) / parseFloat(budget.amount_limit)) * 100, 100);
-                const isOver = parseFloat(budget.spent) > parseFloat(budget.amount_limit);
+                const spent = parseFloat(budget.spent) || 0;
+                const limit = parseFloat(budget.amount_limit) || 0;
+                const percent = limit === 0 ? 0 : Math.min((spent / limit) * 100, 100);
+                const isOver = spent > limit;
                 return (
                   <div key={budget.id}>
                     <div className="flex justify-between text-sm mb-1">

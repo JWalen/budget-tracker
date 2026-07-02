@@ -29,7 +29,7 @@ export default function AdminLogs() {
       if (selectedDate) params.date = selectedDate;
 
       const data = await api.getAdminLogs(params);
-      setLogs(data.logs);
+      setLogs(data.logs || []);
       setPagination(data.pagination);
       setAvailableDates(data.availableDates || []);
     } catch (err) {
@@ -166,8 +166,9 @@ export default function AdminLogs() {
             </select>
           </div>
 
-          {/* Export Button */}
+          {/* Export Button — exports only the currently loaded page of logs */}
           <button
+            title="Exports only the logs currently loaded on this page"
             className="flex items-center justify-center space-x-2 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700"
             onClick={() => {
               const logData = JSON.stringify(logs, null, 2);
@@ -183,7 +184,7 @@ export default function AdminLogs() {
             }}
           >
             <Download className="w-4 h-4" />
-            <span>Export</span>
+            <span>Export current page</span>
           </button>
         </div>
       </div>
