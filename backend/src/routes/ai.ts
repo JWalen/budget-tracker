@@ -10,8 +10,8 @@ import { LoggerClass } from '../services/logger';
 const logger = new LoggerClass('AI');
 const router = Router();
 
-// AI calls are expensive (local model inference), so apply a dedicated,
-// stricter rate limiter — 20 requests per 5 minutes per IP.
+// AI calls hit a paid external LLM API, so apply a dedicated, stricter rate
+// limiter — 20 requests per 5 minutes per IP.
 const aiLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
   max: 20,
@@ -28,21 +28,16 @@ router.use(aiLimiter);
 router.get('/status', async (req: AuthRequest, res: Response) => {
   try {
     const available = await AIAssistant.isAvailable();
-    const capabilities = await AIAssistant.detectSystemCapabilities();
+    const provider = await AIAssistant.getProvider();
     const model = await AIAssistant.getModel();
 
     res.json({
       available,
       message: available
         ? 'AI Assistant is ready'
-        : 'AI Assistant is offline. Please ensure Ollama is running on your system.',
-      model,
-      capabilities: {
-        hasGPU: capabilities.hasGPU,
-        gpuName: capabilities.gpuName,
-        vram: capabilities.vram ? `${capabilities.vram}GB` : undefined,
-        recommendedModel: capabilities.recommendedModel
-      }
+        : 'AI Assistant is offline. An administrator must enable it and configure an API key in Admin → AI Configuration.',
+      provider,
+      model
     });
   } catch (error) {
     logger.error('AI status check error:', error);
@@ -137,7 +132,7 @@ router.post('/chat',
       const available = await AIAssistant.isAvailable();
       if (!available) {
         return res.status(503).json({
-          error: 'AI Assistant is not available. Please install and run Ollama locally.'
+          error: 'AI Assistant is not available. Ask an administrator to enable it and configure an API key.'
         });
       }
 
@@ -207,7 +202,7 @@ router.post('/categorize',
       const available = await AIAssistant.isAvailable();
       if (!available) {
         return res.status(503).json({
-          error: 'AI Assistant is not available. Please ensure Ollama is running.'
+          error: 'AI Assistant is not available. Ask an administrator to enable it and configure an API key.'
         });
       }
 

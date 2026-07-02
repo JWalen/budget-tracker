@@ -20,24 +20,6 @@ services:
       retries: 5
     restart: unless-stopped
 
-  ollama:
-    image: ollama/ollama:latest
-    container_name: budget-ollama-prod
-    # SECURITY: No ports exposed externally
-    networks:
-      - internal
-    volumes:
-      - ollama_data:/root/.ollama
-    environment:
-      - OLLAMA_MODELS=${OLLAMA_MODELS:-/root/.ollama/models}
-    healthcheck:
-      test: ["CMD-SHELL", "curl -f http://localhost:11434/api/version || exit 1"]
-      interval: 15s
-      timeout: 10s
-      retries: 10
-      start_period: 60s
-    restart: unless-stopped
-
   backend:
     build: ./backend
     container_name: budget-api-prod
@@ -56,10 +38,9 @@ services:
       # Frontend URL for CORS and email links
       FRONTEND_URL: ${FRONTEND_URL:?FRONTEND_URL environment variable is required (e.g. https://budget.yourdomain.com)}
       
-      # Ollama (internal network)
-      OLLAMA_BASE_URL: http://ollama:11434
-      OLLAMA_MODEL: ${OLLAMA_MODEL:-mistral}
-      
+      # AI provider (Claude/OpenAI) API keys are configured in-app via
+      # Admin → AI Configuration and stored encrypted in the database.
+
       # Email configuration (optional)
       EMAIL_PROVIDER: ${EMAIL_PROVIDER:-none}
       EMAIL_FROM: ${EMAIL_FROM:-noreply@budgetapp.com}
@@ -83,8 +64,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      ollama:
-        condition: service_started
     healthcheck:
       test: ["CMD-SHELL", "wget -qO- http://localhost:5000/api/health || exit 1"]
       interval: 30s
@@ -122,6 +101,4 @@ networks:
 
 volumes:
   postgres_data:
-    driver: local
-  ollama_data:
     driver: local

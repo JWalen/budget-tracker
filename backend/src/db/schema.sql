@@ -200,9 +200,18 @@ ON CONFLICT (id) DO NOTHING;
 
 INSERT INTO system_settings (key, value, type, description) VALUES
 ('ai_enabled', 'false', 'boolean', 'Master switch for AI features'),
-('ai_model', 'mistral', 'string', 'Selected Ollama model to use'),
-('ai_auto_gpu', 'true', 'boolean', 'Automatically use GPU if detected')
+('ai_provider', 'claude', 'string', 'AI provider: claude (Anthropic) or openai'),
+('ai_model', 'claude-opus-4-8', 'string', 'Model to use for the selected provider')
 ON CONFLICT (key) DO NOTHING;
+
+-- Converge legacy Ollama-era settings to the hosted-provider model.
+-- ai_model previously held an Ollama model name (e.g. "mistral"); reset it to
+-- the Claude default so an existing install doesn't send a bogus model id.
+UPDATE system_settings SET value = 'claude-opus-4-8', type = 'string',
+    description = 'Model to use for the selected provider'
+  WHERE key = 'ai_model' AND value NOT LIKE 'claude%' AND value NOT LIKE 'gpt%';
+-- Drop the obsolete GPU-detection setting (Ollama-only).
+DELETE FROM system_settings WHERE key = 'ai_auto_gpu';
 
 INSERT INTO currencies (code, name, symbol, decimal_places) VALUES
 ('USD', 'US Dollar', '$', 2), ('EUR', 'Euro', '€', 2), ('GBP', 'British Pound', '£', 2),

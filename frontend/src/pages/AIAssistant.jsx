@@ -41,7 +41,7 @@ export default function AIAssistant() {
       if (!status.available) {
         setMessages([{
           type: 'system',
-          content: 'AI Assistant is offline. To enable AI features, please install and run Ollama on your system.',
+          content: 'AI Assistant is offline. An administrator needs to enable it and add an API key in Admin → AI Configuration.',
           timestamp: new Date().toISOString()
         }]);
       } else {
