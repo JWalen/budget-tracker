@@ -12,13 +12,20 @@ import TokenService from '../services/tokenService';
 const router = Router();
 const logger = new LoggerClass('Auth');
 
-// Password requirements: min 8 chars, 1 uppercase, 1 lowercase, 1 number
-const validatePassword = (password: string): boolean => {
-  return password.length >= 8 &&
+// Password requirements: min 12 chars, 1 uppercase, 1 lowercase, 1 number
+export const PASSWORD_POLICY_MESSAGE =
+  'Password must be at least 12 characters and include uppercase, lowercase, and a number';
+export const validatePassword = (password: string): boolean => {
+  return typeof password === 'string' &&
+    password.length >= 12 &&
     /[A-Z]/.test(password) &&
     /[a-z]/.test(password) &&
     /[0-9]/.test(password);
 };
+
+// A constant bcrypt hash used to equalize response timing when a user is not
+// found on login (prevents timing-based account enumeration).
+const DUMMY_BCRYPT_HASH = '$2a$12$C6UzMDM.H6dfI/f/IKcEeO3g7q5x2mZ8x0j1wZ7fJc3z0xhq2m4Hy';
 
 // Check rate limiting
 const checkRateLimit = async (email: string, ip: string): Promise<boolean> => {
@@ -47,9 +54,7 @@ router.post('/register', async (req: Request, res: Response) => {
 
     // Validate password strength
     if (!validatePassword(password)) {
-      return res.status(400).json({
-        error: 'Password must be at least 8 characters with uppercase, lowercase, and number',
-      });
+      return res.status(400).json({ error: PASSWORD_POLICY_MESSAGE });
     }
 
     // Check if user exists
@@ -94,11 +99,20 @@ router.post('/register', async (req: Request, res: Response) => {
       );
     }
 
-    // Auto-link pending budget share invites
+    // Create a personal household (organization) so household-scoped features
+    // (notifications, receipts, templates, currency) and shared-budget access work.
+    const org = await query(
+      `INSERT INTO organizations (name, slug, owner_id)
+       VALUES ($1, $2, $3)
+       ON CONFLICT (slug) DO UPDATE SET owner_id = EXCLUDED.owner_id
+       RETURNING id`,
+      [`${name || 'My'}'s Household`, `personal-${user.id}`, user.id]
+    );
     await query(
-      `UPDATE budget_shares SET shared_with_id = $1, status = 'accepted'
-       WHERE shared_with_email = $2 AND status = 'pending'`,
-      [user.id, email]
+      `INSERT INTO organization_members (organization_id, user_id, role)
+       VALUES ($1, $2, 'owner')
+       ON CONFLICT (organization_id, user_id) DO NOTHING`,
+      [org.rows[0].id, user.id]
     );
 
     // Generate tokens
@@ -146,6 +160,9 @@ router.post('/login', async (req: Request, res: Response) => {
     // Find user
     const result = await query('SELECT * FROM users WHERE email = $1', [email]);
     if (result.rows.length === 0) {
+      // Perform a dummy compare so the response time matches the found-user path
+      // (prevents timing-based account enumeration).
+      await bcrypt.compare(password || '', DUMMY_BCRYPT_HASH);
       await logAttempt(email, ip, false);
       return res.status(401).json({ error: 'Invalid credentials' });
     }
@@ -181,13 +198,6 @@ router.post('/login', async (req: Request, res: Response) => {
     }
 
     await logAttempt(email, ip, true);
-
-    // Auto-link pending budget share invites
-    await query(
-      `UPDATE budget_shares SET shared_with_id = $1, status = 'accepted'
-       WHERE shared_with_email = $2 AND status = 'pending' AND shared_with_id IS NULL`,
-      [user.id, email]
-    );
 
     // Generate tokens
     const { accessToken, refreshToken, expiresIn } = await TokenService.generateTokenPair(
@@ -345,9 +355,7 @@ router.post('/change-password', authMiddleware, async (req: AuthRequest, res: Re
 
     // Validate new password
     if (!validatePassword(newPassword)) {
-      return res.status(400).json({
-        error: 'Password must be at least 8 characters with uppercase, lowercase, and number',
-      });
+      return res.status(400).json({ error: PASSWORD_POLICY_MESSAGE });
     }
 
     const userResult = await query('SELECT password_hash FROM users WHERE id = $1', [req.userId]);
@@ -365,7 +373,11 @@ router.post('/change-password', authMiddleware, async (req: AuthRequest, res: Re
     const passwordHash = await bcrypt.hash(newPassword, 12);
     await query('UPDATE users SET password_hash = $1 WHERE id = $2', [passwordHash, req.userId]);
 
-    res.json({ message: 'Password changed successfully' });
+    // Revoke all existing sessions so a compromised/old session can't survive a
+    // password change. The client should re-authenticate.
+    await TokenService.revokeAllUserTokens(req.userId!);
+
+    res.json({ message: 'Password changed successfully. Please log in again.' });
   } catch (error) {
     logger.error('Change password error:', error);
     res.status(500).json({ error: 'Server error' });

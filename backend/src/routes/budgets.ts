@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { query } from '../config/database';
+import pool, { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
 import { LoggerClass } from '../services/logger';
@@ -50,6 +50,30 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
     const { category_id, amount_limit, month, year } = req.body;
     const budgetUserId = (req as any).budgetUserId;
 
+    const numericLimit = Number(amount_limit);
+    if (!Number.isFinite(numericLimit) || numericLimit < 0) {
+      return res.status(400).json({ error: 'Amount limit must be a non-negative number' });
+    }
+
+    const numericMonth = Number(month);
+    if (!Number.isInteger(numericMonth) || numericMonth < 1 || numericMonth > 12) {
+      return res.status(400).json({ error: 'Invalid month' });
+    }
+
+    const numericYear = Number(year);
+    if (!Number.isInteger(numericYear) || numericYear < 2000 || numericYear > 2100) {
+      return res.status(400).json({ error: 'Invalid year' });
+    }
+
+    // Verify category ownership
+    const catCheck = await query(
+      'SELECT id FROM categories WHERE id = $1 AND user_id = $2',
+      [category_id, budgetUserId]
+    );
+    if (catCheck.rows.length === 0) {
+      return res.status(400).json({ error: 'Invalid category' });
+    }
+
     // Upsert budget
     const result = await query(
       `INSERT INTO budgets (user_id, category_id, amount_limit, month, year)
@@ -72,6 +96,25 @@ router.put('/update-all-months', requireEditAccess, async (req: AuthRequest, res
   try {
     const { category_id, amount_limit, year } = req.body;
     const budgetUserId = (req as any).budgetUserId;
+
+    const numericLimit = Number(amount_limit);
+    if (!Number.isFinite(numericLimit) || numericLimit < 0) {
+      return res.status(400).json({ error: 'Amount limit must be a non-negative number' });
+    }
+
+    const numericYear = Number(year);
+    if (!Number.isInteger(numericYear) || numericYear < 2000 || numericYear > 2100) {
+      return res.status(400).json({ error: 'Invalid year' });
+    }
+
+    // Verify category ownership
+    const catCheck = await query(
+      'SELECT id FROM categories WHERE id = $1 AND user_id = $2',
+      [category_id, budgetUserId]
+    );
+    if (catCheck.rows.length === 0) {
+      return res.status(400).json({ error: 'Invalid category' });
+    }
 
     // Update all existing budgets for this category in the specified year
     const result = await query(
@@ -99,6 +142,11 @@ router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) =>
     const { amount_limit } = req.body;
     const budgetUserId = (req as any).budgetUserId;
 
+    const numericLimit = Number(amount_limit);
+    if (!Number.isFinite(numericLimit) || numericLimit < 0) {
+      return res.status(400).json({ error: 'Amount limit must be a non-negative number' });
+    }
+
     const result = await query(
       `UPDATE budgets
        SET amount_limit = $1
@@ -124,6 +172,17 @@ router.post('/copy', requireEditAccess, async (req: AuthRequest, res: Response) 
     const { sourceMonth, sourceYear, targetMonths, targetYear } = req.body;
     const budgetUserId = (req as any).budgetUserId;
 
+    // Validate target months
+    if (!Array.isArray(targetMonths) || targetMonths.length === 0) {
+      return res.status(400).json({ error: 'targetMonths must be a non-empty array' });
+    }
+    for (const tm of targetMonths) {
+      const n = Number(tm);
+      if (!Number.isInteger(n) || n < 1 || n > 12) {
+        return res.status(400).json({ error: 'Invalid target month' });
+      }
+    }
+
     // Get all budgets from source month
     const sourceBudgets = await query(
       `SELECT category_id, amount_limit
@@ -136,19 +195,29 @@ router.post('/copy', requireEditAccess, async (req: AuthRequest, res: Response) 
       return res.status(400).json({ error: 'No budgets found in source month' });
     }
 
-    // Copy budgets to each target month
+    // Copy budgets to each target month atomically
     let copiedCount = 0;
-    for (const targetMonth of targetMonths) {
-      for (const budget of sourceBudgets.rows) {
-        await query(
-          `INSERT INTO budgets (user_id, category_id, amount_limit, month, year)
-           VALUES ($1, $2, $3, $4, $5)
-           ON CONFLICT (user_id, category_id, month, year)
-           DO UPDATE SET amount_limit = $3`,
-          [budgetUserId, budget.category_id, budget.amount_limit, targetMonth, targetYear]
-        );
-        copiedCount++;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      for (const targetMonth of targetMonths) {
+        for (const budget of sourceBudgets.rows) {
+          await client.query(
+            `INSERT INTO budgets (user_id, category_id, amount_limit, month, year)
+             VALUES ($1, $2, $3, $4, $5)
+             ON CONFLICT (user_id, category_id, month, year)
+             DO UPDATE SET amount_limit = $3`,
+            [budgetUserId, budget.category_id, budget.amount_limit, targetMonth, targetYear]
+          );
+          copiedCount++;
+        }
       }
+      await client.query('COMMIT');
+    } catch (txError) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw txError;
+    } finally {
+      client.release();
     }
 
     res.json({

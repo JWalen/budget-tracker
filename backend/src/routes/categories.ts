@@ -33,6 +33,14 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
     const { name, type, color, icon, exclude_from_income } = req.body;
     const budgetUserId = (req as any).budgetUserId;
 
+    if (typeof name !== 'string' || name.trim().length === 0) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
+    if (type !== 'income' && type !== 'expense') {
+      return res.status(400).json({ error: 'Invalid type' });
+    }
+
     const result = await query(
       'INSERT INTO categories (user_id, name, type, color, icon, exclude_from_income) VALUES ($1, $2, $3, $4, $5, $6) RETURNING *',
       [budgetUserId, name, type, color || '#6366f1', icon || 'tag', exclude_from_income || false]
@@ -48,8 +56,16 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
 router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const { name, color, icon, exclude_from_income } = req.body;
+    const { name, type, color, icon, exclude_from_income } = req.body;
     const budgetUserId = (req as any).budgetUserId;
+
+    if (typeof name !== 'string' || name.trim().length === 0) {
+      return res.status(400).json({ error: 'Name is required' });
+    }
+
+    if (type !== undefined && type !== 'income' && type !== 'expense') {
+      return res.status(400).json({ error: 'Invalid type' });
+    }
 
     const result = await query(
       'UPDATE categories SET name = $1, color = $2, icon = $3, exclude_from_income = $4 WHERE id = $5 AND user_id = $6 RETURNING *',

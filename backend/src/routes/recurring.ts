@@ -1,11 +1,13 @@
 import { Router, Response } from 'express';
-import { query } from '../config/database';
+import pool, { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
 import { LoggerClass } from '../services/logger';
 
 const logger = new LoggerClass('Recurring');
 const router = Router();
+
+const VALID_FREQUENCIES = ['daily', 'weekly', 'biweekly', 'monthly', 'yearly'];
 
 router.use(authMiddleware);
 router.use(sharingMiddleware);
@@ -36,6 +38,30 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
     const { category_id, amount, description, type, frequency, next_date } = req.body;
     const budgetUserId = (req as any).budgetUserId;
 
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      return res.status(400).json({ error: 'Amount must be a positive number' });
+    }
+
+    if (type !== 'income' && type !== 'expense') {
+      return res.status(400).json({ error: 'Invalid type' });
+    }
+
+    if (!VALID_FREQUENCIES.includes(frequency)) {
+      return res.status(400).json({ error: 'Invalid frequency' });
+    }
+
+    // Verify category ownership
+    if (category_id !== undefined && category_id !== null) {
+      const catCheck = await query(
+        'SELECT id FROM categories WHERE id = $1 AND user_id = $2',
+        [category_id, budgetUserId]
+      );
+      if (catCheck.rows.length === 0) {
+        return res.status(400).json({ error: 'Invalid category' });
+      }
+    }
+
     const result = await query(
       `INSERT INTO recurring_transactions (user_id, category_id, amount, description, type, frequency, next_date)
        VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
@@ -63,6 +89,30 @@ router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) =>
     const { id } = req.params;
     const { category_id, amount, description, type, frequency, next_date, active } = req.body;
     const budgetUserId = (req as any).budgetUserId;
+
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      return res.status(400).json({ error: 'Amount must be a positive number' });
+    }
+
+    if (type !== 'income' && type !== 'expense') {
+      return res.status(400).json({ error: 'Invalid type' });
+    }
+
+    if (!VALID_FREQUENCIES.includes(frequency)) {
+      return res.status(400).json({ error: 'Invalid frequency' });
+    }
+
+    // Verify category ownership
+    if (category_id !== undefined && category_id !== null) {
+      const catCheck = await query(
+        'SELECT id FROM categories WHERE id = $1 AND user_id = $2',
+        [category_id, budgetUserId]
+      );
+      if (catCheck.rows.length === 0) {
+        return res.status(400).json({ error: 'Invalid category' });
+      }
+    }
 
     const result = await query(
       `UPDATE recurring_transactions
@@ -106,49 +156,86 @@ router.post('/process', requireEditAccess, async (req: AuthRequest, res: Respons
     const today = new Date().toISOString().split('T')[0];
     const budgetUserId = (req as any).budgetUserId;
 
-    // Get all due recurring transactions for this user
+    // Get candidate due recurring transactions for this user
     const dueRecurring = await query(
-      `SELECT * FROM recurring_transactions
+      `SELECT id FROM recurring_transactions
        WHERE user_id = $1 AND active = true AND next_date <= $2`,
       [budgetUserId, today]
     );
 
     const created = [];
+    const client = await pool.connect();
 
-    for (const rec of dueRecurring.rows) {
-      // Create the transaction
-      const txResult = await query(
-        `INSERT INTO transactions (user_id, category_id, amount, description, date, type)
-         VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-        [budgetUserId, rec.category_id, rec.amount, rec.description, rec.next_date, rec.type]
-      );
-      created.push(txResult.rows[0]);
+    try {
+      for (const candidate of dueRecurring.rows) {
+        try {
+          await client.query('BEGIN');
 
-      // Calculate next date
-      let nextDate = new Date(rec.next_date);
-      switch (rec.frequency) {
-        case 'daily':
-          nextDate.setDate(nextDate.getDate() + 1);
-          break;
-        case 'weekly':
-          nextDate.setDate(nextDate.getDate() + 7);
-          break;
-        case 'biweekly':
-          nextDate.setDate(nextDate.getDate() + 14);
-          break;
-        case 'monthly':
-          nextDate.setMonth(nextDate.getMonth() + 1);
-          break;
-        case 'yearly':
-          nextDate.setFullYear(nextDate.getFullYear() + 1);
-          break;
+          // Lock the row and re-verify it is still due; skip rows locked by concurrent processes
+          const locked = await client.query(
+            `SELECT * FROM recurring_transactions
+             WHERE id = $1 AND user_id = $2 AND active = true AND next_date <= $3
+             FOR UPDATE SKIP LOCKED`,
+            [candidate.id, budgetUserId, today]
+          );
+
+          if (locked.rows.length === 0) {
+            await client.query('ROLLBACK');
+            continue;
+          }
+
+          const rec = locked.rows[0];
+
+          // Calculate next date based on frequency
+          let nextDate = new Date(rec.next_date);
+          switch (rec.frequency) {
+            case 'daily':
+              nextDate.setDate(nextDate.getDate() + 1);
+              break;
+            case 'weekly':
+              nextDate.setDate(nextDate.getDate() + 7);
+              break;
+            case 'biweekly':
+              nextDate.setDate(nextDate.getDate() + 14);
+              break;
+            case 'monthly':
+              nextDate.setMonth(nextDate.getMonth() + 1);
+              break;
+            case 'yearly':
+              nextDate.setFullYear(nextDate.getFullYear() + 1);
+              break;
+            default:
+              // Unknown frequency - leave row unchanged and skip (no transaction, no advance)
+              logger.warn('Skipping recurring transaction with invalid frequency', {
+                id: rec.id,
+                frequency: rec.frequency,
+              });
+              await client.query('ROLLBACK');
+              continue;
+          }
+
+          // Create the transaction
+          const txResult = await client.query(
+            `INSERT INTO transactions (user_id, category_id, amount, description, date, type)
+             VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
+            [budgetUserId, rec.category_id, rec.amount, rec.description, rec.next_date, rec.type]
+          );
+
+          // Update next_date
+          await client.query(
+            'UPDATE recurring_transactions SET next_date = $1 WHERE id = $2',
+            [nextDate.toISOString().split('T')[0], rec.id]
+          );
+
+          await client.query('COMMIT');
+          created.push(txResult.rows[0]);
+        } catch (itemError) {
+          await client.query('ROLLBACK').catch(() => {});
+          logger.error('Process recurring item error:', itemError);
+        }
       }
-
-      // Update next_date
-      await query(
-        'UPDATE recurring_transactions SET next_date = $1 WHERE id = $2',
-        [nextDate.toISOString().split('T')[0], rec.id]
-      );
+    } finally {
+      client.release();
     }
 
     res.json({ processed: created.length, transactions: created });

@@ -24,7 +24,7 @@ export const tenantMiddleware = async (
   try {
     const userId = req.userId;
     if (!userId) {
-      return next(); // Auth middleware should handle this
+      return res.status(401).json({ error: 'Authentication required' });
     }
 
     // Get organization ID from header (for organization switching)

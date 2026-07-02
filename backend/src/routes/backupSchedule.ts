@@ -1,24 +1,29 @@
 import { Router, Response } from 'express';
-import { query } from '../config/database';
+import pool, { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { requireEditAccess } from '../middleware/sharing';
 import { LoggerClass } from '../services/logger';
 import * as fs from 'fs/promises';
 import * as path from 'path';
-import { exec } from 'child_process';
-import { promisify } from 'util';
 
 const router = Router();
-const execAsync = promisify(exec);
 const logger = new LoggerClass('BackupSchedule');
 
 router.use(authMiddleware);
+
+// Real admin check — authMiddleware only sets req.userId, never req.user,
+// so admin status must be resolved from the database.
+async function isUserAdmin(userId: number | undefined): Promise<boolean> {
+  if (!userId) return false;
+  const result = await query('SELECT is_admin FROM users WHERE id = $1', [userId]);
+  return result.rows.length > 0 && result.rows[0].is_admin === true;
+}
 
 // Get backup history
 router.get('/history', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId;
-    const isAdmin = (req as any).user?.is_admin;
+    const isAdmin = await isUserAdmin(userId);
 
     let result;
     if (isAdmin) {
@@ -214,7 +219,7 @@ router.post('/download-now', async (req: AuthRequest, res: Response) => {
   try {
     const userId = req.userId;
     const { isAdminBackup } = req.body;
-    const isAdmin = (req as any).user?.is_admin;
+    const isAdmin = await isUserAdmin(userId);
 
     // Only admins can create admin backups
     const createAdminBackup = isAdminBackup && isAdmin;
@@ -249,7 +254,7 @@ router.post('/create', requireEditAccess, async (req: AuthRequest, res: Response
   try {
     const userId = req.userId;
     const { storageType, isAdminBackup } = req.body;
-    const isAdmin = (req as any).user?.is_admin;
+    const isAdmin = await isUserAdmin(userId);
 
     // Only admins can create admin backups
     const createAdminBackup = isAdminBackup && isAdmin;
@@ -319,10 +324,19 @@ router.post('/create', requireEditAccess, async (req: AuthRequest, res: Response
 // Helper functions
 function calculateNextRun(frequency: string, time: string): Date {
   const now = new Date();
-  const [hours, minutes] = time.split(':').map(Number);
   const next = new Date();
 
-  next.setHours(hours, minutes, 0, 0);
+  // Guard against missing/malformed time to avoid a 500 on time.split(':')
+  const [rawHours, rawMinutes] = (time || '00:00').split(':');
+  const hours = Number(rawHours);
+  const minutes = Number(rawMinutes);
+
+  next.setHours(
+    Number.isFinite(hours) ? hours : 0,
+    Number.isFinite(minutes) ? minutes : 0,
+    0,
+    0
+  );
 
   switch (frequency) {
     case 'hourly':
@@ -512,124 +526,162 @@ async function saveBackup(filename: string, data: any, storageType: string, user
   return { path: filePath, size };
 }
 
+// Allow-listed columns per restorable table. Column identifiers can never be
+// interpolated from attacker-controlled JSON keys — only names in these sets
+// are ever placed into SQL. Values remain fully parameterized.
+const RESTORE_ALLOWED_COLUMNS: Record<string, Set<string>> = {
+  categories: new Set([
+    'id', 'user_id', 'name', 'type', 'color', 'icon', 'exclude_from_income', 'created_at'
+  ]),
+  match_rules: new Set([
+    'id', 'user_id', 'name', 'pattern', 'target_type', 'target_id', 'category_id', 'created_at'
+  ]),
+  transactions: new Set([
+    'id', 'user_id', 'category_id', 'account_id', 'member_id', 'amount', 'description', 'date', 'type', 'created_at'
+  ]),
+  recurring_transactions: new Set([
+    'id', 'user_id', 'category_id', 'amount', 'description', 'type', 'frequency', 'next_date', 'active', 'created_at'
+  ]),
+  budgets: new Set([
+    'id', 'user_id', 'category_id', 'amount_limit', 'month', 'year', 'created_at'
+  ]),
+  bills: new Set([
+    'id', 'user_id', 'name', 'amount', 'due_date', 'category_id', 'auto_match_pattern', 'is_active', 'created_at'
+  ]),
+  debts: new Set([
+    'id', 'user_id', 'name', 'type', 'balance', 'original_amount', 'interest_rate',
+    'minimum_payment', 'due_date', 'contact', 'notes', 'is_paid', 'created_at'
+  ]),
+  pay_periods: new Set([
+    'id', 'user_id', 'name', 'amount', 'date', 'is_recurring', 'frequency', 'created_at'
+  ]),
+  bill_payments: new Set([
+    'id', 'bill_id', 'transaction_id', 'amount_paid', 'payment_date', 'month', 'year', 'created_at'
+  ]),
+  pay_period_bills: new Set([
+    'id', 'pay_period_id', 'bill_id', 'month', 'year', 'amount_override', 'created_at'
+  ]),
+};
+
 // Restore backup data
 router.post('/restore', requireEditAccess, async (req: AuthRequest, res: Response) => {
-  try {
-    const userId = req.userId!;
-    const backupData = req.body;
+  const backupData = req.body;
 
-    // Validate backup structure
-    if (!backupData || !backupData.version || !backupData.data) {
-      return res.status(400).json({ error: 'Invalid backup format' });
+  // Validate backup structure
+  if (!backupData || !backupData.version || !backupData.data) {
+    return res.status(400).json({ error: 'Invalid backup format' });
+  }
+
+  const userId = req.userId!;
+  // Use a dedicated client so BEGIN/DELETE/INSERT/COMMIT are truly atomic.
+  // The shared pool `query()` may run each statement on a different connection,
+  // which would make the destructive delete non-atomic and risk data loss.
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+
+    // Delete existing user data (in reverse order of foreign key dependencies)
+    const deleteTables = [
+      'pay_period_bills',
+      'bill_payments',
+      'pay_periods',
+      'debts',
+      'bills',
+      'budgets',
+      'recurring_transactions',
+      'transactions',
+      'match_rules',
+      'categories'
+    ];
+
+    for (const table of deleteTables) {
+      if (table === 'pay_period_bills') {
+        await client.query(
+          `DELETE FROM pay_period_bills ppb
+           USING pay_periods pp
+           WHERE ppb.pay_period_id = pp.id AND pp.user_id = $1`,
+          [userId]
+        );
+      } else if (table === 'bill_payments') {
+        await client.query(
+          `DELETE FROM bill_payments bp
+           USING bills b
+           WHERE bp.bill_id = b.id AND b.user_id = $1`,
+          [userId]
+        );
+      } else {
+        await client.query(`DELETE FROM ${table} WHERE user_id = $1`, [userId]);
+      }
     }
 
-    // Start a transaction for atomic restore
-    await query('BEGIN');
+    // Restore data from backup
+    const restoreTables = [
+      'categories',
+      'match_rules',
+      'transactions',
+      'recurring_transactions',
+      'budgets',
+      'bills',
+      'debts',
+      'pay_periods',
+      'bill_payments',
+      'pay_period_bills'
+    ];
 
-    try {
-      // Delete existing user data (in reverse order of foreign key dependencies)
-      const deleteTables = [
-        'pay_period_bills',
-        'bill_payments',
-        'pay_periods',
-        'debts',
-        'bills',
-        'budgets',
-        'recurring_transactions',
-        'transactions',
-        'match_rules',
-        'categories'
-      ];
+    for (const table of restoreTables) {
+      const data = backupData.data[table] || [];
+      if (data.length === 0) continue;
 
-      for (const table of deleteTables) {
-        if (table === 'pay_period_bills') {
-          await query(
-            `DELETE FROM pay_period_bills ppb
-             USING pay_periods pp
-             WHERE ppb.pay_period_id = pp.id AND pp.user_id = $1`,
-            [userId]
-          );
-        } else if (table === 'bill_payments') {
-          await query(
-            `DELETE FROM bill_payments bp
-             USING bills b
-             WHERE bp.bill_id = b.id AND b.user_id = $1`,
-            [userId]
+      const allowedColumns = RESTORE_ALLOWED_COLUMNS[table];
+      const hasUserId = allowedColumns.has('user_id');
+
+      for (const row of data) {
+        if (!row || typeof row !== 'object') continue;
+
+        // Force user_id to the current user for user-owned tables.
+        if (hasUserId) {
+          row.user_id = userId;
+        }
+
+        // Only ever use allow-listed column identifiers — never arbitrary JSON keys.
+        const columns = Object.keys(row).filter(col => allowedColumns.has(col));
+        if (columns.length === 0) continue;
+
+        const values = columns.map(col => row[col]);
+        const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
+
+        if (row.id != null && columns.includes('id')) {
+          const updateCols = columns.filter(c => c !== 'id');
+          const conflictClause = updateCols.length > 0
+            ? ` ON CONFLICT (id) DO UPDATE SET ${updateCols.map(c => `${c} = EXCLUDED.${c}`).join(', ')}`
+            : ' ON CONFLICT (id) DO NOTHING';
+
+          await client.query(
+            `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})${conflictClause}`,
+            values
           );
         } else {
-          await query(`DELETE FROM ${table} WHERE user_id = $1`, [userId]);
+          // No ID — let the database generate one.
+          const columnsNoId = columns.filter(c => c !== 'id');
+          const valuesNoId = columnsNoId.map(col => row[col]);
+          const placeholdersNoId = columnsNoId.map((_, i) => `$${i + 1}`).join(', ');
+
+          await client.query(
+            `INSERT INTO ${table} (${columnsNoId.join(', ')}) VALUES (${placeholdersNoId})`,
+            valuesNoId
+          );
         }
       }
-
-      // Restore data from backup
-      const restoreTables = [
-        'categories',
-        'match_rules',
-        'transactions',
-        'recurring_transactions',
-        'budgets',
-        'bills',
-        'debts',
-        'pay_periods',
-        'bill_payments',
-        'pay_period_bills'
-      ];
-
-      for (const table of restoreTables) {
-        const data = backupData.data[table] || [];
-
-        if (data.length === 0) continue;
-
-        for (const row of data) {
-          // Ensure user_id is set correctly
-          if (table === 'bill_payments' || table === 'pay_period_bills') {
-            // These tables don't have user_id, just insert as is
-            const columns = Object.keys(row);
-            const values = columns.map(col => row[col]);
-            const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
-
-            await query(
-              `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})`,
-              values
-            );
-          } else {
-            // Set user_id to current user
-            row.user_id = userId;
-            const columns = Object.keys(row);
-            const values = columns.map(col => row[col]);
-            const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
-
-            // For tables with ID, we need to handle potential conflicts
-            if (row.id) {
-              await query(
-                `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})
-                 ON CONFLICT (id) DO UPDATE SET ${columns.filter(c => c !== 'id').map(c => `${c} = EXCLUDED.${c}`).join(', ')}`,
-                values
-              );
-            } else {
-              // If no ID, let the database generate one
-              const columnsNoId = columns.filter(k => k !== 'id');
-              const valuesNoId = columnsNoId.map(col => row[col]);
-              const placeholdersNoId = columnsNoId.map((_, i) => `$${i + 1}`).join(', ');
-
-              await query(
-                `INSERT INTO ${table} (${columnsNoId.join(', ')}) VALUES (${placeholdersNoId})`,
-                valuesNoId
-              );
-            }
-          }
-        }
-      }
-
-      await query('COMMIT');
-      res.json({ message: 'Backup restored successfully' });
-    } catch (error) {
-      await query('ROLLBACK');
-      throw error;
     }
+
+    await client.query('COMMIT');
+    res.json({ message: 'Backup restored successfully' });
   } catch (error) {
+    await client.query('ROLLBACK');
     logger.error('Restore backup error:', error as Error);
     res.status(500).json({ error: 'Failed to restore backup' });
+  } finally {
+    client.release();
   }
 });
 

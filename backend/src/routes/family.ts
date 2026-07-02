@@ -309,6 +309,10 @@ router.get('/:id/spending', validateDateRange, async (req: AuthRequest, res: Res
       dateFilter = "AND DATE_TRUNC('month', t.date) = DATE_TRUNC('month', CURRENT_DATE)";
     }
 
+    // Defense-in-depth: scope transactions to the verified owner as well as the member.
+    params.push(req.userId);
+    const ownerFilter = `AND t.user_id = $${params.length}`;
+
     const spending = await query(
       `SELECT
         c.name as category,
@@ -318,7 +322,7 @@ router.get('/:id/spending', validateDateRange, async (req: AuthRequest, res: Res
         AVG(ABS(t.amount)) as avg_amount
        FROM transactions t
        LEFT JOIN categories c ON t.category_id = c.id
-       WHERE t.member_id = $1 AND t.type = 'expense' ${dateFilter}
+       WHERE t.member_id = $1 AND t.type = 'expense' ${dateFilter} ${ownerFilter}
        GROUP BY c.id, c.name, c.color
        ORDER BY total_amount DESC`,
       params
@@ -328,8 +332,8 @@ router.get('/:id/spending', validateDateRange, async (req: AuthRequest, res: Res
       `SELECT
         COUNT(*) as total_transactions,
         SUM(ABS(amount)) as total_spent
-       FROM transactions
-       WHERE member_id = $1 AND type = 'expense' ${dateFilter}`,
+       FROM transactions t
+       WHERE t.member_id = $1 AND t.type = 'expense' ${dateFilter} ${ownerFilter}`,
       params
     );
 
@@ -388,9 +392,16 @@ function calculateNextAllowanceDate(frequency: string): Date {
     case 'biweekly':
       nextDate.setDate(today.getDate() + 14);
       break;
-    case 'monthly':
+    case 'monthly': {
+      // Setting the day to 1 before adding a month prevents end-of-month
+      // overflow (e.g. Jan 31 -> Mar 3); clamp back to a valid day-of-month.
+      const day = today.getDate();
+      nextDate.setDate(1);
       nextDate.setMonth(today.getMonth() + 1);
+      const lastDay = new Date(nextDate.getFullYear(), nextDate.getMonth() + 1, 0).getDate();
+      nextDate.setDate(Math.min(day, lastDay));
       break;
+    }
   }
 
   return nextDate;
@@ -410,8 +421,10 @@ function getResetDate(period: string): Date {
       resetDate.setHours(0, 0, 0, 0);
       break;
     case 'monthly':
-      resetDate.setMonth(today.getMonth() + 1);
+      // Set the day to 1 before advancing the month to avoid end-of-month
+      // overflow (e.g. Jan 31 + 1 month landing in March).
       resetDate.setDate(1);
+      resetDate.setMonth(today.getMonth() + 1);
       resetDate.setHours(0, 0, 0, 0);
       break;
   }

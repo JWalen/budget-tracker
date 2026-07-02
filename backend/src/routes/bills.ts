@@ -1,5 +1,5 @@
 import { Router, Response } from 'express';
-import { query } from '../config/database';
+import pool, { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
 import { LoggerClass } from '../services/logger';
@@ -68,6 +68,11 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
     const { name, amount, due_date, category_id, auto_match_pattern } = req.body;
     const budgetUserId = (req as any).budgetUserId;
 
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      return res.status(400).json({ error: 'Amount must be a positive number' });
+    }
+
     const result = await query(
       `INSERT INTO bills (user_id, name, amount, due_date, category_id, auto_match_pattern)
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
@@ -135,6 +140,16 @@ router.post('/:id/pay', requireEditAccess, async (req: AuthRequest, res: Respons
     const { month, year, transaction_id, create_transaction, category_id } = req.body;
     const budgetUserId = (req as any).budgetUserId;
 
+    const numericMonth = Number(month);
+    if (!Number.isInteger(numericMonth) || numericMonth < 1 || numericMonth > 12) {
+      return res.status(400).json({ error: 'Invalid month' });
+    }
+
+    const numericYear = Number(year);
+    if (!Number.isInteger(numericYear)) {
+      return res.status(400).json({ error: 'Invalid year' });
+    }
+
     // Verify bill belongs to user
     const billResult = await query(
       'SELECT * FROM bills WHERE id = $1 AND user_id = $2',
@@ -146,30 +161,66 @@ router.post('/:id/pay', requireEditAccess, async (req: AuthRequest, res: Respons
     }
 
     const bill = billResult.rows[0];
-    let txId = transaction_id;
 
-    // Optionally create a new transaction
-    if (create_transaction && !txId) {
-      const today = new Date().toISOString().split('T')[0];
-      const txResult = await query(
-        `INSERT INTO transactions (user_id, category_id, amount, description, date, type)
-         VALUES ($1, $2, $3, $4, $5, 'expense') RETURNING *`,
-        [budgetUserId, category_id || bill.category_id, bill.amount, `Bill: ${bill.name}`, today]
+    // Verify a supplied transaction_id belongs to this user
+    if (transaction_id !== undefined && transaction_id !== null) {
+      const txCheck = await query(
+        'SELECT id FROM transactions WHERE id = $1 AND user_id = $2',
+        [transaction_id, budgetUserId]
       );
-      txId = txResult.rows[0].id;
+      if (txCheck.rows.length === 0) {
+        return res.status(400).json({ error: 'Invalid transaction' });
+      }
     }
 
-    // Create bill payment record
-    const paymentResult = await query(
-      `INSERT INTO bill_payments (bill_id, transaction_id, amount_paid, payment_date, month, year)
-       VALUES ($1, $2, $3, CURRENT_DATE, $4, $5)
-       ON CONFLICT (bill_id, month, year) DO UPDATE
-       SET transaction_id = $2, amount_paid = $3, payment_date = CURRENT_DATE
-       RETURNING *`,
-      [id, txId || null, bill.amount, month, year]
-    );
+    // Verify category ownership if used to create a transaction
+    if (create_transaction && !transaction_id && category_id !== undefined && category_id !== null) {
+      const catCheck = await query(
+        'SELECT id FROM categories WHERE id = $1 AND user_id = $2',
+        [category_id, budgetUserId]
+      );
+      if (catCheck.rows.length === 0) {
+        return res.status(400).json({ error: 'Invalid category' });
+      }
+    }
 
-    res.json(paymentResult.rows[0]);
+    let txId = transaction_id;
+    let paymentRow;
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+
+      // Optionally create a new transaction
+      if (create_transaction && !txId) {
+        const today = new Date().toISOString().split('T')[0];
+        const txResult = await client.query(
+          `INSERT INTO transactions (user_id, category_id, amount, description, date, type)
+           VALUES ($1, $2, $3, $4, $5, 'expense') RETURNING *`,
+          [budgetUserId, category_id || bill.category_id, bill.amount, `Bill: ${bill.name}`, today]
+        );
+        txId = txResult.rows[0].id;
+      }
+
+      // Create bill payment record
+      const paymentResult = await client.query(
+        `INSERT INTO bill_payments (bill_id, transaction_id, amount_paid, payment_date, month, year)
+         VALUES ($1, $2, $3, CURRENT_DATE, $4, $5)
+         ON CONFLICT (bill_id, month, year) DO UPDATE
+         SET transaction_id = $2, amount_paid = $3, payment_date = CURRENT_DATE
+         RETURNING *`,
+        [id, txId || null, bill.amount, month, year]
+      );
+      paymentRow = paymentResult.rows[0];
+
+      await client.query('COMMIT');
+    } catch (txError) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw txError;
+    } finally {
+      client.release();
+    }
+
+    res.json(paymentRow);
   } catch (error) {
     logger.error('Pay bill error:', error);
     res.status(500).json({ error: 'Server error' });

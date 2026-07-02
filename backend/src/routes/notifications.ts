@@ -23,7 +23,12 @@ router.use(tenantMiddleware);
 router.get('/', async (req: TenantRequest, res: Response) => {
   try {
     const userId = req.userId!;
-    const { limit = 50, offset = 0, unreadOnly = false } = req.query;
+    const { limit, offset, unreadOnly = false } = req.query;
+
+    // Coerce and clamp pagination params (non-numeric input previously 500'd,
+    // and there was no upper bound on limit).
+    const limitValue = Math.min(Math.max(parseInt(limit as string, 10) || 50, 1), 200);
+    const offsetValue = Math.max(parseInt(offset as string, 10) || 0, 0);
 
     let sql = 'SELECT * FROM notifications WHERE user_id = $1';
     const params: any[] = [userId];
@@ -33,7 +38,7 @@ router.get('/', async (req: TenantRequest, res: Response) => {
     }
 
     sql += ' ORDER BY created_at DESC LIMIT $2 OFFSET $3';
-    params.push(limit, offset);
+    params.push(limitValue, offsetValue);
 
     const result = await query(sql, params);
 
@@ -68,10 +73,18 @@ router.post('/:id/read', async (req: TenantRequest, res: Response) => {
     const notificationId = parseInt(req.params.id, 10);
     const userId = req.userId!;
 
-    await query(
+    if (!Number.isInteger(notificationId)) {
+      return res.status(400).json({ error: 'Invalid notification id' });
+    }
+
+    const result = await query(
       'UPDATE notifications SET is_read = true, read_at = NOW() WHERE id = $1 AND user_id = $2',
       [notificationId, userId]
     );
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Notification not found' });
+    }
 
     res.json({ message: 'Notification marked as read' });
   } catch (error) {
@@ -119,7 +132,18 @@ router.delete('/:id', async (req: TenantRequest, res: Response) => {
     const notificationId = parseInt(req.params.id, 10);
     const userId = req.userId!;
 
-    await query('DELETE FROM notifications WHERE id = $1 AND user_id = $2', [notificationId, userId]);
+    if (!Number.isInteger(notificationId)) {
+      return res.status(400).json({ error: 'Invalid notification id' });
+    }
+
+    const result = await query('DELETE FROM notifications WHERE id = $1 AND user_id = $2', [
+      notificationId,
+      userId,
+    ]);
+
+    if (result.rowCount === 0) {
+      return res.status(404).json({ error: 'Notification not found' });
+    }
 
     res.json({ message: 'Notification deleted' });
   } catch (error) {

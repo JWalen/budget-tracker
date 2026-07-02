@@ -13,6 +13,12 @@ import { LoggerClass } from '../services/logger';
 const router = Router();
 const logger = new LoggerClass('Currency');
 
+// ISO 4217 currency codes are three uppercase letters. Validate before using
+// values to build external exchange-rate API URLs (prevents URL manipulation).
+const CURRENCY_CODE_REGEX = /^[A-Z]{3}$/;
+const isValidCurrencyCode = (code: unknown): code is string =>
+  typeof code === 'string' && CURRENCY_CODE_REGEX.test(code);
+
 router.use(authMiddleware);
 router.use(tenantMiddleware);
 
@@ -48,6 +54,10 @@ router.get('/rate', async (req: TenantRequest, res: Response) => {
       return res.status(400).json({ error: 'From and to currencies required' });
     }
 
+    if (!isValidCurrencyCode(from) || !isValidCurrencyCode(to)) {
+      return res.status(400).json({ error: 'Invalid currency code' });
+    }
+
     const rate = await getExchangeRate(from as string, to as string);
     
     res.json({
@@ -77,11 +87,20 @@ router.post('/convert', async (req: TenantRequest, res: Response) => {
       return res.status(400).json({ error: 'Amount, from, and to currencies required' });
     }
 
-    const convertedAmount = await convertCurrency(parseFloat(amount), from, to);
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
+      return res.status(400).json({ error: 'Amount must be a positive number' });
+    }
+
+    if (!isValidCurrencyCode(from) || !isValidCurrencyCode(to)) {
+      return res.status(400).json({ error: 'Invalid currency code' });
+    }
+
+    const convertedAmount = await convertCurrency(numericAmount, from, to);
     const rate = await getExchangeRate(from, to);
 
     res.json({
-      originalAmount: parseFloat(amount),
+      originalAmount: numericAmount,
       originalCurrency: from,
       convertedAmount,
       targetCurrency: to,
@@ -107,6 +126,10 @@ router.get('/trends', async (req: TenantRequest, res: Response) => {
 
     if (!from || !to) {
       return res.status(400).json({ error: 'From and to currencies required' });
+    }
+
+    if (!isValidCurrencyCode(from) || !isValidCurrencyCode(to)) {
+      return res.status(400).json({ error: 'Invalid currency code' });
     }
 
     const trends = await getExchangeRateTrends(
@@ -202,16 +225,16 @@ router.get('/summary', async (req: TenantRequest, res: Response) => {
 
     // Convert all to default currency
     const summaryPromises = result.rows.map(async (row) => {
-      const expenseRate = await getExchangeRate(row.currency, defaultCurrency);
-      const incomeRate = await getExchangeRate(row.currency, defaultCurrency);
+      // Same source/target currency for both totals, so fetch the rate once.
+      const rate = await getExchangeRate(row.currency, defaultCurrency);
 
       return {
         currency: row.currency,
         totalExpenses: parseFloat(row.total_expenses),
         totalIncome: parseFloat(row.total_income),
         transactionCount: parseInt(row.transaction_count),
-        convertedExpenses: parseFloat(row.total_expenses) * expenseRate,
-        convertedIncome: parseFloat(row.total_income) * incomeRate,
+        convertedExpenses: parseFloat(row.total_expenses) * rate,
+        convertedIncome: parseFloat(row.total_income) * rate,
       };
     });
 

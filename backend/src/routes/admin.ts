@@ -5,6 +5,8 @@ import { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { adminMiddleware } from '../middleware/admin';
 import { EncryptionService } from '../services/encryption';
+import TokenService from '../services/tokenService';
+import { validatePassword, PASSWORD_POLICY_MESSAGE } from './auth';
 import logger from '../config/logger';
 import fs from 'fs/promises';
 import path from 'path';
@@ -56,13 +58,14 @@ router.get('/stats', async (req: AuthRequest, res: Response) => {
           COUNT(CASE WHEN mfa_enabled THEN 1 END) as mfa_enabled
         FROM users
       `),
-      // Budget sharing stats
+      // Household (organization) sharing stats
       query(`
         SELECT
-          COUNT(*) as total_shares,
-          COUNT(DISTINCT owner_id) as sharing_users,
-          COUNT(DISTINCT shared_with_id) as viewing_users
-        FROM budget_shares
+          (SELECT COUNT(*) FROM organizations) as total_households,
+          (SELECT COUNT(*) FROM organization_members) as total_memberships,
+          (SELECT COUNT(*) FROM organizations o
+             WHERE (SELECT COUNT(*) FROM organization_members m WHERE m.organization_id = o.id) > 1
+          ) as shared_households
       `),
       // System health
       query(`
@@ -138,14 +141,14 @@ router.get('/users', async (req: AuthRequest, res: Response) => {
           u.id, u.email, u.name, u.is_admin, u.mfa_enabled, u.created_at,
           u.last_login, u.last_activity, u.active_sessions,
           COUNT(DISTINCT t.id) as transaction_count,
-          COUNT(DISTINCT bs_owner.id) as budgets_shared,
-          COUNT(DISTINCT bs_viewer.id) as budgets_viewing,
+          COUNT(DISTINCT om_owner.id) as households_owned,
+          COUNT(DISTINCT om_member.id) as households_joined,
           COUNT(DISTINCT a.id) as accounts_count,
           COALESCE(SUM(DISTINCT a.balance), 0) as total_balance
         FROM users u
         LEFT JOIN transactions t ON t.user_id = u.id
-        LEFT JOIN budget_shares bs_owner ON bs_owner.owner_id = u.id
-        LEFT JOIN budget_shares bs_viewer ON bs_viewer.shared_with_id = u.id
+        LEFT JOIN organization_members om_owner ON om_owner.user_id = u.id AND om_owner.role = 'owner'
+        LEFT JOIN organization_members om_member ON om_member.user_id = u.id AND om_member.role <> 'owner'
         LEFT JOIN bank_accounts a ON a.user_id = u.id
         WHERE u.name ILIKE $1 OR u.email ILIKE $1
         GROUP BY u.id
@@ -209,7 +212,8 @@ router.put('/users/:id', async (req: AuthRequest, res: Response) => {
     values.push(userId);
 
     const result = await query(
-      `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramCount} RETURNING *`,
+      `UPDATE users SET ${updates.join(', ')} WHERE id = $${paramCount}
+       RETURNING id, email, name, is_admin, mfa_enabled, created_at, last_login`,
       values
     );
 
@@ -219,7 +223,10 @@ router.put('/users/:id', async (req: AuthRequest, res: Response) => {
 
     logger.info('Admin updated user', { adminId: req.userId, targetUserId: userId, updates });
     res.json(result.rows[0]);
-  } catch (error) {
+  } catch (error: any) {
+    if (error?.code === '23505') {
+      return res.status(409).json({ error: 'That email address is already in use' });
+    }
     logger.error('Admin update user error:', error);
     res.status(500).json({ error: 'Server error' });
   }
@@ -253,8 +260,13 @@ router.post('/users/:id/reset-password', async (req: AuthRequest, res: Response)
     const userId = parseInt(req.params.id);
     const { password } = req.body;
 
-    if (!password || password.length < 8) {
-      return res.status(400).json({ error: 'Password must be at least 8 characters' });
+    if (!Number.isInteger(userId)) {
+      return res.status(400).json({ error: 'Invalid user id' });
+    }
+
+    // Enforce the same password policy as the auth routes.
+    if (!validatePassword(password)) {
+      return res.status(400).json({ error: PASSWORD_POLICY_MESSAGE });
     }
 
     const userResult = await query('SELECT id FROM users WHERE id = $1', [userId]);
@@ -265,7 +277,11 @@ router.post('/users/:id/reset-password', async (req: AuthRequest, res: Response)
     const passwordHash = await bcrypt.hash(password, 12);
     await query('UPDATE users SET password_hash = $1 WHERE id = $2', [passwordHash, userId]);
 
-    res.json({ message: 'Password reset successfully' });
+    // Revoke the target user's existing sessions so the reset actually locks out
+    // any active attacker session.
+    await TokenService.revokeAllUserTokens(userId);
+
+    res.json({ message: 'Password reset successfully. The user must log in again.' });
   } catch (error) {
     logger.error('Admin reset password error:', error);
     res.status(500).json({ error: 'Server error' });
@@ -433,20 +449,27 @@ router.get('/logs', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// GET /api/admin/shares — View all budget shares
+// GET /api/admin/shares — View all household (organization) memberships that grant
+// a non-owner access to someone else's household.
 router.get('/shares', async (req: AuthRequest, res: Response) => {
   try {
     const shares = await query(`
       SELECT
-        bs.*,
+        om.id,
+        om.role,
+        om.joined_at as created_at,
+        o.id as organization_id,
+        o.name as household_name,
         owner.email as owner_email,
         owner.name as owner_name,
-        shared.email as shared_email,
-        shared.name as shared_name
-      FROM budget_shares bs
-      JOIN users owner ON owner.id = bs.owner_id
-      JOIN users shared ON shared.id = bs.shared_with_id
-      ORDER BY bs.created_at DESC
+        member.email as shared_email,
+        member.name as shared_name
+      FROM organization_members om
+      JOIN organizations o ON o.id = om.organization_id
+      JOIN users owner ON owner.id = o.owner_id
+      JOIN users member ON member.id = om.user_id
+      WHERE om.role <> 'owner'
+      ORDER BY om.joined_at DESC
     `);
 
     res.json(shares.rows);
@@ -456,13 +479,16 @@ router.get('/shares', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// DELETE /api/admin/shares/:id — Revoke a budget share
+// DELETE /api/admin/shares/:id — Revoke a household membership (cannot remove an owner)
 router.delete('/shares/:id', async (req: AuthRequest, res: Response) => {
   try {
     const shareId = parseInt(req.params.id);
+    if (!Number.isInteger(shareId)) {
+      return res.status(400).json({ error: 'Invalid id' });
+    }
 
     const result = await query(
-      'DELETE FROM budget_shares WHERE id = $1 RETURNING *',
+      `DELETE FROM organization_members WHERE id = $1 AND role <> 'owner' RETURNING *`,
       [shareId]
     );
 
@@ -470,7 +496,7 @@ router.delete('/shares/:id', async (req: AuthRequest, res: Response) => {
       return res.status(404).json({ error: 'Share not found' });
     }
 
-    logger.info('Admin revoked share', { adminId: req.userId, shareId });
+    logger.info('Admin revoked household membership', { adminId: req.userId, membershipId: shareId });
     res.json({ message: 'Share revoked successfully' });
   } catch (error) {
     logger.error('Admin revoke share error:', error);
@@ -564,7 +590,7 @@ router.post('/backup', async (req: AuthRequest, res: Response) => {
       });
     } catch (error) {
       // If pg_dump is not available, create a simple SQL export
-      const tables = ['users', 'transactions', 'categories', 'budgets', 'bank_accounts', 'budget_shares'];
+      const tables = ['users', 'transactions', 'categories', 'budgets', 'bank_accounts', 'organizations', 'organization_members'];
       let sqlContent = '-- Budget Tracker Database Backup\n';
       sqlContent += `-- Created: ${new Date().toISOString()}\n\n`;
 

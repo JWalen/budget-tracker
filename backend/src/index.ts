@@ -43,6 +43,7 @@ import notificationsRoutes from './routes/notifications';
 import sharingRoutes from './routes/sharing';
 import { apiLimiter, authLimiter, transactionLimiter, uploadLimiter, exportLimiter } from './middleware/rateLimiter';
 import { initStorage } from './services/storage';
+import { runMigrations } from './config/runMigrations';
 
 // Swagger API documentation
 import swaggerUi from 'swagger-ui-express';
@@ -163,8 +164,9 @@ app.use('/api/currency', currencyRoutes);
 app.use('/api/notifications', notificationsRoutes);
 app.use('/api/sharing', sharingRoutes);
 
-// Serve uploaded files (for local storage only)
-app.use('/uploads', express.static(process.env.UPLOAD_DIR || './uploads'));
+// NOTE: Uploaded receipt files are NOT served via a public static mount (that
+// exposed financial PII with no auth). They are served through the authenticated,
+// ownership-checked route GET /api/receipts/:id/file instead.
 
 // API Documentation
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
@@ -239,10 +241,22 @@ app.use((err: any, req: any, res: any, next: any) => {
   });
 });
 
-app.listen(PORT, () => {
-  logger.info(`Server started successfully`, {
-    port: PORT,
-    environment: process.env.NODE_ENV,
-    nodeVersion: process.version,
+async function start() {
+  try {
+    // Ensure the database schema is present/up to date before serving traffic.
+    await runMigrations();
+  } catch (error) {
+    logger.error('Database schema bootstrap failed — refusing to start', error as Error);
+    process.exit(1);
+  }
+
+  app.listen(PORT, () => {
+    logger.info(`Server started successfully`, {
+      port: PORT,
+      environment: process.env.NODE_ENV,
+      nodeVersion: process.version,
+    });
   });
-});
+}
+
+start();
