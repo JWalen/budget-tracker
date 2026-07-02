@@ -521,7 +521,7 @@ export default function Budgets() {
 
               {copyForm.copyMode === 'specific' && (
                 <div className="grid grid-cols-3 gap-2 p-3 bg-gray-50 dark:bg-gray-900 rounded-lg">
-                  {months.map((monthName, idx) => {
+                  {MONTHS.map((monthName, idx) => {
                     const monthNum = idx + 1;
                     const isCurrentMonth = monthNum === month;
                     const isSelected = copyForm.targetMonths.includes(monthNum);

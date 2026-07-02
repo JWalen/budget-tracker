@@ -120,7 +120,7 @@ router.get('/income-expense', async (req: AuthRequest, res: Response) => {
     res.json({
       totalIncome: totals.income,
       totalExpenses: totals.expense,
-      netIncome: totals.income + totals.expense,
+      netIncome: totals.income - totals.expense,
       monthlyBreakdown: Array.from(monthlyMap.values())
     });
   } catch (error) {
@@ -291,7 +291,7 @@ router.get('/cash-flow', async (req: AuthRequest, res: Response) => {
       } else {
         week.expenses = parseFloat(row.total);
       }
-      week.net = week.income + week.expenses;
+      week.net = week.income - week.expenses;
     });
 
     res.json({

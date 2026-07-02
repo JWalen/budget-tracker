@@ -117,12 +117,26 @@ router.put('/:id',
         return res.status(404).json({ error: 'Family member not found' });
       }
 
+      // Whitelist updatable columns. Never interpolate raw request keys into SQL —
+      // doing so allows SQL injection and mass-assignment (e.g. reassigning user_id).
+      const ALLOWED_FIELDS = new Set([
+        'name',
+        'role',
+        'email',
+        'birth_date',
+        'allowance_amount',
+        'allowance_frequency',
+        'spending_limit',
+        'avatar_color',
+        'is_active',
+      ]);
+
       const fields: string[] = [];
       const values: any[] = [];
       let paramCount = 1;
 
       Object.entries(req.body).forEach(([key, value]) => {
-        if (value !== undefined) {
+        if (value !== undefined && ALLOWED_FIELDS.has(key)) {
           fields.push(`${key} = $${paramCount}`);
           values.push(value);
           paramCount++;
@@ -130,7 +144,7 @@ router.put('/:id',
       });
 
       if (fields.length === 0) {
-        return res.status(400).json({ error: 'No fields to update' });
+        return res.status(400).json({ error: 'No valid fields to update' });
       }
 
       values.push(id, req.userId);
@@ -240,12 +254,18 @@ router.post('/:id/limits',
         return res.status(400).json({ error: 'Either category_id or budget_id is required' });
       }
 
+      // Postgres does not allow two ON CONFLICT targets in one statement.
+      // Choose the conflict target based on which unique key applies:
+      //   - category limits conflict on (member_id, category_id, period)
+      //   - budget limits conflict on (member_id, budget_id)
+      const conflictClause = category_id
+        ? 'ON CONFLICT (member_id, category_id, period)'
+        : 'ON CONFLICT (member_id, budget_id)';
+
       const result = await query(
         `INSERT INTO spending_limits (member_id, category_id, budget_id, limit_amount, period, reset_date)
          VALUES ($1, $2, $3, $4, $5, $6)
-         ON CONFLICT (member_id, category_id, period)
-         DO UPDATE SET limit_amount = $4, updated_at = CURRENT_TIMESTAMP
-         ON CONFLICT (member_id, budget_id)
+         ${conflictClause}
          DO UPDATE SET limit_amount = $4, updated_at = CURRENT_TIMESTAMP
          RETURNING *`,
         [id, category_id || null, budget_id || null, limit_amount, period, getResetDate(period)]

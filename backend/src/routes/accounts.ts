@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import { query } from '../config/database';
+import pool from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
 import { LoggerClass } from '../services/logger';
@@ -202,27 +203,46 @@ router.post('/:id/reconcile', requireEditAccess, async (req: AuthRequest, res: R
     const { id } = req.params;
     const { balance, date } = req.body;
 
-    if (balance === undefined) {
-      return res.status(400).json({ error: 'Balance is required' });
+    const newBalance = Number(balance);
+    if (balance === undefined || balance === null || balance === '' || !Number.isFinite(newBalance)) {
+      return res.status(400).json({ error: 'A valid balance is required' });
     }
 
-    // Update account balance
-    await query(
-      `UPDATE bank_accounts
-      SET balance = $1, updated_at = CURRENT_TIMESTAMP
-      WHERE id = $2 AND user_id = $3`,
-      [balance, id, budgetUserId]
-    );
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
 
-    // Record balance in history
-    await query(
-      `INSERT INTO account_balances (account_id, balance, date)
-      VALUES ($1, $2, $3)
-      ON CONFLICT (account_id, date) DO UPDATE SET balance = $2`,
-      [id, balance, date || new Date()]
-    );
+      // Update account balance — scoped to the owner. Check rowCount BEFORE writing
+      // to balance history, otherwise a foreign account id would poison the victim's
+      // account_balances (IDOR write).
+      const updateResult = await client.query(
+        `UPDATE bank_accounts
+        SET balance = $1, updated_at = CURRENT_TIMESTAMP
+        WHERE id = $2 AND user_id = $3`,
+        [newBalance, id, budgetUserId]
+      );
 
-    res.json({ message: 'Account reconciled successfully' });
+      if (updateResult.rowCount === 0) {
+        await client.query('ROLLBACK');
+        return res.status(404).json({ error: 'Account not found' });
+      }
+
+      // Record balance in history
+      await client.query(
+        `INSERT INTO account_balances (account_id, balance, date)
+        VALUES ($1, $2, $3)
+        ON CONFLICT (account_id, date) DO UPDATE SET balance = $2`,
+        [id, newBalance, date || new Date()]
+      );
+
+      await client.query('COMMIT');
+      res.json({ message: 'Account reconciled successfully' });
+    } catch (txError) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw txError;
+    } finally {
+      client.release();
+    }
   } catch (error) {
     logger.error('Reconcile account error:', error);
     res.status(500).json({ error: 'Server error' });

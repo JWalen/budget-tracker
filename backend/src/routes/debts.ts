@@ -1,5 +1,6 @@
 import { Router, Response } from 'express';
 import { query } from '../config/database';
+import pool from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
 import { LoggerClass } from '../services/logger';
@@ -111,50 +112,79 @@ router.delete('/:id', requireEditAccess, async (req: AuthRequest, res: Response)
 
 // Log payment on a debt
 router.post('/:id/payment', requireEditAccess, async (req: AuthRequest, res: Response) => {
+  const client = await pool.connect();
   try {
     const { id } = req.params;
     const { amount, create_transaction, category_id } = req.body;
     const budgetUserId = (req as any).budgetUserId;
 
-    // Get current debt
-    const debtResult = await query(
-      'SELECT * FROM debts WHERE id = $1 AND user_id = $2',
+    // Validate the payment amount up front — a missing/NaN/negative amount would
+    // otherwise corrupt the stored balance (NaN) or increase it (negative).
+    const paymentAmount = Number(amount);
+    if (!Number.isFinite(paymentAmount) || paymentAmount <= 0) {
+      return res.status(400).json({ error: 'Payment amount must be a positive number' });
+    }
+
+    await client.query('BEGIN');
+
+    // Lock the debt row for the duration of the transaction to prevent lost updates
+    // from concurrent payments.
+    const debtResult = await client.query(
+      'SELECT * FROM debts WHERE id = $1 AND user_id = $2 FOR UPDATE',
       [id, budgetUserId]
     );
 
     if (debtResult.rows.length === 0) {
+      await client.query('ROLLBACK');
       return res.status(404).json({ error: 'Debt not found' });
     }
 
     const debt = debtResult.rows[0];
-    const newBalance = Math.max(0, parseFloat(debt.balance) - parseFloat(amount));
-    const isPaid = newBalance === 0;
+    const currentBalance = parseFloat(debt.balance);
+    const newBalance = Math.max(0, currentBalance - paymentAmount);
+    // Compare with a cent tolerance rather than strict float equality.
+    const isPaid = newBalance < 0.005;
 
-    // Update debt balance
-    await query(
-      'UPDATE debts SET balance = $1, is_paid = $2 WHERE id = $3',
-      [newBalance, isPaid, id]
+    await client.query(
+      'UPDATE debts SET balance = $1, is_paid = $2 WHERE id = $3 AND user_id = $4',
+      [newBalance, isPaid, id, budgetUserId]
     );
 
     let transaction = null;
 
     // Optionally create an expense transaction
     if (create_transaction) {
+      // Verify the category (if supplied) belongs to this budget owner before linking.
+      if (category_id) {
+        const catCheck = await client.query(
+          'SELECT id FROM categories WHERE id = $1 AND user_id = $2',
+          [category_id, budgetUserId]
+        );
+        if (catCheck.rows.length === 0) {
+          await client.query('ROLLBACK');
+          return res.status(400).json({ error: 'Invalid category' });
+        }
+      }
+
       const today = new Date().toISOString().split('T')[0];
-      const txResult = await query(
+      const txResult = await client.query(
         `INSERT INTO transactions (user_id, category_id, amount, description, date, type)
          VALUES ($1, $2, $3, $4, $5, 'expense') RETURNING *`,
-        [budgetUserId, category_id || null, amount, `Payment: ${debt.name}`, today]
+        [budgetUserId, category_id || null, paymentAmount, `Payment: ${debt.name}`, today]
       );
       transaction = txResult.rows[0];
     }
 
-    const updated = await query('SELECT * FROM debts WHERE id = $1', [id]);
+    const updated = await client.query('SELECT * FROM debts WHERE id = $1 AND user_id = $2', [id, budgetUserId]);
 
+    await client.query('COMMIT');
     res.json({ debt: updated.rows[0], transaction });
   } catch (error) {
+    await client.query('ROLLBACK').catch(() => {});
     logger.error('Debt payment error:', error);
     res.status(500).json({ error: 'Server error' });
+  } finally {
+    client.release();
   }
 });
 

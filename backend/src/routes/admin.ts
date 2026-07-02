@@ -995,56 +995,16 @@ router.get('/system/updates', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// POST /api/admin/system/update — Perform one-click update (git pull + docker compose rebuild)
-router.post('/system/update', async (req: AuthRequest, res: Response) => {
-  try {
-    logger.info('Admin initiated system update', { adminId: req.userId });
-
-    // Set headers for NDJSON streaming
-    res.setHeader('Content-Type', 'application/x-ndjson');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-
-    const child = spawn('/bin/sh', ['/app/update.sh'], {
-      cwd: '/project',
-      stdio: ['ignore', 'pipe', 'pipe'],
-    });
-
-    child.stdout.on('data', (data: Buffer) => {
-      const lines = data.toString().split('\n').filter((l: string) => l.trim());
-      for (const line of lines) {
-        res.write(line + '\n');
-      }
-    });
-
-    child.stderr.on('data', (data: Buffer) => {
-      const msg = data.toString().trim();
-      if (msg) {
-        res.write(JSON.stringify({ type: 'progress', message: msg }) + '\n');
-      }
-    });
-
-    child.on('close', (code: number) => {
-      if (code !== 0) {
-        res.write(JSON.stringify({ type: 'error', message: `Update process exited with code ${code}` }) + '\n');
-      }
-      res.end();
-    });
-
-    child.on('error', (err: Error) => {
-      logger.error('Update spawn error:', err);
-      res.write(JSON.stringify({ type: 'error', message: `Failed to start update: ${err.message}` }) + '\n');
-      res.end();
-    });
-  } catch (error) {
-    logger.error('System update error:', error);
-    if (!res.headersSent) {
-      res.status(500).json({ error: 'Failed to start update' });
-    } else {
-      res.write(JSON.stringify({ type: 'error', message: 'Unexpected error during update' }) + '\n');
-      res.end();
-    }
-  }
+// NOTE: The in-app "one-click update" endpoint was removed for security.
+// It spawned a shell that ran `git pull` + `docker compose` against a mounted
+// host Docker socket, which is effectively remote code execution on the host
+// from a web session. Deployments/updates are now an out-of-band operator
+// action (see PRODUCTION-DEPLOYMENT.md). The docker.sock/project bind mounts
+// were also removed from docker-compose.yml.
+router.post('/system/update', async (_req: AuthRequest, res: Response) => {
+  res.status(410).json({
+    error: 'In-app updates have been disabled. Update the deployment from the host (git pull + docker compose up -d --build).',
+  });
 });
 
 export default router;
