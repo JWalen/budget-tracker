@@ -13,9 +13,11 @@ import {
   AlertCircle,
 } from 'lucide-react';
 
-import { formatCurrency, MONTHS } from '../utils/format';
+import { formatCurrency, formatShortDate, MONTHS } from '../utils/format';
+import { useToast } from '../context/ToastContext';
 
 export default function Bills() {
+  const toast = useToast();
   const [bills, setBills] = useState([]);
   const [categories, setCategories] = useState([]);
   const [transactions, setTransactions] = useState([]);
@@ -29,6 +31,8 @@ export default function Bills() {
   const [showPayModal, setShowPayModal] = useState(false);
   const [editingBill, setEditingBill] = useState(null);
   const [payingBill, setPayingBill] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
+  const [paySubmitting, setPaySubmitting] = useState(false);
 
   const month = currentDate.getMonth() + 1;
   const year = currentDate.getFullYear();
@@ -164,6 +168,8 @@ export default function Bills() {
 
   const handleBillSubmit = async (e) => {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
     try {
       const payload = {
         name: billForm.name,
@@ -175,14 +181,17 @@ export default function Bills() {
 
       if (editingBill) {
         await api.updateBill(editingBill.id, payload);
+        toast.success('Bill updated');
       } else {
         await api.createBill(payload);
+        toast.success('Bill added');
       }
       closeBillModal();
       loadData();
     } catch (err) {
-      console.error('Failed to save bill:', err);
-      setError(err.message || 'Failed to save bill');
+      toast.error(err.message || 'Something went wrong');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -190,10 +199,10 @@ export default function Bills() {
     if (!confirm(`Delete bill "${bill.name}"? This cannot be undone.`)) return;
     try {
       await api.deleteBill(bill.id);
+      toast.success('Bill deleted');
       loadData();
     } catch (err) {
-      console.error('Failed to delete bill:', err);
-      setError(err.message || 'Failed to delete bill');
+      toast.error(err.message || 'Something went wrong');
     }
   };
 
@@ -219,10 +228,11 @@ export default function Bills() {
 
   const handlePaySubmit = async (e) => {
     e.preventDefault();
-    if (!payingBill) {
+    if (!payingBill || paySubmitting) {
       return;
     }
 
+    setPaySubmitting(true);
     try {
       const payload = {
         month: month,
@@ -242,12 +252,13 @@ export default function Bills() {
 
       await api.payBill(payingBill.id, payload);
 
+      toast.success('Bill marked as paid');
       closePayModal();
       loadData();
     } catch (err) {
-      console.error('Failed to mark bill as paid:', err);
-      alert('Error marking bill as paid: ' + (err.message || 'Unknown error'));
-      setError(err.message || 'Failed to mark bill as paid');
+      toast.error(err.message || 'Something went wrong');
+    } finally {
+      setPaySubmitting(false);
     }
   };
 
@@ -425,12 +436,7 @@ export default function Bills() {
                     <div className="text-right text-xs text-gray-500 dark:text-gray-400">
                       <p>{formatCurrency(bill.paid_transaction_amount)}</p>
                       {bill.paid_transaction_date && (
-                        <p>
-                          {new Date(bill.paid_transaction_date).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                          })}
-                        </p>
+                        <p>{formatShortDate(bill.paid_transaction_date)}</p>
                       )}
                     </div>
                   )}
@@ -551,7 +557,7 @@ export default function Bills() {
                 <button type="button" onClick={closeBillModal} className="flex-1 btn-secondary">
                   Cancel
                 </button>
-                <button type="submit" className="flex-1 btn-primary">
+                <button type="submit" disabled={submitting} className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed">
                   {editingBill ? 'Save Changes' : 'Add Bill'}
                 </button>
               </div>
@@ -626,12 +632,7 @@ export default function Bills() {
                       <option value="">Choose a transaction...</option>
                       {expenseTransactions.map((tx) => (
                         <option key={tx.id} value={tx.id}>
-                          {tx.description} - {formatCurrency(tx.amount)} (
-                          {new Date(tx.date).toLocaleDateString('en-US', {
-                            month: 'short',
-                            day: 'numeric',
-                          })}
-                          )
+                          {tx.description} - {formatCurrency(tx.amount)} ({formatShortDate(tx.date)})
                         </option>
                       ))}
                     </select>
@@ -710,8 +711,8 @@ export default function Bills() {
                 </button>
                 <button
                   type="submit"
-                  className="flex-1 btn-primary"
-                  disabled={payMode === 'link' && !selectedTransactionId}
+                  className="flex-1 btn-primary disabled:opacity-50 disabled:cursor-not-allowed"
+                  disabled={paySubmitting || (payMode === 'link' && !selectedTransactionId)}
                 >
                   <Check size={16} className="inline mr-1" />
                   Mark as Paid

@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
+import { useToast } from '../context/ToastContext';
 import { Shield, ShieldCheck, ShieldOff, Key, X, Download, Upload, AlertTriangle } from 'lucide-react';
 
 export default function Settings() {
   const { user, refreshUser } = useAuth();
+  const toast = useToast();
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
 
   // MFA setup state
   const [showMfaSetup, setShowMfaSetup] = useState(false);
@@ -33,13 +33,12 @@ export default function Settings() {
 
   const handleSetupMfa = async () => {
     setLoading(true);
-    setError('');
     try {
       const data = await api.setupMfa();
       setMfaData(data);
       setShowMfaSetup(true);
     } catch (err) {
-      setError(err.message);
+      toast.error(err.message || 'Failed to start 2FA setup');
     } finally {
       setLoading(false);
     }
@@ -48,16 +47,15 @@ export default function Settings() {
   const handleEnableMfa = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
     try {
       await api.enableMfa(mfaCode);
-      setSuccess('Two-factor authentication enabled successfully!');
+      toast.success('Two-factor authentication enabled successfully!');
       setShowMfaSetup(false);
       setMfaCode('');
       setMfaData(null);
       await refreshUser();
     } catch (err) {
-      setError(err.message);
+      toast.error(err.message || 'Failed to enable 2FA');
     } finally {
       setLoading(false);
     }
@@ -66,16 +64,15 @@ export default function Settings() {
   const handleDisableMfa = async (e) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
     try {
       await api.disableMfa(disableCode, disablePassword);
-      setSuccess('Two-factor authentication disabled.');
+      toast.success('Two-factor authentication disabled.');
       setShowMfaDisable(false);
       setDisableCode('');
       setDisablePassword('');
       await refreshUser();
     } catch (err) {
-      setError(err.message);
+      toast.error(err.message || 'Failed to disable 2FA');
     } finally {
       setLoading(false);
     }
@@ -83,23 +80,22 @@ export default function Settings() {
 
   const handleChangePassword = async (e) => {
     e.preventDefault();
-    setError('');
 
     if (newPassword !== confirmPassword) {
-      setError('New passwords do not match');
+      toast.error('New passwords do not match');
       return;
     }
 
     setLoading(true);
     try {
       await api.changePassword(currentPassword, newPassword);
-      setSuccess('Password changed successfully!');
+      toast.success('Password changed successfully!');
       setShowPasswordChange(false);
       setCurrentPassword('');
       setNewPassword('');
       setConfirmPassword('');
     } catch (err) {
-      setError(err.message);
+      toast.error(err.message || 'Failed to change password');
     } finally {
       setLoading(false);
     }
@@ -107,7 +103,6 @@ export default function Settings() {
 
   const handleExportBackup = async () => {
     setBackupLoading(true);
-    setError('');
     try {
       const { blob, filename } = await api.exportBackup();
       const url = URL.createObjectURL(blob);
@@ -118,9 +113,9 @@ export default function Settings() {
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
-      setSuccess('Backup downloaded successfully!');
+      toast.success('Backup downloaded successfully!');
     } catch (err) {
-      setError(err.message);
+      toast.error(err.message || 'Failed to export backup');
     } finally {
       setBackupLoading(false);
     }
@@ -138,16 +133,15 @@ export default function Settings() {
   const handleRestoreBackup = async () => {
     if (!restoreFile) return;
     setRestoreLoading(true);
-    setError('');
     try {
       const formData = new FormData();
-      formData.append('file', restoreFile);
+      formData.append('backup', restoreFile);
       const result = await api.restoreBackup(formData);
-      setSuccess(`Backup restored successfully! ${result.totalRestored} items imported.`);
+      toast.success(`Backup restored successfully! ${result.totalRestored ?? 0} items imported.`);
       setShowRestoreConfirm(false);
       setRestoreFile(null);
     } catch (err) {
-      setError(err.message);
+      toast.error(err.message || 'Failed to restore backup. Please check the file format and try again.');
     } finally {
       setRestoreLoading(false);
     }
@@ -156,18 +150,6 @@ export default function Settings() {
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Settings</h1>
-
-      {error && (
-        <div className="p-3 bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 text-red-700 dark:text-red-300 rounded-lg text-sm">
-          {error}
-        </div>
-      )}
-
-      {success && (
-        <div className="p-3 bg-green-50 dark:bg-green-900/30 border border-green-200 dark:border-green-700 text-green-700 dark:text-green-300 rounded-lg text-sm">
-          {success}
-        </div>
-      )}
 
       {/* Security Section */}
       <div className="card">

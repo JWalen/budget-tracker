@@ -1,5 +1,6 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../api/client';
+import { useToast } from '../../context/ToastContext';
 import { formatDate } from '../../utils/format';
 import {
   Database, Download, Upload, RefreshCw, HardDrive, Shield,
@@ -7,6 +8,7 @@ import {
 } from 'lucide-react';
 
 export default function AdminBackup() {
+  const toast = useToast();
   const [backups, setBackups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -45,31 +47,61 @@ export default function AdminBackup() {
   }, []);
 
   const handleCreateBackup = async () => {
-    if (!confirm('Create a new database backup?')) return;
+    if (creating) return;
+    if (!window.confirm('Create a new database backup?')) return;
 
     setCreating(true);
     try {
       const result = await api.createAdminBackup();
-      alert(`Backup created: ${result.filename}\nSize: ${(result.size / 1024).toFixed(2)} KB${result.encrypted ? '\nStatus: Encrypted' : ''}`);
+      toast.success(`Backup created: ${result.filename} (${(result.size / 1024).toFixed(2)} KB)${result.encrypted ? ' — Encrypted' : ''}`);
       fetchData();
     } catch (err) {
-      alert('Failed to create backup: ' + err.message);
+      toast.error('Failed to create backup: ' + err.message);
     } finally {
       setCreating(false);
     }
   };
 
+  const cleanupLabels = {
+    logs: 'old log files',
+    sessions: 'expired sessions',
+    login_attempts: 'old login attempts',
+  };
+
   const handleCleanup = async () => {
+    if (cleaning) return;
+    const days = parseInt(cleanupDays) || 30;
+    const label = cleanupLabels[cleanupType] || cleanupType;
+    if (!window.confirm(`This will permanently delete ${label} older than ${days} days. This action cannot be undone. Continue?`)) return;
+
     setCleaning(true);
     try {
-      const result = await api.adminCleanup(cleanupType, cleanupDays);
-      alert(result.message);
+      const result = await api.adminCleanup(cleanupType, days);
+      toast.success(result.message || 'Cleanup completed');
       setShowCleanupModal(false);
       fetchData();
     } catch (err) {
-      alert('Failed to perform cleanup: ' + err.message);
+      toast.error('Failed to perform cleanup: ' + err.message);
     } finally {
       setCleaning(false);
+    }
+  };
+
+  const handleDownloadBackup = async (backup) => {
+    try {
+      // Backend exposes a full admin backup export; there is no per-file
+      // download endpoint, so this streams a fresh full backup.
+      const { blob, filename } = await api.adminExportBackup();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename || backup.filename || 'budget-full-backup.sql';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      toast.error('Failed to download backup: ' + err.message);
     }
   };
 
@@ -261,10 +293,8 @@ export default function AdminBackup() {
                 </div>
                 <button
                   className="p-2 text-gray-600 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400"
-                  onClick={() => {
-                    // In a real app, this would download the backup
-                    alert(`Download backup: ${backup.filename}`);
-                  }}
+                  onClick={() => handleDownloadBackup(backup)}
+                  title="Download full backup"
                 >
                   <Download className="w-4 h-4" />
                 </button>
@@ -404,7 +434,7 @@ export default function AdminBackup() {
                 <input
                   type="number"
                   value={cleanupDays}
-                  onChange={(e) => setCleanupDays(parseInt(e.target.value))}
+                  onChange={(e) => setCleanupDays(e.target.value)}
                   min="1"
                   max="365"
                   className="w-full px-3 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-700 text-gray-900 dark:text-white"

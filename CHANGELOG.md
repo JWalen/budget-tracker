@@ -1,5 +1,26 @@
 # Changelog
 
+## [2.6.0] - 2026-07-02
+
+Security & stability hardening pass (pre-launch audit remediation).
+
+### Security
+- Removed the in-app `POST /api/admin/system/update` endpoint and the host Docker-socket / project bind mounts (host-RCE risk); updates are now an out-of-band operator action.
+- Fixed SQL injection / mass-assignment via client-controlled identifiers (family update, backup restore).
+- Rebuilt shared-budget access on Households (`organizations`); removed the legacy `budget_shares` table (which was breaking login/registration on migrated databases).
+- Receipts are served via an authenticated, ownership-checked route; removed the unauthenticated `/uploads` static mount. Uploads validated by magic bytes.
+- All sessions revoked on password change and admin password reset; unified stronger password policy (min 12); constant-time login to prevent account enumeration; auth/AI rate limiters mounted.
+- Email/provider secrets encrypted at rest; admin responses no longer expose password hashes/MFA secrets; CSP no longer allows inline scripts.
+- Added ownership checks (IDOR fixes) and server-side input validation across data routes; atomic DB transactions for payments/reconcile/restore; CSV formula-injection escaping.
+
+### Fixed
+- Database bootstrap now converges fresh and existing installs automatically on startup (`schema.sql` + startup runner); previously fresh installs were missing feature tables.
+- Pay-period generation infinite loop; reports net-income sign error; numerous null-safety crashes and `$NaN`/timezone display bugs.
+- App-wide: error toasts for previously-silent failures, double-submit protection on forms, loading states on refetch.
+
+### Added / Completed
+- Built out non-functional controls: receipt download/delete, currency default persistence, Reports (category-trend, bill-payment, cash-flow), and Household member management.
+
 ## [2.5.0] - 2026-02-16
 
 ### Added

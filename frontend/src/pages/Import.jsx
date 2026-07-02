@@ -12,10 +12,25 @@ import {
 } from 'lucide-react';
 
 import { formatCurrency } from '../utils/format';
+import { useToast } from '../context/ToastContext';
 
 const STEPS = ['Upload', 'Column Mapping', 'Review & Match', 'Confirm'];
 
 const ACCEPTED_TYPES = ['.csv', '.ofx', '.qfx'];
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
+// Validate a candidate file's extension and size. Returns an error string or null.
+const validateFile = (candidate) => {
+  const ext = '.' + candidate.name.split('.').pop().toLowerCase();
+  if (!ACCEPTED_TYPES.includes(ext)) {
+    return 'Unsupported file type. Please use .csv, .ofx, or .qfx files.';
+  }
+  if (candidate.size > MAX_FILE_SIZE) {
+    return 'File is too large. Maximum size is 10MB.';
+  }
+  return null;
+};
 
 const COLUMN_OPTIONS = [
   { value: '', label: '-- Skip --' },
@@ -26,6 +41,7 @@ const COLUMN_OPTIONS = [
 ];
 
 export default function Import() {
+  const toast = useToast();
   const [currentStep, setCurrentStep] = useState(0);
   const [file, setFile] = useState(null);
   const [dragOver, setDragOver] = useState(false);
@@ -37,7 +53,6 @@ export default function Import() {
   const [selectedAccountId, setSelectedAccountId] = useState('');
 
   // Upload response
-  const [importId, setImportId] = useState(null);
   const [needsMapping, setNeedsMapping] = useState(false);
   const [csvHeaders, setCsvHeaders] = useState([]);
   const [csvPreviewRows, setCsvPreviewRows] = useState([]);
@@ -69,6 +84,7 @@ export default function Import() {
       }
     } catch (error) {
       console.error('Failed to load accounts:', error);
+      toast.error(error.message || 'Failed to load accounts.');
     }
   };
 
@@ -94,22 +110,30 @@ export default function Import() {
 
     const droppedFile = e.dataTransfer.files[0];
     if (droppedFile) {
-      const ext = '.' + droppedFile.name.split('.').pop().toLowerCase();
-      if (ACCEPTED_TYPES.includes(ext)) {
-        setFile(droppedFile);
+      const validationError = validateFile(droppedFile);
+      if (validationError) {
+        setError(validationError);
+        toast.error(validationError);
       } else {
-        setError('Unsupported file type. Please use .csv, .ofx, or .qfx files.');
+        setFile(droppedFile);
       }
     }
-  }, []);
+  }, [toast]);
 
   const handleFileSelect = useCallback((e) => {
     setError(null);
     const selected = e.target.files[0];
     if (selected) {
+      const validationError = validateFile(selected);
+      if (validationError) {
+        setError(validationError);
+        toast.error(validationError);
+        e.target.value = ''; // reset so the same file can be re-selected after fixing
+        return;
+      }
       setFile(selected);
     }
-  }, []);
+  }, [toast]);
 
   const handleUpload = async (mappingOverride = null) => {
     if (!file) return;
@@ -308,7 +332,6 @@ export default function Import() {
     setDragOver(false);
     setUploading(false);
     setError(null);
-    setImportId(null);
     setNeedsMapping(false);
     setCsvHeaders([]);
     setCsvPreviewRows([]);
@@ -333,6 +356,12 @@ export default function Import() {
   };
 
   const summary = getReviewSummary();
+
+  // Header "select all" reflects the same logic as toggleAllRows: checked when
+  // there is at least one non-duplicate row and every non-duplicate is selected.
+  const allRowsSelected =
+    transactions.some((tx) => !tx.isDuplicate) &&
+    transactions.every((tx, idx) => tx.isDuplicate || selectedRows[idx]);
 
   // --- Render ---
 
@@ -683,17 +712,7 @@ export default function Import() {
                     <th className="px-4 py-3 text-left">
                       <input
                         type="checkbox"
-                        checked={
-                          transactions.filter((tx) => !tx.isDuplicate).length > 0 &&
-                          transactions
-                            .filter((tx) => !tx.isDuplicate)
-                            .every((_, idx) => {
-                              const realIdx = transactions.findIndex(
-                                (tx, i) => !tx.isDuplicate && transactions.slice(0, i + 1).filter((t) => !t.isDuplicate).length === idx + 1
-                              );
-                              return selectedRows[realIdx];
-                            })
-                        }
+                        checked={allRowsSelected}
                         onChange={toggleAllRows}
                         className="rounded border-gray-300 dark:border-gray-600 text-blue-600 focus:ring-blue-500"
                       />

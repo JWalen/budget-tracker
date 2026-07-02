@@ -18,6 +18,8 @@ import {
 } from 'recharts';
 import { format, subMonths } from 'date-fns';
 import api from '../api/client';
+import { formatCurrency, formatPercent } from '../utils/format';
+import { useToast } from '../context/ToastContext';
 import {
   TrendingUp,
   TrendingDown,
@@ -29,6 +31,7 @@ import {
 } from 'lucide-react';
 
 export default function Analytics() {
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState(null);
   const [spendingTrends, setSpendingTrends] = useState([]);
@@ -72,20 +75,38 @@ export default function Analytics() {
       setIncomeVsExpenses(incomeVsExpensesRes);
     } catch (error) {
       console.error('Error loading analytics:', error);
+      toast.error(error.message || 'Failed to load analytics.');
     } finally {
       setLoading(false);
     }
   };
 
-  const exportToCSV = () => {
+  const exportToCSV = async () => {
     const month = selectedMonth.getMonth() + 1;
     const year = selectedMonth.getFullYear();
     const type = 'summary'; // Can be changed to 'category-breakdown' or 'budget-performance'
-    
-    window.open(
-      `/api/analytics/export/csv?month=${month}&year=${year}&type=${type}`,
-      '_blank'
-    );
+    const url = `/api/analytics/export/csv?month=${month}&year=${year}&type=${type}`;
+
+    try {
+      const res = await fetch(url, {
+        headers: { Authorization: 'Bearer ' + localStorage.getItem('token') },
+      });
+      if (!res.ok) {
+        throw new Error(`Export failed (${res.status})`);
+      }
+      const blob = await res.blob();
+      const objectUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = objectUrl;
+      link.download = `analytics-${type}-${year}-${String(month).padStart(2, '0')}.csv`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(objectUrl);
+    } catch (error) {
+      console.error('Error exporting CSV:', error);
+      toast.error(error.message || 'Failed to export CSV.');
+    }
   };
 
   if (loading) {
@@ -132,14 +153,14 @@ export default function Analytics() {
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Total Income</p>
                 <p className="text-2xl font-bold text-green-600 dark:text-green-400">
-                  ${summary.current.income.toFixed(2)}
+                  {formatCurrency(summary.current.income)}
                 </p>
-                {summary.changes.income !== 0 && (
+                {Number(summary.changes.income || 0) !== 0 && (
                   <p className={`text-sm flex items-center gap-1 ${
                     summary.changes.income > 0 ? 'text-green-600' : 'text-red-600'
                   }`}>
                     {summary.changes.income > 0 ? <TrendingUp className="w-4 h-4" /> : <TrendingDown className="w-4 h-4" />}
-                    {Math.abs(summary.changes.income).toFixed(1)}% vs last month
+                    {formatPercent(Math.abs(Number(summary.changes.income || 0)))} vs last month
                   </p>
                 )}
               </div>
@@ -152,14 +173,14 @@ export default function Analytics() {
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Total Expenses</p>
                 <p className="text-2xl font-bold text-red-600 dark:text-red-400">
-                  ${summary.current.expenses.toFixed(2)}
+                  {formatCurrency(summary.current.expenses)}
                 </p>
-                {summary.changes.expenses !== 0 && (
+                {Number(summary.changes.expenses || 0) !== 0 && (
                   <p className={`text-sm flex items-center gap-1 ${
                     summary.changes.expenses < 0 ? 'text-green-600' : 'text-red-600'
                   }`}>
                     {summary.changes.expenses < 0 ? <TrendingDown className="w-4 h-4" /> : <TrendingUp className="w-4 h-4" />}
-                    {Math.abs(summary.changes.expenses).toFixed(1)}% vs last month
+                    {formatPercent(Math.abs(Number(summary.changes.expenses || 0)))} vs last month
                   </p>
                 )}
               </div>
@@ -174,7 +195,7 @@ export default function Analytics() {
                 <p className={`text-2xl font-bold ${
                   summary.current.net >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
                 }`}>
-                  ${Math.abs(summary.current.net).toFixed(2)}
+                  {formatCurrency(Math.abs(Number(summary.current.net || 0)))}
                 </p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
                   {summary.current.income_count} income, {summary.current.expense_count} expenses
@@ -189,10 +210,12 @@ export default function Analytics() {
               <div>
                 <p className="text-sm text-gray-600 dark:text-gray-400">Budget Status</p>
                 <p className="text-2xl font-bold text-gray-900 dark:text-gray-100">
-                  {((summary.budgets.spent / summary.budgets.total) * 100).toFixed(0)}%
+                  {Number(summary.budgets.total || 0) === 0
+                    ? '0%'
+                    : formatPercent((Number(summary.budgets.spent || 0) / Number(summary.budgets.total)) * 100, 0)}
                 </p>
                 <p className="text-sm text-gray-600 dark:text-gray-400">
-                  ${summary.budgets.remaining.toFixed(2)} remaining
+                  {formatCurrency(summary.budgets.remaining)} remaining
                 </p>
               </div>
               <BarChart3 className="w-8 h-8 text-primary-600 dark:text-primary-400" />
@@ -240,7 +263,7 @@ export default function Analytics() {
                 cx="50%"
                 cy="50%"
                 labelLine={false}
-                label={(entry) => `${entry.name}: $${entry.total.toFixed(0)}`}
+                label={(entry) => `${entry.name}: $${Number(entry.total || 0).toFixed(0)}`}
                 outerRadius={80}
                 fill="#8884d8"
                 dataKey="total"
@@ -317,9 +340,11 @@ export default function Analytics() {
                       />
                       {cat.name}
                     </td>
-                    <td className="text-right font-semibold">${parseFloat(cat.total).toFixed(2)}</td>
+                    <td className="text-right font-semibold">{formatCurrency(cat.total)}</td>
                     <td className="text-right">
-                      {((parseFloat(cat.total) / summary.current.expenses) * 100).toFixed(1)}%
+                      {Number(summary.current.expenses || 0) === 0
+                        ? '0%'
+                        : formatPercent((Number(cat.total || 0) / Number(summary.current.expenses)) * 100)}
                     </td>
                   </tr>
                 ))}

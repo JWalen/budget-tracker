@@ -1,8 +1,10 @@
 import { useState, useEffect } from 'react';
 import { api } from '../../api/client';
+import { useToast } from '../../context/ToastContext';
 import { Mail, Save, Send, AlertCircle, CheckCircle, Server, Key } from 'lucide-react';
 
 export default function AdminEmailSettings() {
+  const toast = useToast();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
@@ -40,7 +42,7 @@ export default function AdminEmailSettings() {
       }));
     } catch (err) {
       setError('Failed to load email configuration');
-      console.error(err);
+      toast.error(err.message || 'Failed to load email configuration');
     } finally {
       setLoading(false);
     }
@@ -53,6 +55,7 @@ export default function AdminEmailSettings() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (saving) return;
     setSaving(true);
     setError(null);
     setSuccess(null);
@@ -76,6 +79,7 @@ export default function AdminEmailSettings() {
 
   const handleTestEmail = async (e) => {
     e.preventDefault();
+    if (testing) return;
     if (!testEmail) return;
 
     setTesting(true);

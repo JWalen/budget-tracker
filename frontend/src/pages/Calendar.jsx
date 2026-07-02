@@ -4,8 +4,28 @@ import { useBudget } from '../context/BudgetContext';
 import { ChevronLeft, ChevronRight, Plus, X, TrendingUp, TrendingDown } from 'lucide-react';
 
 import { formatCurrency, MONTHS } from '../utils/format';
+import { useToast } from '../context/ToastContext';
 
 const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+
+// Resolve a value to a day-of-month (1-31) using LOCAL parsing.
+// Accepts a day-of-month integer (1-31) directly, a date-only string
+// ("YYYY-MM-DD..."), or any other parseable date string.
+const toDayOfMonth = (value) => {
+  if (value == null || value === '') return null;
+  const raw = String(value).trim();
+  // Pure integer day-of-month (no date separators)
+  if (/^\d{1,2}$/.test(raw)) {
+    const n = Number(raw);
+    if (n >= 1 && n <= 31) return n;
+  }
+  // Date-only / ISO string: take the day component directly to avoid
+  // the UTC-midnight off-by-one shift.
+  const dateOnly = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (dateOnly) return Number(dateOnly[3]);
+  const d = new Date(raw);
+  return isNaN(d.getTime()) ? null : d.getDate();
+};
 
 export default function Calendar() {
   const [transactions, setTransactions] = useState([]);
@@ -16,6 +36,7 @@ export default function Calendar() {
   const [currentDate, setCurrentDate] = useState(new Date());
   const [selectedDay, setSelectedDay] = useState(null);
   const { activeBudgetOwner } = useBudget();
+  const toast = useToast();
 
   const month = currentDate.getMonth() + 1;
   const year = currentDate.getFullYear();
@@ -25,6 +46,7 @@ export default function Calendar() {
   }, [month, year, activeBudgetOwner?.id]);
 
   const loadData = async () => {
+    setLoading(true);
     try {
       const [txData, billData, debtData, payPeriodData] = await Promise.all([
         api.getTransactions({ month, year }),
@@ -32,12 +54,12 @@ export default function Calendar() {
         api.getDebts({ is_paid: 'false' }).catch(() => []),
         api.getPayPeriods({ month, year }).catch(() => []),
       ]);
-      setTransactions(txData);
-      setBills(billData);
-      setDebts(debtData);
-      setPayPeriods(payPeriodData || []);
-    } catch (error) {
-      console.error('Failed to load calendar data:', error);
+      setTransactions(Array.isArray(txData) ? txData : []);
+      setBills(Array.isArray(billData) ? billData : []);
+      setDebts(Array.isArray(debtData) ? debtData : []);
+      setPayPeriods(Array.isArray(payPeriodData) ? payPeriodData : []);
+    } catch (err) {
+      toast.error(err.message || 'Something went wrong');
     } finally {
       setLoading(false);
     }
@@ -52,47 +74,50 @@ export default function Calendar() {
   const today = new Date();
   const isCurrentMonth = today.getMonth() + 1 === month && today.getFullYear() === year;
 
-  // Group transactions by day
+  // Group transactions by local day-of-month
   const txByDay = {};
   transactions.forEach((tx) => {
-    const day = new Date(tx.date).getDate();
+    const day = toDayOfMonth(tx.date);
+    if (day == null) return;
     if (!txByDay[day]) txByDay[day] = [];
     txByDay[day].push(tx);
   });
 
-  // Group bills by due date
+  // Group bills by due date (day-of-month)
   const billsByDay = {};
   bills.forEach((bill) => {
-    const day = bill.due_date;
+    const day = toDayOfMonth(bill.due_date);
+    if (day == null) return;
     if (!billsByDay[day]) billsByDay[day] = [];
     billsByDay[day].push(bill);
   });
 
-  // Group debts by due date
+  // Group debts by due date. due_date may be a day-of-month integer OR a date string.
   const debtsByDay = {};
   debts.forEach((debt) => {
-    if (debt.due_date) {
-      if (!debtsByDay[debt.due_date]) debtsByDay[debt.due_date] = [];
-      debtsByDay[debt.due_date].push(debt);
-    }
+    const day = toDayOfMonth(debt.due_date);
+    if (day == null) return;
+    if (!debtsByDay[day]) debtsByDay[day] = [];
+    debtsByDay[day].push(debt);
   });
 
-  // Group pay periods by date
+  // Group pay periods by local day-of-month
   const payPeriodsByDay = {};
   payPeriods.forEach((pp) => {
-    const day = new Date(pp.date).getDate();
+    const day = toDayOfMonth(pp.date);
+    if (day == null) return;
     if (!payPeriodsByDay[day]) payPeriodsByDay[day] = [];
     payPeriodsByDay[day].push(pp);
   });
 
   const getDaySummary = (day) => {
     const dayTxs = txByDay[day] || [];
-    const income = dayTxs.filter((t) => t.type === 'income').reduce((s, t) => s + parseFloat(t.amount), 0);
-    const expenses = dayTxs.filter((t) => t.type === 'expense').reduce((s, t) => s + parseFloat(t.amount), 0);
+    const income = dayTxs.filter((t) => t.type === 'income').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
+    const expenses = dayTxs.filter((t) => t.type === 'expense').reduce((s, t) => s + (parseFloat(t.amount) || 0), 0);
     const dayBills = billsByDay[day] || [];
     const dayDebts = debtsByDay[day] || [];
     const dayPayPeriods = payPeriodsByDay[day] || [];
-    const expectedIncome = dayPayPeriods.reduce((s, pp) => s + parseFloat(pp.amount), 0);
+    const expectedIncome = dayPayPeriods.reduce((s, pp) => s + (parseFloat(pp.amount) || 0), 0);
     return { income, expenses, bills: dayBills, debts: dayDebts, transactions: dayTxs, payPeriods: dayPayPeriods, expectedIncome };
   };
 

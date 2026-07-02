@@ -11,6 +11,16 @@ const headers = () => ({
 
 const handleResponse = async (response) => {
   if (!response.ok) {
+    // On an expired/invalid session, clear local auth and notify the app so it
+    // can redirect to login instead of silently failing every request.
+    if (response.status === 401) {
+      const hadToken = !!getToken();
+      localStorage.removeItem('token');
+      localStorage.removeItem('budgetOwnerId');
+      if (hadToken && typeof window !== 'undefined') {
+        window.dispatchEvent(new CustomEvent('auth:unauthorized'));
+      }
+    }
     const error = await response.json().catch(() => ({ error: 'Request failed' }));
     throw new Error(error.error || 'Request failed');
   }

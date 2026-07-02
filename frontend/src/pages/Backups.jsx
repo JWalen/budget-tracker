@@ -1,10 +1,10 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
+import { useToast } from '../context/ToastContext';
 import {
   Save,
   Download,
-  Upload,
   Clock,
   HardDrive,
   Cloud,
@@ -17,12 +17,17 @@ import {
   AlertCircle,
   Calendar,
   Shield,
+  X,
 } from 'lucide-react';
 
 export default function Backups() {
   const { user } = useAuth();
+  const toast = useToast();
   const [backups, setBackups] = useState([]);
   const [schedules, setSchedules] = useState([]);
+  const [savingSchedule, setSavingSchedule] = useState(false);
+  const [savingStorage, setSavingStorage] = useState(false);
+  const [restoring, setRestoring] = useState(false);
   const [storageConfig, setStorageConfig] = useState({
     type: 'server',
     path: '',
@@ -74,7 +79,7 @@ export default function Backups() {
       setSchedules(scheduleData || []);
       setStorageConfig(configData || { type: 'local', path: '', credentials: {} });
     } catch (error) {
-      console.error('Failed to load backup data:', error);
+      toast.error(error.message || 'Failed to load backup data');
     } finally {
       setLoading(false);
     }
@@ -100,52 +105,43 @@ export default function Backups() {
         document.body.removeChild(a);
         window.URL.revokeObjectURL(url);
 
-        alert('Backup downloaded successfully!');
+        toast.success('Backup downloaded successfully!');
       } else {
         // Save to configured storage
         const result = await api.createBackup({
           storageType: storageConfig.type,
           isAdminBackup: user?.is_admin,
         });
-        alert(`Backup created successfully! File: ${result.filename}`);
+        toast.success(`Backup created successfully! File: ${result.filename}`);
         loadData();
       }
     } catch (error) {
-      console.error('Backup failed:', error);
-      alert('Backup failed. Please check your storage configuration.');
+      toast.error(error.message || 'Backup failed. Please check your storage configuration.');
     } finally {
       setBackupInProgress(false);
     }
   };
 
-  const handleRestore = async (backupId) => {
-    if (!confirm('Are you sure you want to restore from this backup? This will overwrite current data.')) {
-      return;
-    }
-
-    try {
-      await api.restoreBackup(backupId);
-      alert('Restore completed successfully! Please log out and log back in.');
-    } catch (error) {
-      console.error('Restore failed:', error);
-      alert('Restore failed. Please try again.');
-    }
-  };
-
   const handleCreateSchedule = async (e) => {
     e.preventDefault();
+    if (savingSchedule) return;
+    setSavingSchedule(true);
     try {
       await api.createBackupSchedule(scheduleForm);
+      toast.success('Backup schedule created');
       setShowScheduleModal(false);
       loadData();
     } catch (error) {
-      console.error('Failed to create schedule:', error);
-      alert('Failed to create schedule. Please try again.');
+      toast.error(error.message || 'Failed to create schedule');
+    } finally {
+      setSavingSchedule(false);
     }
   };
 
   const handleSaveStorage = async (e) => {
     e.preventDefault();
+    if (savingStorage) return;
+    setSavingStorage(true);
     try {
       const config = {
         type: storageForm.type,
@@ -191,10 +187,11 @@ export default function Backups() {
       await api.saveBackupConfig(config);
       setStorageConfig(config);
       setShowStorageModal(false);
-      alert('Storage configuration saved successfully!');
+      toast.success('Storage configuration saved successfully!');
     } catch (error) {
-      console.error('Failed to save storage config:', error);
-      alert('Failed to save storage configuration.');
+      toast.error(error.message || 'Failed to save storage configuration');
+    } finally {
+      setSavingStorage(false);
     }
   };
 
@@ -203,7 +200,7 @@ export default function Backups() {
       await api.updateBackupSchedule(id, { enabled });
       loadData();
     } catch (error) {
-      console.error('Failed to toggle schedule:', error);
+      toast.error(error.message || 'Failed to update schedule');
     }
   };
 
@@ -211,9 +208,10 @@ export default function Backups() {
     if (!confirm('Delete this backup schedule?')) return;
     try {
       await api.deleteBackupSchedule(id);
+      toast.success('Schedule deleted');
       loadData();
     } catch (error) {
-      console.error('Failed to delete schedule:', error);
+      toast.error(error.message || 'Failed to delete schedule');
     }
   };
 
@@ -424,15 +422,6 @@ export default function Backups() {
                         >
                           <Download size={16} />
                         </button>
-                        {user?.is_admin && (
-                          <button
-                            onClick={() => handleRestore(backup.id)}
-                            className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
-                            title="Restore"
-                          >
-                            <Upload size={16} />
-                          </button>
-                        )}
                       </div>
                     </td>
                   </tr>
@@ -468,6 +457,7 @@ export default function Backups() {
             <input
               type="file"
               accept=".json"
+              disabled={restoring}
               onChange={async (e) => {
                 const file = e.target.files?.[0];
                 if (!file) return;
@@ -484,22 +474,21 @@ export default function Backups() {
 
                     // Validate backup structure
                     if (!backupData.version || !backupData.data) {
-                      alert('Invalid backup file format');
+                      toast.error('Invalid backup file format');
                       return;
                     }
 
-                    setLoading(true);
+                    setRestoring(true);
                     const formData = new FormData();
                     formData.append('backup', file);
 
-                    const response = await api.restoreBackup(formData);
-                    alert('Backup restored successfully! The page will reload.');
+                    await api.restoreBackup(formData);
+                    toast.success('Backup restored successfully! The page will reload.');
                     window.location.reload();
                   } catch (error) {
-                    console.error('Restore error:', error);
-                    alert('Failed to restore backup. Please check the file and try again.');
+                    toast.error(error.message || 'Failed to restore backup. Please check the file and try again.');
                   } finally {
-                    setLoading(false);
+                    setRestoring(false);
                     e.target.value = '';
                   }
                 };
@@ -523,8 +512,9 @@ export default function Backups() {
               <button
                 onClick={() => setShowScheduleModal(false)}
                 className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                aria-label="Close"
               >
-                ×
+                <X size={20} />
               </button>
             </div>
 
@@ -599,11 +589,12 @@ export default function Backups() {
                   type="button"
                   onClick={() => setShowScheduleModal(false)}
                   className="flex-1 btn-secondary"
+                  disabled={savingSchedule}
                 >
                   Cancel
                 </button>
-                <button type="submit" className="flex-1 btn-primary">
-                  Create Schedule
+                <button type="submit" className="flex-1 btn-primary" disabled={savingSchedule}>
+                  {savingSchedule ? 'Creating...' : 'Create Schedule'}
                 </button>
               </div>
             </form>
@@ -620,8 +611,9 @@ export default function Backups() {
               <button
                 onClick={() => setShowStorageModal(false)}
                 className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
+                aria-label="Close"
               >
-                ×
+                <X size={20} />
               </button>
             </div>
 
@@ -824,11 +816,12 @@ export default function Backups() {
                   type="button"
                   onClick={() => setShowStorageModal(false)}
                   className="flex-1 btn-secondary"
+                  disabled={savingStorage}
                 >
                   Cancel
                 </button>
-                <button type="submit" className="flex-1 btn-primary">
-                  Save Configuration
+                <button type="submit" className="flex-1 btn-primary" disabled={savingStorage}>
+                  {savingStorage ? 'Saving...' : 'Save Configuration'}
                 </button>
               </div>
             </form>

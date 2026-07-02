@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../api/client';
+import { useToast } from '../context/ToastContext';
 import {
   Brain, Send, AlertCircle, TrendingUp, TrendingDown,
   Lightbulb, Loader, Check, X, Sparkles, MessageSquare,
@@ -7,6 +8,7 @@ import {
 } from 'lucide-react';
 
 export default function AIAssistant() {
+  const toast = useToast();
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -51,6 +53,7 @@ export default function AIAssistant() {
       }
     } catch (error) {
       console.error('Failed to check AI status:', error);
+      toast.error(error.message || 'Failed to check AI status.');
     }
   };
 
@@ -67,6 +70,7 @@ export default function AIAssistant() {
       setRecommendations(budgetRecs.recommendations);
     } catch (error) {
       console.error('Failed to load AI dashboard:', error);
+      toast.error(error.message || 'Failed to load AI dashboard.');
     }
   };
 
@@ -110,10 +114,10 @@ export default function AIAssistant() {
     if (typeof response === 'object') {
       if (response.type === 'spending_summary') {
         const { data } = response;
-        return `📊 Spending Summary:\n• Total Expenses: $${data.total_expenses?.toFixed(2)}\n• Total Income: $${data.total_income?.toFixed(2)}\n• Transactions: ${data.expense_count} expenses, ${data.income_count} income`;
+        return `📊 Spending Summary:\n• Total Expenses: $${Number(data.total_expenses || 0).toFixed(2)}\n• Total Income: $${Number(data.total_income || 0).toFixed(2)}\n• Transactions: ${data.expense_count} expenses, ${data.income_count} income`;
       } else if (response.type === 'budget_status') {
         return `📈 Budget Status:\n${response.data.map(b =>
-          `• ${b.category}: $${b.spent.toFixed(2)}/$${b.budget.toFixed(2)} (${b.remaining > 0 ? `$${b.remaining.toFixed(2)} left` : `$${Math.abs(b.remaining).toFixed(2)} over`})`
+          `• ${b.category}: $${Number(b.spent || 0).toFixed(2)}/$${Number(b.budget || 0).toFixed(2)} (${Number(b.remaining || 0) > 0 ? `$${Number(b.remaining || 0).toFixed(2)} left` : `$${Math.abs(Number(b.remaining || 0)).toFixed(2)} over`})`
         ).join('\n')}`;
       } else if (response.type === 'ai_response') {
         return response.response;
@@ -130,6 +134,7 @@ export default function AIAssistant() {
       setBillOptimization(optimization);
     } catch (error) {
       console.error('Failed to optimize bills:', error);
+      toast.error(error.message || 'Failed to optimize bills.');
     } finally {
       setLoading(false);
     }
@@ -339,7 +344,7 @@ export default function AIAssistant() {
                       </span>
                     </div>
                     <div className="text-sm text-gray-600 dark:text-gray-400 mt-1">
-                      ${anomaly.amount.toFixed(2)} • {anomaly.category} • {new Date(anomaly.date).toLocaleDateString()}
+                      ${Number(anomaly.amount || 0).toFixed(2)} • {anomaly.category} • {new Date(anomaly.date).toLocaleDateString()}
                     </div>
                     <p className="text-xs text-gray-500 dark:text-gray-500 mt-2">
                       {anomaly.explanation}
@@ -385,7 +390,7 @@ export default function AIAssistant() {
                         </span>
                       </div>
                       <div className="text-right">
-                        <div className="font-medium">${assignment.amount.toFixed(2)}</div>
+                        <div className="font-medium">${Number(assignment.amount || 0).toFixed(2)}</div>
                         <div className="text-xs text-primary-600">→ {assignment.assignedTo}</div>
                       </div>
                     </div>
@@ -406,11 +411,11 @@ export default function AIAssistant() {
                         <span className={`text-sm ${
                           period.remainingIncome > 0 ? 'text-green-600' : 'text-red-600'
                         }`}>
-                          {period.remainingIncome > 0 ? '+' : ''}${period.remainingIncome.toFixed(2)}
+                          {period.remainingIncome > 0 ? '+' : ''}${Number(period.remainingIncome || 0).toFixed(2)}
                         </span>
                       </div>
                       <div className="text-sm text-gray-600 dark:text-gray-400">
-                        Bills: ${period.totalAssigned.toFixed(2)}
+                        Bills: ${Number(period.totalAssigned || 0).toFixed(2)}
                       </div>
                     </div>
                   ))}
@@ -470,7 +475,7 @@ export default function AIAssistant() {
                      rec.action === 'increase' ? '↑ Increase' : '↓ Decrease'}
                   </div>
                   <div className="text-sm">
-                    ${rec.currentBudget.toFixed(2)} → ${rec.recommendedBudget.toFixed(2)}
+                    ${Number(rec.currentBudget || 0).toFixed(2)} → ${Number(rec.recommendedBudget || 0).toFixed(2)}
                   </div>
                 </div>
               </div>

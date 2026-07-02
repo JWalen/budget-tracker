@@ -1,7 +1,5 @@
-import { useState, useEffect } from 'react';
-import { useLocation, useNavigate } from 'react-router-dom';
+import { useState } from 'react';
 import { LayoutDashboard, Users, FileText, Database, Bot, Mail, Shield } from 'lucide-react';
-import { api } from '../../api/client';
 import DashboardStats from './DashboardStats';
 import AdminUsers from './AdminUsers';
 import AdminLogs from './AdminLogs';
@@ -11,18 +9,6 @@ import AdminEmailSettings from './AdminEmailSettings';
 
 export default function AdminDashboard() {
   const [activeTab, setActiveTab] = useState('overview');
-  const location = useLocation();
-  const navigate = useNavigate();
-
-  // Sync tab with URL query param or hash if desired, or just internal state
-  // For now, simple internal state, but let's check if we want to support deep linking
-  useEffect(() => {
-    // If we wanted to map routes to tabs, we could do it here
-    // But since the router handles /admin/* routes separately, we might want to consolidate
-    // strictly under /admin with a tab selector, OR keep the sub-routes.
-    // The user asked to "encompass all the settings needed for admin with tabs"
-    // So a single page with tabs is what they want.
-  }, []);
 
   const tabs = [
     { id: 'overview', label: 'Overview', icon: LayoutDashboard, component: DashboardStats },
@@ -71,13 +57,15 @@ export default function AdminDashboard() {
         </nav>
       </div>
 
-      {/* Tab Content */}
+      {/* Tab Content — render only the active tab so we don't mount all six
+          (and their fetches + polling) at once */}
       <div className="mt-6">
-        {tabs.map((tab) => (
-          <div key={tab.id} className={activeTab === tab.id ? 'block' : 'hidden'}>
-            <tab.component />
-          </div>
-        ))}
+        {(() => {
+          const active = tabs.find((tab) => tab.id === activeTab);
+          if (!active) return null;
+          const ActiveComponent = active.component;
+          return <ActiveComponent />;
+        })()}
       </div>
     </div>
   );

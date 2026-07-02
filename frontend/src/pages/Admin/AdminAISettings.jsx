@@ -1,17 +1,18 @@
 import { useState, useEffect } from 'react';
 import { Cpu, Database, Download, Power, Server, RefreshCw, CheckCircle, AlertCircle } from 'lucide-react';
 import api from '../../api/client';
+import { useToast } from '../../context/ToastContext';
+
+const DEFAULT_CONFIG = { ai_enabled: 'false', ai_model: '', ai_auto_gpu: 'true' };
 
 export default function AdminAISettings() {
-  const [config, setConfig] = useState({
-    ai_enabled: 'false',
-    ai_model: '',
-    ai_auto_gpu: 'true'
-  });
+  const toast = useToast();
+  const [config, setConfig] = useState(DEFAULT_CONFIG);
   const [capabilities, setCapabilities] = useState(null);
   const [models, setModels] = useState([]);
   const [isOllamaRunning, setIsOllamaRunning] = useState(false);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
   const [pullingModel, setPullingModel] = useState(false);
   const [pullProgress, setPullProgress] = useState(null);
   const [newModelName, setNewModelName] = useState('');
@@ -37,30 +38,35 @@ export default function AdminAISettings() {
       const headers = { 'Authorization': `Bearer ${token}` };
       
       const settingsRes = await fetch('/api/admin/ai/settings', { headers });
+      if (!settingsRes.ok) throw new Error('Failed to load AI settings');
       const settingsData = await settingsRes.json();
-      
-      setConfig(settingsData.config);
+
+      setConfig(settingsData.config || DEFAULT_CONFIG);
       setCapabilities(settingsData.capabilities);
       setIsOllamaRunning(settingsData.isOllamaRunning);
-      
+
       if (settingsData.isOllamaRunning) {
         const modelsRes = await fetch('/api/admin/ai/models', { headers });
+        if (!modelsRes.ok) throw new Error('Failed to load AI models');
         const modelsData = await modelsRes.json();
         setModels(modelsData);
       }
     } catch (error) {
       console.error('Failed to load AI settings', error);
+      toast.error(error.message || 'Failed to load AI settings');
     } finally {
       setLoading(false);
     }
   };
 
   const handleSave = async () => {
+    if (saving) return;
+    setSaving(true);
     try {
       const token = localStorage.getItem('token');
-      await fetch('/api/admin/ai/settings', {
+      const response = await fetch('/api/admin/ai/settings', {
         method: 'POST',
-        headers: { 
+        headers: {
           'Authorization': `Bearer ${token}`,
           'Content-Type': 'application/json'
         },
@@ -70,11 +76,13 @@ export default function AdminAISettings() {
           ai_auto_gpu: config.ai_auto_gpu === 'true'
         })
       });
-      setMessage({ type: 'success', text: 'Settings saved successfully' });
-      setTimeout(() => setMessage(null), 3000);
+      if (!response.ok) throw new Error('Failed to save settings');
+      toast.success('Settings saved successfully');
       loadData(); // Reload to confirm state
     } catch (error) {
-      setMessage({ type: 'error', text: 'Failed to save settings' });
+      toast.error(error.message || 'Failed to save settings');
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -207,8 +215,8 @@ export default function AdminAISettings() {
               />
               <span className="text-gray-700 dark:text-gray-300">Auto-detect GPU</span>
             </label>
-            <button onClick={handleSave} className="btn btn-primary">
-              Save Configuration
+            <button onClick={handleSave} disabled={saving} className="btn btn-primary disabled:opacity-50">
+              {saving ? 'Saving...' : 'Save Configuration'}
             </button>
           </div>
         </div>

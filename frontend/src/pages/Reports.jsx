@@ -14,10 +14,12 @@ import { api } from '../api/client';
 import { useAuth } from '../context/AuthContext';
 import { formatCurrency } from '../utils/format';
 import { useBudget } from '../context/BudgetContext';
+import { useToast } from '../context/ToastContext';
 
 export default function Reports() {
   const { user } = useAuth();
   const { isReadOnly } = useBudget();
+  const toast = useToast();
   const [loading, setLoading] = useState(false);
   const [dateRange, setDateRange] = useState({
     startDate: new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().split('T')[0],
@@ -38,6 +40,7 @@ export default function Reports() {
       setCategories(data);
     } catch (error) {
       console.error('Failed to load categories:', error);
+      toast.error(error.message || 'Failed to load categories.');
     }
   };
 
@@ -113,7 +116,7 @@ export default function Reports() {
       setReportData(data);
     } catch (error) {
       console.error('Failed to generate report:', error);
-      alert('Failed to generate report. Please try again.');
+      toast.error(error.message || 'Failed to generate report. Please try again.');
     } finally {
       setLoading(false);
     }
@@ -249,6 +252,172 @@ export default function Reports() {
             })}
           </div>
         );
+
+      case 'category-trend':
+        return (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold">Category Trends</h3>
+            {reportData.trends && reportData.trends.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-gray-600 text-left">
+                      <th className="py-2 pr-4">Month</th>
+                      <th className="py-2 pr-4">Category</th>
+                      <th className="py-2 pr-4 text-right">Transactions</th>
+                      <th className="py-2 text-right">Total</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportData.trends.map((row, idx) => (
+                      <tr key={idx} className="border-b border-gray-100 dark:border-gray-700">
+                        <td className="py-2 pr-4">{row.monthName}</td>
+                        <td className="py-2 pr-4">
+                          <span className="inline-flex items-center gap-2">
+                            <span className="w-3 h-3 rounded" style={{ backgroundColor: row.color }} />
+                            {row.category_name}
+                          </span>
+                        </td>
+                        <td className="py-2 pr-4 text-right text-gray-600 dark:text-gray-400">
+                          {row.transaction_count}
+                        </td>
+                        <td className="py-2 text-right font-semibold">{formatCurrency(Math.abs(row.total))}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                No trend data for the selected period.
+              </div>
+            )}
+          </div>
+        );
+
+      case 'bill-payment':
+        return (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold">Bill Payment History</h3>
+            {reportData.payments && reportData.payments.length > 0 ? (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-gray-200 dark:border-gray-600 text-left">
+                      <th className="py-2 pr-4">Bill</th>
+                      <th className="py-2 pr-4 text-right">Amount Due</th>
+                      <th className="py-2 pr-4">Payment Date</th>
+                      <th className="py-2 pr-4 text-right">Amount Paid</th>
+                      <th className="py-2">Status</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {reportData.payments.map((row, idx) => {
+                      const paid = row.payment_date != null;
+                      return (
+                        <tr key={idx} className="border-b border-gray-100 dark:border-gray-700">
+                          <td className="py-2 pr-4 font-medium">{row.bill_name}</td>
+                          <td className="py-2 pr-4 text-right">{formatCurrency(Math.abs(row.bill_amount))}</td>
+                          <td className="py-2 pr-4">
+                            {paid ? new Date(row.payment_date).toLocaleDateString() : '—'}
+                          </td>
+                          <td className="py-2 pr-4 text-right font-semibold">
+                            {paid ? formatCurrency(Math.abs(row.amount_paid)) : '—'}
+                          </td>
+                          <td className="py-2">
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${
+                              paid
+                                ? 'bg-green-100 dark:bg-green-900/30 text-green-700 dark:text-green-300'
+                                : 'bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-400'
+                            }`}>
+                              {paid ? 'Paid' : 'Unpaid'}
+                            </span>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                No bill payment history for the selected period.
+              </div>
+            )}
+          </div>
+        );
+
+      case 'cash-flow': {
+        const cashFlow = reportData.cashFlow || [];
+        const totalIncome = cashFlow.reduce((sum, w) => sum + Number(w.income || 0), 0);
+        const totalExpenses = cashFlow.reduce((sum, w) => sum + Number(w.expenses || 0), 0);
+        const netTotal = totalIncome - totalExpenses;
+        return (
+          <div className="space-y-4">
+            <h3 className="text-lg font-semibold">Cash Flow Report</h3>
+            {cashFlow.length > 0 ? (
+              <>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="p-4 bg-green-50 dark:bg-green-900/20 rounded-lg">
+                    <div className="text-sm text-green-600 dark:text-green-400">Total Income</div>
+                    <div className="text-xl font-bold text-green-700 dark:text-green-300">
+                      {formatCurrency(totalIncome)}
+                    </div>
+                  </div>
+                  <div className="p-4 bg-red-50 dark:bg-red-900/20 rounded-lg">
+                    <div className="text-sm text-red-600 dark:text-red-400">Total Expenses</div>
+                    <div className="text-xl font-bold text-red-700 dark:text-red-300">
+                      {formatCurrency(Math.abs(totalExpenses))}
+                    </div>
+                  </div>
+                  <div className="p-4 bg-blue-50 dark:bg-blue-900/20 rounded-lg">
+                    <div className="text-sm text-blue-600 dark:text-blue-400">Net Cash Flow</div>
+                    <div className={`text-xl font-bold ${
+                      netTotal >= 0 ? 'text-green-700 dark:text-green-300' : 'text-red-700 dark:text-red-300'
+                    }`}>
+                      {formatCurrency(netTotal)}
+                    </div>
+                  </div>
+                </div>
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm">
+                    <thead>
+                      <tr className="border-b border-gray-200 dark:border-gray-600 text-left">
+                        <th className="py-2 pr-4">Week</th>
+                        <th className="py-2 pr-4 text-right">Income</th>
+                        <th className="py-2 pr-4 text-right">Expenses</th>
+                        <th className="py-2 text-right">Net</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {cashFlow.map((week, idx) => (
+                        <tr key={idx} className="border-b border-gray-100 dark:border-gray-700">
+                          <td className="py-2 pr-4">{week.weekDisplay}</td>
+                          <td className="py-2 pr-4 text-right text-green-600 dark:text-green-400">
+                            {formatCurrency(week.income)}
+                          </td>
+                          <td className="py-2 pr-4 text-right text-red-600 dark:text-red-400">
+                            {formatCurrency(Math.abs(week.expenses))}
+                          </td>
+                          <td className={`py-2 text-right font-semibold ${
+                            Number(week.net) >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'
+                          }`}>
+                            {formatCurrency(week.net)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </>
+            ) : (
+              <div className="text-center py-8 text-gray-500 dark:text-gray-400">
+                No cash flow data for the selected period.
+              </div>
+            )}
+          </div>
+        );
+      }
 
       default:
         return (

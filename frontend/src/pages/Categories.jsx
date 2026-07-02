@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { Plus, Pencil, Trash2, X, Tags } from 'lucide-react';
 import { useBudget } from '../context/BudgetContext';
+import { useToast } from '../context/ToastContext';
 
 const colorOptions = [
   '#ef4444', '#f97316', '#eab308', '#22c55e', '#10b981',
@@ -14,8 +15,10 @@ export default function Categories() {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editing, setEditing] = useState(null);
+  const [submitting, setSubmitting] = useState(false);
 
   const { activeBudgetOwner, isReadOnly } = useBudget();
+  const toast = useToast();
 
   const [form, setForm] = useState({
     name: '',
@@ -29,11 +32,12 @@ export default function Categories() {
   }, [activeBudgetOwner?.id]);
 
   const loadData = async () => {
+    setLoading(true);
     try {
       const data = await api.getCategories();
       setCategories(data);
-    } catch (error) {
-      console.error('Failed to load categories:', error);
+    } catch (err) {
+      toast.error(err.message || 'Something went wrong');
     } finally {
       setLoading(false);
     }
@@ -67,16 +71,22 @@ export default function Categories() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    if (submitting) return;
+    setSubmitting(true);
     try {
       if (editing) {
         await api.updateCategory(editing.id, form);
+        toast.success('Category updated');
       } else {
         await api.createCategory(form);
+        toast.success('Category created');
       }
       closeModal();
       loadData();
-    } catch (error) {
-      console.error('Failed to save category:', error);
+    } catch (err) {
+      toast.error(err.message || 'Something went wrong');
+    } finally {
+      setSubmitting(false);
     }
   };
 
@@ -84,9 +94,10 @@ export default function Categories() {
     if (!confirm('Delete this category? Transactions using it will become uncategorized.')) return;
     try {
       await api.deleteCategory(id);
+      toast.success('Category deleted');
       loadData();
-    } catch (error) {
-      console.error('Failed to delete category:', error);
+    } catch (err) {
+      toast.error(err.message || 'Something went wrong');
     }
   };
 
@@ -266,8 +277,8 @@ export default function Categories() {
                 <button type="button" onClick={closeModal} className="flex-1 btn-secondary">
                   Cancel
                 </button>
-                <button type="submit" className="flex-1 btn-primary">
-                  {editing ? 'Update' : 'Add'}
+                <button type="submit" className="flex-1 btn-primary" disabled={submitting}>
+                  {submitting ? 'Saving...' : editing ? 'Update' : 'Add'}
                 </button>
               </div>
             </form>
