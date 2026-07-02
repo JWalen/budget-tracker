@@ -93,9 +93,9 @@ services:
         condition: service_started
     volumes:
       - ./backend/src:/app/src
-      - /var/run/docker.sock:/var/run/docker.sock
-      - ./update.sh:/app/update.sh:ro
-      - .:/project:rw
+      # SECURITY: Do NOT mount the host Docker socket or the project directory into
+      # the API container. Doing so turns any admin session into host-level RCE.
+      # In-app self-update was removed; deploy from the host instead.
     extra_hosts:
       - "host.docker.internal:host-gateway"
     healthcheck:

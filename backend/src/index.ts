@@ -138,8 +138,8 @@ app.use('/api', apiRateLimiter);
 app.use(sanitizeInput);
 
 // Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/transactions', transactionRoutes);
+app.use('/api/auth', authLimiter, authRoutes); // Strict brute-force protection on auth
+app.use('/api/transactions', transactionLimiter, transactionRoutes);
 app.use('/api/budgets', budgetRoutes);
 app.use('/api/categories', categoryRoutes);
 app.use('/api/recurring', recurringRoutes);

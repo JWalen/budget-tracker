@@ -63,6 +63,11 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
     const { name, amount, date, is_recurring, frequency } = req.body;
     const budgetUserId = (req as any).budgetUserId;
 
+    const validationError = validatePayPeriodInput({ name, amount, date, is_recurring, frequency });
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
+    }
+
     const result = await query(
       `INSERT INTO pay_periods (user_id, name, amount, date, is_recurring, frequency)
        VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
@@ -91,6 +96,11 @@ router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) =>
     const { id } = req.params;
     const { name, amount, date, is_recurring, frequency } = req.body;
     const budgetUserId = (req as any).budgetUserId;
+
+    const validationError = validatePayPeriodInput({ name, amount, date, is_recurring, frequency });
+    if (validationError) {
+      return res.status(400).json({ error: validationError });
+    }
 
     const result = await query(
       `UPDATE pay_periods
@@ -253,8 +263,16 @@ async function generateRecurringInstances(userId: number, basePP: any): Promise<
   const generated: any[] = [];
   let nextDate = new Date(latestDate);
 
-  while (true) {
-    nextDate = getNextDate(nextDate, basePP.frequency);
+  // Safety cap: at most ~1 year of instances at the finest (weekly) cadence.
+  // Prevents an unbounded/infinite loop if getNextDate ever fails to advance.
+  let iterations = 0;
+  const MAX_ITERATIONS = 60;
+
+  while (iterations++ < MAX_ITERATIONS) {
+    const advanced = getNextDate(nextDate, basePP.frequency);
+    // If the date did not advance (unknown/invalid frequency), stop rather than loop forever.
+    if (advanced.getTime() <= nextDate.getTime()) break;
+    nextDate = advanced;
     if (nextDate > threeMonthsOut) break;
 
     // Check if this date already exists
@@ -298,8 +316,41 @@ function getNextDate(current: Date, frequency: string): Date {
         next.setDate(1);
       }
       break;
+    default:
+      // Unknown/invalid frequency: return the date unchanged so callers can
+      // detect non-advancement and stop (see generateRecurringInstances).
+      break;
   }
   return next;
+}
+
+// Allowed recurring frequencies (mirrors the DB CHECK constraint on pay_periods.frequency)
+export const VALID_PAY_PERIOD_FREQUENCIES = ['weekly', 'biweekly', 'monthly', 'semimonthly'];
+
+// Validate pay-period write payloads. Returns an error string, or null if valid.
+function validatePayPeriodInput(input: {
+  name?: unknown;
+  amount?: unknown;
+  date?: unknown;
+  is_recurring?: unknown;
+  frequency?: unknown;
+}): string | null {
+  if (!input.name || typeof input.name !== 'string' || !input.name.trim()) {
+    return 'Name is required';
+  }
+  const amount = Number(input.amount);
+  if (!Number.isFinite(amount) || amount <= 0) {
+    return 'Amount must be a positive number';
+  }
+  if (!input.date || isNaN(new Date(input.date as string).getTime())) {
+    return 'A valid date is required';
+  }
+  if (input.is_recurring) {
+    if (!input.frequency || !VALID_PAY_PERIOD_FREQUENCIES.includes(input.frequency as string)) {
+      return `Recurring pay periods require a frequency of: ${VALID_PAY_PERIOD_FREQUENCIES.join(', ')}`;
+    }
+  }
+  return null;
 }
 
 export default router;
