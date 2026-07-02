@@ -110,9 +110,13 @@ export class AIAssistant {
     return (await this.getConfig()).model;
   }
 
+  private static readonly DEFAULT_MAX_TOKENS = 2048;
+
   // Generate a completion from the configured provider. `context` becomes the
   // system prompt (trusted instructions); `prompt` is the user message.
-  static async generate(prompt: string, context?: string): Promise<string> {
+  // `options.maxTokens` raises the output cap for larger responses (e.g. bulk
+  // categorization returning a JSON array for many transactions).
+  static async generate(prompt: string, context?: string, options?: { maxTokens?: number }): Promise<string> {
     const config = await this.getConfig();
     if (!config.enabled) {
       throw new Error('AI features are disabled');
@@ -121,21 +125,22 @@ export class AIAssistant {
       throw new Error(`No API key configured for provider "${config.provider}"`);
     }
 
+    const maxTokens = options?.maxTokens ?? this.DEFAULT_MAX_TOKENS;
     try {
       return config.provider === 'openai'
-        ? await this.generateOpenAI(config, prompt, context)
-        : await this.generateClaude(config, prompt, context);
+        ? await this.generateOpenAI(config, prompt, context, maxTokens)
+        : await this.generateClaude(config, prompt, context, maxTokens);
     } catch (error) {
       console.error(`AI generation error (${config.provider}):`, error);
       throw error;
     }
   }
 
-  private static async generateClaude(config: AIConfig, prompt: string, context?: string): Promise<string> {
+  private static async generateClaude(config: AIConfig, prompt: string, context: string | undefined, maxTokens: number): Promise<string> {
     const client = new Anthropic({ apiKey: config.apiKey! });
     const message = await client.messages.create({
       model: config.model,
-      max_tokens: 2048,
+      max_tokens: maxTokens,
       ...(context ? { system: context } : {}),
       messages: [{ role: 'user', content: prompt }],
     });
@@ -146,11 +151,11 @@ export class AIAssistant {
       .trim();
   }
 
-  private static async generateOpenAI(config: AIConfig, prompt: string, context?: string): Promise<string> {
+  private static async generateOpenAI(config: AIConfig, prompt: string, context: string | undefined, maxTokens: number): Promise<string> {
     const client = new OpenAI({ apiKey: config.apiKey! });
     const completion = await client.chat.completions.create({
       model: config.model,
-      max_tokens: 2048,
+      max_tokens: maxTokens,
       messages: [
         ...(context ? [{ role: 'system' as const, content: context }] : []),
         { role: 'user' as const, content: prompt },

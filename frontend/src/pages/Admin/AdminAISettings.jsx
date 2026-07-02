@@ -4,6 +4,8 @@ import { useToast } from '../../context/ToastContext';
 
 const DEFAULT_CONFIG = { ai_enabled: 'false', ai_provider: 'claude', ai_model: '' };
 
+const CUSTOM = '__custom__';
+
 const PROVIDERS = [
   {
     id: 'claude',
@@ -12,7 +14,11 @@ const PROVIDERS = [
     keyField: 'anthropic_api_key',
     keyLabel: 'Anthropic API key',
     keyPlaceholder: 'sk-ant-...',
-    modelHint: 'e.g. claude-opus-4-8, claude-sonnet-4-6',
+    models: [
+      { value: 'claude-opus-4-8', label: 'Claude Opus 4.8 — most capable' },
+      { value: 'claude-sonnet-4-6', label: 'Claude Sonnet 4.6 — balanced' },
+      { value: 'claude-haiku-4-5', label: 'Claude Haiku 4.5 — fastest & cheapest' },
+    ],
   },
   {
     id: 'openai',
@@ -21,7 +27,11 @@ const PROVIDERS = [
     keyField: 'openai_api_key',
     keyLabel: 'OpenAI API key',
     keyPlaceholder: 'sk-...',
-    modelHint: 'e.g. gpt-4o, gpt-4o-mini',
+    models: [
+      { value: 'gpt-4o', label: 'GPT-4o — balanced' },
+      { value: 'gpt-4o-mini', label: 'GPT-4o mini — fastest & cheapest' },
+      { value: 'gpt-4-turbo', label: 'GPT-4 Turbo' },
+    ],
   },
 ];
 
@@ -31,6 +41,7 @@ export default function AdminAISettings() {
   const [keysConfigured, setKeysConfigured] = useState({ claude: false, openai: false });
   const [available, setAvailable] = useState(false);
   const [keyInputs, setKeyInputs] = useState({ anthropic_api_key: '', openai_api_key: '' });
+  const [showCustomModel, setShowCustomModel] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -58,6 +69,21 @@ export default function AdminAISettings() {
   };
 
   const activeProvider = PROVIDERS.find((p) => p.id === config.ai_provider) || PROVIDERS[0];
+
+  // A stored model that isn't one of the curated options is treated as "Custom".
+  const knownModel = activeProvider.models.some((m) => m.value === config.ai_model);
+  const isCustomModel = showCustomModel || (!!config.ai_model && !knownModel);
+  const modelSelectValue = isCustomModel ? CUSTOM : (config.ai_model || activeProvider.defaultModel);
+
+  const handleModelSelect = (e) => {
+    const val = e.target.value;
+    if (val === CUSTOM) {
+      setShowCustomModel(true);
+    } else {
+      setShowCustomModel(false);
+      setConfig((c) => ({ ...c, ai_model: val }));
+    }
+  };
 
   const handleSave = async () => {
     if (saving) return;
@@ -146,7 +172,10 @@ export default function AdminAISettings() {
             <select
               className="input w-full"
               value={config.ai_provider}
-              onChange={(e) => setConfig({ ...config, ai_provider: e.target.value })}
+              onChange={(e) => {
+                setShowCustomModel(false);
+                setConfig({ ...config, ai_provider: e.target.value, ai_model: '' });
+              }}
             >
               {PROVIDERS.map((p) => (
                 <option key={p.id} value={p.id}>{p.name}</option>
@@ -156,15 +185,23 @@ export default function AdminAISettings() {
 
           <div>
             <label className="label">Model</label>
-            <input
-              type="text"
-              className="input w-full"
-              value={config.ai_model}
-              placeholder={activeProvider.defaultModel}
-              onChange={(e) => setConfig({ ...config, ai_model: e.target.value })}
-            />
+            <select className="input w-full" value={modelSelectValue} onChange={handleModelSelect}>
+              {activeProvider.models.map((m) => (
+                <option key={m.value} value={m.value}>{m.label}</option>
+              ))}
+              <option value={CUSTOM}>Custom…</option>
+            </select>
+            {isCustomModel && (
+              <input
+                type="text"
+                className="input w-full mt-2"
+                value={config.ai_model}
+                placeholder={`Custom model id (default: ${activeProvider.defaultModel})`}
+                onChange={(e) => setConfig({ ...config, ai_model: e.target.value })}
+              />
+            )}
             <p className="text-xs text-gray-500 mt-1">
-              Leave blank to use the default (<span className="font-mono">{activeProvider.defaultModel}</span>). {activeProvider.modelHint}
+              Default for this provider: <span className="font-mono">{activeProvider.defaultModel}</span>.
             </p>
           </div>
         </div>
