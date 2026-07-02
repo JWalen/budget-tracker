@@ -261,7 +261,10 @@ Respond with ONLY a valid JSON array, no other text. Each element must have:
 Example response format:
 [{"transactionId":1,"categoryId":5,"confidence":0.9}]`;
 
-      const aiResponse = await AIAssistant.generate(prompt);
+      // Give the model enough room to return one JSON object per transaction
+      // (~60 tokens each) so the array isn't truncated mid-response.
+      const categorizeMaxTokens = Math.min(8000, 1024 + txResult.rows.length * 60);
+      const aiResponse = await AIAssistant.generate(prompt, undefined, { maxTokens: categorizeMaxTokens });
 
       // Parse JSON from AI response - extract JSON array from response
       let suggestions;
