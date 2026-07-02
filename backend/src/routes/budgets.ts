@@ -3,6 +3,7 @@ import pool, { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
 import { LoggerClass } from '../services/logger';
+import { handleRouteError } from '../utils/apiError';
 
 const logger = new LoggerClass('Budgets');
 
@@ -86,8 +87,7 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    logger.error('Create budget error:', error);
-    res.status(500).json({ error: 'Server error' });
+    return handleRouteError(res, error, 'Could not save the budget. A budget for this category and month may already exist.', logger);
   }
 });
 
@@ -161,8 +161,7 @@ router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) =>
 
     res.json(result.rows[0]);
   } catch (error) {
-    logger.error('Update budget error:', error);
-    res.status(500).json({ error: 'Server error' });
+    return handleRouteError(res, error, 'Could not update the budget. Please try again.', logger);
   }
 });
 

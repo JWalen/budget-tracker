@@ -24,11 +24,41 @@ const handleResponse = async (response) => {
     if (response.status === 413) {
       throw new Error('File is too large. Please upload a file under 10 MB.');
     }
-    const error = await response.json().catch(() => ({ error: 'Request failed' }));
-    throw new Error(error.error || 'Request failed');
+    // Guards against HTML/empty bodies (e.g. a proxy 404/413 or crash page).
+    const body = await response.json().catch(() => null);
+    throw new Error(extractErrorMessage(body, response.status));
   }
   return response.json();
 };
+
+// Turn an error response body into the most useful message we can.
+const extractErrorMessage = (body, status) => {
+  if (body) {
+    // express-validator validation failures: { errors: [{ msg, path }] }.
+    if (Array.isArray(body.errors) && body.errors.length) {
+      const msg = body.errors
+        .map((e) => {
+          const field = e.path || e.param;
+          return field ? `${field}: ${e.msg}` : e.msg;
+        })
+        .filter(Boolean)
+        .join('; ');
+      if (msg) return withRef(msg, body.requestId);
+    }
+    if (body.error) return withRef(body.error, body.requestId);
+    if (body.message) return withRef(body.message, body.requestId);
+  }
+  // Non-JSON or empty body — fall back to a message based on the status.
+  if (status >= 500) return 'The server ran into a problem. Please try again.';
+  if (status === 404) return 'That resource could not be found.';
+  if (status === 403) return "You don't have permission to do that.";
+  if (status === 429) return 'Too many requests — please wait a moment and try again.';
+  return 'Request failed. Please try again.';
+};
+
+// Append a short correlation id so a user can quote it when reporting an issue.
+const withRef = (message, requestId) =>
+  requestId ? `${message} (ref: ${String(requestId).slice(0, 8)})` : message;
 
 export const api = {
   // Auth

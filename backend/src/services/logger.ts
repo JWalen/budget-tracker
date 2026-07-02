@@ -2,6 +2,7 @@ import winston from 'winston';
 import DailyRotateFile from 'winston-daily-rotate-file';
 import path from 'path';
 import fs from 'fs';
+import { randomUUID } from 'crypto';
 
 // Create logs directory if it doesn't exist
 const logsDir = path.join(process.cwd(), 'logs');
@@ -223,8 +224,16 @@ export const requestLogger = (req: any, res: any, next: any) => {
   const start = Date.now();
   const requestLogger = new Logger('HTTP');
 
+  // Correlation id so a user-reported failure (which sees `requestId` in the
+  // error body) can be tied back to the server log line for this request.
+  if (!req.requestId) {
+    req.requestId = randomUUID();
+  }
+  res.setHeader('X-Request-Id', req.requestId);
+
   // Log request
   requestLogger.debug(`${req.method} ${req.url}`, {
+    requestId: req.requestId,
     method: req.method,
     url: req.url,
     ip: req.ip,

@@ -24,13 +24,31 @@ function parseOFX(content: string): Array<{ date: string; amount: number; descri
     const block = match[1];
     const dateMatch = block.match(/<DTPOSTED>(\d{8})/);
     const amountMatch = block.match(/<TRNAMT>([-\d.]+)/);
-    const nameMatch = block.match(/<NAME>(.+)/);
-    const memoMatch = block.match(/<MEMO>(.+)/);
+    // Capture each tag's value up to the next tag or line break (OFX/SGML
+    // values run until the next element).
+    const grab = (tag: string): string => {
+      const m = block.match(new RegExp(`<${tag}>([^\\r\\n<]+)`, 'i'));
+      return m ? m[1].trim() : '';
+    };
+    const name = grab('NAME');
+    const memo = grab('MEMO');
 
     if (dateMatch && amountMatch) {
       const dateStr = dateMatch[1];
       const amount = parseFloat(amountMatch[1]);
-      const description = (nameMatch ? nameMatch[1].trim() : memoMatch ? memoMatch[1].trim() : 'Unknown');
+      // The OFX spec caps <NAME> at 32 chars, so it's often truncated (e.g.
+      // "CARIBOU CO"); <MEMO> usually carries the full detail. Use the richer
+      // value, and combine them when each adds distinct info so nothing needed
+      // for categorization is lost. Cap at the column limit (255).
+      let description = 'Unknown';
+      if (name && memo) {
+        if (memo.includes(name)) description = memo;
+        else if (name.includes(memo)) description = name;
+        else description = `${name} ${memo}`;
+      } else {
+        description = name || memo || 'Unknown';
+      }
+      description = description.slice(0, 255);
 
       transactions.push({
         date: `${dateStr.slice(0, 4)}-${dateStr.slice(4, 6)}-${dateStr.slice(6, 8)}`,

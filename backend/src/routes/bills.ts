@@ -3,6 +3,7 @@ import pool, { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
 import { LoggerClass } from '../services/logger';
+import { handleRouteError } from '../utils/apiError';
 
 const logger = new LoggerClass('Bills');
 const router = Router();
@@ -81,8 +82,7 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    logger.error('Create bill error:', error);
-    res.status(500).json({ error: 'Server error' });
+    return handleRouteError(res, error, 'Could not create the bill. Please check the details and try again.', logger);
   }
 });
 
@@ -222,8 +222,7 @@ router.post('/:id/pay', requireEditAccess, async (req: AuthRequest, res: Respons
 
     res.json(paymentRow);
   } catch (error) {
-    logger.error('Pay bill error:', error);
-    res.status(500).json({ error: 'Server error' });
+    return handleRouteError(res, error, 'Could not record the bill payment. Please try again.', logger);
   }
 });
 

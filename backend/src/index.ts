@@ -35,6 +35,7 @@ import adminEmailRoutes from './routes/adminEmail';
 import familyRoutes from './routes/family';
 import aiRoutes from './routes/ai';
 import AIAssistant from './services/aiAssistant';
+import { mapPgError } from './utils/apiError';
 import organizationRoutes from './routes/organizations';
 import analyticsRoutes from './routes/analytics';
 import receiptsRoutes from './routes/receipts';
@@ -225,18 +226,42 @@ app.get('/api/ready', async (req, res) => {
   }
 });
 
-// Global error handler
+// JSON 404 for unmatched API routes (otherwise Express returns an HTML page the
+// frontend can't parse, collapsing to a generic "Request failed").
+app.use('/api', (req: any, res: any) => {
+  res.status(404).json({
+    error: `No such endpoint: ${req.method} ${req.originalUrl}`,
+    ...(req.requestId ? { requestId: req.requestId } : {}),
+  });
+});
+
+// Global error handler — catches anything thrown/propagated out of a route.
 app.use((err: any, req: any, res: any, next: any) => {
   logger.error('Unhandled error', err, {
+    requestId: req.requestId,
     url: req.url,
     method: req.method,
     ip: req.ip,
   });
 
+  // Multer (file upload) errors have friendly, specific messages worth surfacing.
+  if (err?.code === 'LIMIT_FILE_SIZE') {
+    return res.status(413).json({ error: 'File is too large. Please upload a file under 10 MB.', requestId: req.requestId });
+  }
+
+  // Recognized database constraint errors -> actionable 4xx.
+  const mapped = mapPgError(err);
+  if (mapped) {
+    return res.status(mapped.status).json({ error: mapped.message, requestId: req.requestId });
+  }
+
   res.status(err.status || 500).json({
+    // In production, don't leak internals — but still give the user a request id
+    // to quote to support, and the raw message in non-production for debugging.
     error: process.env.NODE_ENV === 'production'
-      ? 'Internal server error'
-      : err.message
+      ? 'Something went wrong on our end. Please try again.'
+      : (err?.message || 'Internal server error'),
+    ...(req.requestId ? { requestId: req.requestId } : {}),
   });
 });
 

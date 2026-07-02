@@ -3,6 +3,7 @@ import { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
 import { LoggerClass } from '../services/logger';
+import { handleRouteError } from '../utils/apiError';
 
 const logger = new LoggerClass('Categories');
 
@@ -47,8 +48,7 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
     );
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    logger.error('Create category error:', error);
-    res.status(500).json({ error: 'Server error' });
+    return handleRouteError(res, error, 'Could not create the category. If the name already exists, try a different one.', logger);
   }
 });
 
@@ -76,8 +76,7 @@ router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) =>
     }
     res.json(result.rows[0]);
   } catch (error) {
-    logger.error('Update category error:', error);
-    res.status(500).json({ error: 'Server error' });
+    return handleRouteError(res, error, 'Could not update the category. Please try again.', logger);
   }
 });
 
@@ -96,8 +95,7 @@ router.delete('/:id', requireEditAccess, async (req: AuthRequest, res: Response)
     }
     res.json({ message: 'Category deleted' });
   } catch (error) {
-    logger.error('Delete category error:', error);
-    res.status(500).json({ error: 'Server error' });
+    return handleRouteError(res, error, 'Could not delete the category. If transactions still use it, reassign them first.', logger);
   }
 });
 

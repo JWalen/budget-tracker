@@ -4,6 +4,7 @@ import pool from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
 import { LoggerClass } from '../services/logger';
+import { handleRouteError } from '../utils/apiError';
 
 const logger = new LoggerClass('Accounts');
 const router = Router();
@@ -121,8 +122,7 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
 
     res.status(201).json(result.rows[0]);
   } catch (error) {
-    logger.error('Create account error:', error);
-    res.status(500).json({ error: 'Server error' });
+    return handleRouteError(res, error, 'Could not create the account. Please check the details and try again.', logger);
   }
 });
 
@@ -191,8 +191,7 @@ router.delete('/:id', requireEditAccess, async (req: AuthRequest, res: Response)
 
     res.json({ message: 'Account deleted successfully' });
   } catch (error) {
-    logger.error('Delete account error:', error);
-    res.status(500).json({ error: 'Server error' });
+    return handleRouteError(res, error, 'Could not delete the account. If transactions still reference it, remove or reassign them first.', logger);
   }
 });
 
@@ -244,8 +243,7 @@ router.post('/:id/reconcile', requireEditAccess, async (req: AuthRequest, res: R
       client.release();
     }
   } catch (error) {
-    logger.error('Reconcile account error:', error);
-    res.status(500).json({ error: 'Server error' });
+    return handleRouteError(res, error, 'Could not reconcile the account. Please try again.', logger);
   }
 });
 

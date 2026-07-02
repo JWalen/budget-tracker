@@ -1,5 +1,18 @@
 export const changelog = [
   {
+    version: '2.8.0',
+    date: '2026-07-02',
+    changes: [
+      'AI assistant now remembers your conversation and saves chat history across refreshes (with a Clear button)',
+      'Choose your AI model from a dropdown per provider (Claude or OpenAI), plus a Custom option',
+      'Clearer error messages app-wide: validation reasons, "already in use" / "still in use" hints, and a reference id for support',
+      'Fixed AI transaction categorization getting cut off for large batches',
+      'Fixed a login lockout caused by the session check tripping the brute-force limiter',
+      'Import now accepts files up to 10 MB (was ~1 MB)',
+      'Import no longer truncates OFX/QFX descriptions (uses the full memo field)',
+    ],
+  },
+  {
     version: '2.7.0',
     date: '2026-07-02',
     changes: [
