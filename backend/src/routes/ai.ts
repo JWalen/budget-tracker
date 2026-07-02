@@ -6,18 +6,24 @@ import { body, query as queryValidator } from 'express-validator';
 import { handleValidationErrors } from '../middleware/validation';
 import { query } from '../config/database';
 import { LoggerClass } from '../services/logger';
+import { handleRouteError } from '../utils/apiError';
 
 const logger = new LoggerClass('AI');
 const router = Router();
 
-// AI calls hit a paid external LLM API, so apply a dedicated, stricter rate
-// limiter — 20 requests per 5 minutes per IP.
+// AI calls hit a paid external LLM API, so apply a dedicated rate limiter.
+// 60 requests / 5 min per IP leaves room for the assistant dashboard (which
+// fires several insight calls per load) plus bulk categorization, while still
+// guarding the paid API from abuse.
 const aiLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 20,
-  message: 'Too many AI requests, please slow down and try again shortly.',
+  max: 60,
+  message: { error: 'AI requests are temporarily rate-limited (too many in a short time). Please wait about a minute, then try again.' },
   standardHeaders: true,
   legacyHeaders: false,
+  // Don't count the cheap, non-LLM reads (availability check + chat history)
+  // against the budget — otherwise just opening the assistant page exhausts it.
+  skip: (req) => req.path.endsWith('/status') || req.path.endsWith('/history'),
 });
 
 // All routes require authentication
@@ -57,8 +63,7 @@ router.post('/query',
       const result = await AIAssistant.processNaturalQuery(req.userId!, query);
       res.json(result);
     } catch (error) {
-      logger.error('Natural query error:', error);
-      res.status(500).json({ error: 'Failed to process query' });
+      return handleRouteError(res, error, 'The AI request failed. This is usually an invalid API key or the provider being unreachable — check Admin → AI Configuration.', logger);
     }
   }
 );
@@ -169,8 +174,7 @@ router.post('/chat',
         timestamp: new Date().toISOString()
       });
     } catch (error) {
-      logger.error('AI chat error:', error);
-      res.status(500).json({ error: 'Failed to process message' });
+      return handleRouteError(res, error, 'The AI request failed. This is usually an invalid API key or the provider being unreachable — check Admin → AI Configuration.', logger);
     }
   }
 );

@@ -1,5 +1,23 @@
 # Changelog
 
+## [2.8.0] - 2026-07-02
+
+Consolidates the AI, import, and error-handling work done after the provider switch.
+
+### Added
+- **AI conversational memory + persistent chat history** — new `ai_chat_messages` table; the chat replays recent turns to the model and reloads history after refresh, with a "Clear history" control (`GET`/`DELETE /api/ai/history`).
+- **Model picker** — per-provider model dropdown (Claude / OpenAI) in Admin → AI Configuration, with a Custom option.
+- **Request ids** — every request carries a UUID (logs, `X-Request-Id` header, and error bodies) for support correlation.
+
+### Changed
+- **Error handling overhaul.** Central `mapPgError()` turns Postgres constraint violations into actionable messages ("already in use", "still used by transactions", "the selected category doesn't exist"). The frontend now surfaces express-validator field messages (previously all collapsed to "Request failed"), status-based fallbacks (403/404/429/5xx), and the request id. Added a JSON 404 for unmatched `/api` routes. Key CRUD/AI routes route failures through a shared `handleRouteError`.
+
+### Fixed
+- AI transaction categorization was truncated for large batches (raised the output token budget to scale with the number of transactions).
+- Login lockout: the strict brute-force limiter was applied to the whole `/api/auth` router, throttling `/auth/me` and `/auth/refresh`; scoped it to `/login` and `/register` only.
+- Import upload limit raised 1 MB → 10 MB (Nginx `client_max_body_size` + multer), with a clearer 413 message.
+- Import no longer truncates OFX/QFX descriptions — uses the full `<MEMO>` field (and combines with `<NAME>`) instead of the 32-char-capped `<NAME>`.
+
 ## [2.7.0] - 2026-07-02
 
 Replaced the local Ollama LLM integration with hosted AI providers.
