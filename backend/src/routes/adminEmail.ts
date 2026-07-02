@@ -3,7 +3,15 @@ import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { adminMiddleware } from '../middleware/admin';
 import { sendEmail, testEmailConfig } from '../services/email';
 import { query } from '../config/database';
+import EncryptionService from '../services/encryption';
 import { LoggerClass } from '../services/logger';
+
+// Encrypt a provider secret for storage; returns null for empty/masked values so
+// callers can COALESCE-preserve the existing value.
+const encSecret = (v?: string): string | null => {
+  if (!v || v.includes('*')) return null; // masked/blank → don't overwrite
+  return EncryptionService.encryptAPIKey(v);
+};
 
 const logger = new LoggerClass('AdminEmail');
 const router = Router();
@@ -44,23 +52,29 @@ router.post('/config', async (req: AuthRequest, res: Response) => {
     // First, check if config exists
     const existing = await query('SELECT * FROM email_config WHERE id = 1');
 
+    // Encrypt provider secrets at rest. null means "not provided" → preserve.
+    const encSendgrid = encSecret(sendgridApiKey);
+    const encSmtpPass = encSecret(smtpPass);
+    const encResend = encSecret(resendApiKey);
+
     if (existing.rows.length === 0) {
       // Create initial config
       await query(
         `INSERT INTO email_config (id, provider, from_email, from_name, sendgrid_api_key, smtp_host, smtp_port, smtp_user, smtp_pass, resend_api_key)
          VALUES (1, $1, $2, $3, $4, $5, $6, $7, $8, $9)`,
-        [provider, from, fromName, sendgridApiKey, smtpHost, smtpPort, smtpUser, smtpPass, resendApiKey]
+        [provider, from, fromName, encSendgrid, smtpHost, smtpPort, smtpUser, encSmtpPass, encResend]
       );
     } else {
-      // Update existing config
+      // Update existing config; COALESCE preserves stored secrets when a new
+      // value isn't supplied (e.g. the UI sent a masked placeholder).
       await query(
         `UPDATE email_config SET
          provider = $1, from_email = $2, from_name = $3,
-         sendgrid_api_key = $4, smtp_host = $5, smtp_port = $6,
-         smtp_user = $7, smtp_pass = $8, resend_api_key = $9,
+         sendgrid_api_key = COALESCE($4, sendgrid_api_key), smtp_host = $5, smtp_port = $6,
+         smtp_user = $7, smtp_pass = COALESCE($8, smtp_pass), resend_api_key = COALESCE($9, resend_api_key),
          updated_at = CURRENT_TIMESTAMP
          WHERE id = 1`,
-        [provider, from, fromName, sendgridApiKey, smtpHost, smtpPort, smtpUser, smtpPass, resendApiKey]
+        [provider, from, fromName, encSendgrid, smtpHost, smtpPort, smtpUser, encSmtpPass, encResend]
       );
     }
 

@@ -1,6 +1,18 @@
 import nodemailer from 'nodemailer';
 import sgMail from '@sendgrid/mail';
 import { query } from '../config/database';
+import EncryptionService from './encryption';
+
+// Provider secrets are stored encrypted at rest. Decrypt for runtime use;
+// tolerate legacy plaintext values by falling back to the raw value.
+const decryptSecret = (value?: string | null): string | undefined => {
+  if (!value) return undefined;
+  try {
+    return EncryptionService.decryptAPIKey(value);
+  } catch {
+    return value; // legacy plaintext
+  }
+};
 
 // Email provider configuration
 export type EmailProvider = 'sendgrid' | 'gmail' | 'smtp' | 'resend' | 'none';
@@ -16,12 +28,15 @@ const loadConfigFromDatabase = async () => {
       if (dbConfig.provider) process.env.EMAIL_PROVIDER = dbConfig.provider;
       if (dbConfig.from_email) process.env.EMAIL_FROM = dbConfig.from_email;
       if (dbConfig.from_name) process.env.EMAIL_FROM_NAME = dbConfig.from_name;
-      if (dbConfig.sendgrid_api_key) process.env.SENDGRID_API_KEY = dbConfig.sendgrid_api_key;
+      const sendgrid = decryptSecret(dbConfig.sendgrid_api_key);
+      const smtpPass = decryptSecret(dbConfig.smtp_pass);
+      const resend = decryptSecret(dbConfig.resend_api_key);
+      if (sendgrid) process.env.SENDGRID_API_KEY = sendgrid;
       if (dbConfig.smtp_host) process.env.SMTP_HOST = dbConfig.smtp_host;
       if (dbConfig.smtp_port) process.env.SMTP_PORT = dbConfig.smtp_port.toString();
       if (dbConfig.smtp_user) process.env.SMTP_USER = dbConfig.smtp_user;
-      if (dbConfig.smtp_pass) process.env.SMTP_PASS = dbConfig.smtp_pass;
-      if (dbConfig.resend_api_key) process.env.RESEND_API_KEY = dbConfig.resend_api_key;
+      if (smtpPass) process.env.SMTP_PASS = smtpPass;
+      if (resend) process.env.RESEND_API_KEY = resend;
 
       console.log(`Email configuration loaded from database: ${dbConfig.provider} provider`);
     }
