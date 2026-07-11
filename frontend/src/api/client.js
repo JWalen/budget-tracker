@@ -929,7 +929,21 @@ export const api = {
   getIncomeVsExpenses: (months = 12) =>
     fetch(`${API_URL}/analytics/income-vs-expenses?months=${months}`, {
       headers: headers(),
-    }).then(handleResponse),
+    }).then(async (response) => {
+      if (!response.ok) throw new Error('Failed to load analytics');
+      return response.json();
+    }),
+
+  // Uses the shared headers() so the X-Budget-Owner header is sent — otherwise a
+  // CSV export while viewing a shared budget silently exports your own data.
+  exportAnalyticsCsv: async ({ month, year, type = 'summary' }) => {
+    const response = await fetch(
+      `${API_URL}/analytics/export/csv?month=${month}&year=${year}&type=${type}`,
+      { headers: headers() }
+    );
+    if (!response.ok) throw new Error(`Export failed (${response.status})`);
+    return response.blob();
+  },
 
   // Organizations
   getOrganizations: () =>
@@ -990,10 +1004,11 @@ export const api = {
       headers: headers(),
     }).then(handleResponse),
 
-  applyBudgetTemplate: (templateId) =>
+  applyBudgetTemplate: (templateId, data = {}) =>
     fetch(`${API_URL}/budget-templates/${templateId}/apply`, {
       method: 'POST',
       headers: headers(),
+      body: JSON.stringify(data),
     }).then(handleResponse),
 
   // Currency
