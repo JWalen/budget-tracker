@@ -5,6 +5,7 @@ import { useTheme } from '../context/ThemeContext';
 import { useBudget } from '../context/BudgetContext';
 import ErrorBoundary from './ErrorBoundary';
 import PageSpinner from './PageSpinner';
+import InstallPWA from './InstallPWA';
 import {
   LayoutDashboard,
   ArrowLeftRight,
@@ -410,6 +411,7 @@ export default function Layout() {
                     <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{user?.name}</p>
                     <p className="text-xs text-gray-500 dark:text-gray-400">{user?.email}</p>
                   </div>
+                  <InstallPWA variant="menu" />
                   <button
                     onClick={() => { setShowUserMenu(false); handleLogout(); }}
                     className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
