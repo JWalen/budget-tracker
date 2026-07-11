@@ -281,14 +281,14 @@ export default function AdminUsers() {
                   </td>
                   <td className="px-6 py-4">
                     <div className="flex items-center space-x-2">
-                      <button
+                      <button aria-label="Edit user"
                         onClick={() => handleEdit(user)}
                         className="p-1 text-gray-600 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400"
                         title="Edit user"
                       >
                         <Edit2 className="w-4 h-4" />
                       </button>
-                      <button
+                      <button aria-label="Reset password"
                         onClick={() => {
                           setSelectedUser(user);
                           setShowPasswordModal(true);
@@ -298,7 +298,7 @@ export default function AdminUsers() {
                       >
                         <Key className="w-4 h-4" />
                       </button>
-                      <button
+                      <button aria-label="Toggle MFA"
                         onClick={() => handleToggleMFA(user)}
                         disabled={submitting}
                         className="p-1 text-gray-600 dark:text-gray-400 hover:text-green-600 dark:hover:text-green-400 disabled:opacity-50"
@@ -307,7 +307,7 @@ export default function AdminUsers() {
                         {user.mfa_enabled ? <ShieldOff className="w-4 h-4" /> : <Shield className="w-4 h-4" />}
                       </button>
                       {/* Impersonation intentionally not implemented — see security notes */}
-                      <button
+                      <button aria-label="Delete user"
                         onClick={() => {
                           setSelectedUser(user);
                           setShowDeleteModal(true);
@@ -333,7 +333,7 @@ export default function AdminUsers() {
                 Showing {((page - 1) * pagination.limit) + 1} to {Math.min(page * pagination.limit, pagination.total)} of {pagination.total} users
               </p>
               <div className="flex items-center space-x-2">
-                <button
+                <button aria-label="Previous page"
                   onClick={() => setPage(page - 1)}
                   disabled={page === 1}
                   className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
@@ -343,7 +343,7 @@ export default function AdminUsers() {
                 <span className="text-sm text-gray-700 dark:text-gray-300">
                   Page {page} of {pagination.pages}
                 </span>
-                <button
+                <button aria-label="Next page"
                   onClick={() => setPage(page + 1)}
                   disabled={page === pagination.pages}
                   className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"

@@ -287,7 +287,7 @@ export default function Settings() {
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full">
             <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
               <h2 className="text-lg font-semibold">Restore Backup</h2>
-              <button
+              <button aria-label="Close"
                 onClick={() => {
                   setShowRestoreConfirm(false);
                   setRestoreFile(null);
@@ -341,7 +341,7 @@ export default function Settings() {
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full">
             <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
               <h2 className="text-lg font-semibold">Set Up Two-Factor Authentication</h2>
-              <button
+              <button aria-label="Close"
                 onClick={() => {
                   setShowMfaSetup(false);
                   setMfaCode('');
@@ -413,7 +413,7 @@ export default function Settings() {
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full">
             <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
               <h2 className="text-lg font-semibold">Disable Two-Factor Authentication</h2>
-              <button
+              <button aria-label="Close"
                 onClick={() => {
                   setShowMfaDisable(false);
                   setDisableCode('');
@@ -488,7 +488,7 @@ export default function Settings() {
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full">
             <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
               <h2 className="text-lg font-semibold">Change Password</h2>
-              <button
+              <button aria-label="Close"
                 onClick={() => {
                   setShowPasswordChange(false);
                   setCurrentPassword('');

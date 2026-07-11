@@ -245,7 +245,7 @@ export default function PayPeriods() {
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Pay Periods</h1>
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
-            <button
+            <button aria-label="Previous month"
               onClick={goToPrevMonth}
               className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
             >
@@ -254,7 +254,7 @@ export default function PayPeriods() {
             <span className="font-medium text-gray-900 dark:text-gray-100 min-w-[140px] text-center">
               {MONTHS[month - 1]} {year}
             </span>
-            <button
+            <button aria-label="Next month"
               onClick={goToNextMonth}
               className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
             >
@@ -286,7 +286,7 @@ export default function PayPeriods() {
         <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-xl p-4 flex items-center gap-3">
           <AlertCircle className="text-red-600 dark:text-red-400 flex-shrink-0" size={20} />
           <p className="text-red-800 dark:text-red-300 text-sm">{error}</p>
-          <button
+          <button aria-label="Dismiss error"
             onClick={() => setError(null)}
             className="ml-auto text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200"
           >
@@ -364,14 +364,14 @@ export default function PayPeriods() {
                     </div>
                     {!isReadOnly && (
                       <div className="flex items-center gap-1 ml-2 flex-shrink-0">
-                        <button
+                        <button aria-label="Edit pay period"
                           onClick={() => openEditModal(pp)}
                           className="p-2 text-green-600 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-800/50 rounded-lg"
                           title="Edit"
                         >
                           <Pencil size={16} />
                         </button>
-                        <button
+                        <button aria-label="Delete pay period"
                           onClick={() => handleDelete(pp)}
                           className="p-2 text-green-600 dark:text-green-400 hover:bg-red-50 dark:hover:bg-red-900/30 hover:text-red-600 dark:hover:text-red-400 rounded-lg"
                           title="Delete"
@@ -409,7 +409,7 @@ export default function PayPeriods() {
                               {formatCurrency(bill.amount_override ?? bill.bill_amount)}
                             </span>
                             {!isReadOnly && (
-                              <button
+                              <button aria-label="Remove bill from pay period"
                                 onClick={() => handleUnassignBill(pp.id, bill.bill_id)}
                                 className="p-1 text-gray-400 hover:text-red-500 dark:hover:text-red-400 rounded"
                                 title="Remove"
@@ -524,7 +524,7 @@ export default function PayPeriods() {
               <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                 {editingPP ? 'Edit Pay Period' : 'Add Pay Period'}
               </h2>
-              <button
+              <button aria-label="Close"
                 onClick={closeModal}
                 className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
               >

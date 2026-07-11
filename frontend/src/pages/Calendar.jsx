@@ -154,13 +154,13 @@ export default function Calendar() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Calendar</h1>
         <div className="flex items-center gap-2">
-          <button onClick={goToPrevMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+          <button aria-label="Previous month" onClick={goToPrevMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
             <ChevronLeft size={20} />
           </button>
           <span className="font-medium text-gray-900 dark:text-gray-100 min-w-[140px] text-center">
             {MONTHS[month - 1]} {year}
           </span>
-          <button onClick={goToNextMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+          <button aria-label="Next month" onClick={goToNextMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
             <ChevronRight size={20} />
           </button>
         </div>
@@ -295,7 +295,7 @@ export default function Calendar() {
             <h3 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
               {MONTHS[month - 1]} {selectedDay}, {year}
             </h3>
-            <button
+            <button aria-label="Close"
               onClick={() => setSelectedDay(null)}
               className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
             >

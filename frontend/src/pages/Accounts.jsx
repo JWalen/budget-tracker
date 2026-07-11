@@ -261,13 +261,13 @@ export default function Accounts() {
                   </div>
                   {!isReadOnly && (
                     <div className="flex items-center gap-1">
-                      <button
+                      <button aria-label="Edit account"
                         onClick={() => openModal(account)}
                         className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 rounded"
                       >
                         <Pencil size={14} />
                       </button>
-                      <button
+                      <button aria-label="Delete account"
                         onClick={() => handleDelete(account.id)}
                         className="p-1.5 text-gray-400 hover:text-red-600 rounded"
                       >
@@ -362,7 +362,7 @@ export default function Accounts() {
               <h2 className="text-lg font-semibold">
                 {editingAccount ? 'Edit Account' : 'New Account'}
               </h2>
-              <button onClick={closeModal} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+              <button aria-label="Close" onClick={closeModal} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
                 <X size={20} />
               </button>
             </div>
@@ -481,7 +481,7 @@ export default function Accounts() {
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full">
             <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
               <h2 className="text-lg font-semibold">Reconcile {reconciling.name}</h2>
-              <button onClick={closeReconcile} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+              <button aria-label="Close" onClick={closeReconcile} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
                 <X size={20} />
               </button>
             </div>

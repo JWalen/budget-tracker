@@ -138,13 +138,13 @@ export default function Categories() {
               </div>
               {!isReadOnly && (
                 <div className="flex items-center gap-1">
-                  <button
+                  <button aria-label="Edit category"
                     onClick={() => openModal(cat)}
                     className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                   >
                     <Pencil size={14} />
                   </button>
-                  <button
+                  <button aria-label="Delete category"
                     onClick={() => handleDelete(cat.id)}
                     className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded"
                   >
@@ -193,7 +193,7 @@ export default function Categories() {
               <h2 className="text-lg font-semibold">
                 {editing ? 'Edit Category' : 'New Category'}
               </h2>
-              <button onClick={closeModal} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+              <button aria-label="Close" onClick={closeModal} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
                 <X size={20} />
               </button>
             </div>

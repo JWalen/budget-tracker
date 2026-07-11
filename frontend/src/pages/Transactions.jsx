@@ -353,13 +353,13 @@ export default function Transactions() {
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Transactions</h1>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <button onClick={goToPrevMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+            <button aria-label="Previous month" onClick={goToPrevMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
               <ChevronLeft size={20} />
             </button>
             <span className="font-medium text-gray-900 dark:text-gray-100 min-w-[140px] text-center">
               {MONTHS[month - 1]} {year}
             </span>
-            <button onClick={goToNextMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+            <button aria-label="Next month" onClick={goToNextMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
               <ChevronRight size={20} />
             </button>
           </div>
@@ -402,7 +402,7 @@ export default function Transactions() {
         <div className="card bg-red-50 dark:bg-red-900/20 border-red-200 dark:border-red-800">
           <div className="flex items-center justify-between">
             <span className="text-sm text-red-700 dark:text-red-300">{aiError}</span>
-            <button onClick={() => setAiError('')} className="text-red-500 hover:text-red-700">
+            <button aria-label="Dismiss error" onClick={() => setAiError('')} className="text-red-500 hover:text-red-700">
               <X size={16} />
             </button>
           </div>
@@ -628,13 +628,13 @@ export default function Transactions() {
                     {!isReadOnly && (
                       <td className="px-4 py-3 text-right">
                         <div className="flex items-center justify-end gap-1">
-                          <button
+                          <button aria-label="Edit transaction"
                             onClick={() => openModal(tx)}
                             className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                           >
                             <Pencil size={14} />
                           </button>
-                          <button
+                          <button aria-label="Delete transaction"
                             onClick={() => handleDelete(tx.id)}
                             className="p-1.5 text-gray-400 dark:text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded"
                           >
@@ -659,7 +659,7 @@ export default function Transactions() {
               <h2 className="text-lg font-semibold">
                 {editingTx ? 'Edit Transaction' : 'New Transaction'}
               </h2>
-              <button onClick={closeModal} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+              <button aria-label="Close" onClick={closeModal} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
                 <X size={20} />
               </button>
             </div>
@@ -788,7 +788,7 @@ export default function Transactions() {
                   AI Category Suggestions
                 </h2>
               </div>
-              <button
+              <button aria-label="Close"
                 onClick={() => { setShowAiModal(false); setAiSuggestions([]); }}
                 className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
               >

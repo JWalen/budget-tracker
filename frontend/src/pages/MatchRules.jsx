@@ -254,14 +254,14 @@ export default function MatchRules() {
                 <h3 className="font-semibold text-gray-900 dark:text-gray-100">{rule.name}</h3>
                 {!isReadOnly && (
                   <div className="flex items-center gap-1">
-                    <button
+                    <button aria-label="Edit rule"
                       onClick={() => openModal(rule)}
                       className="p-2 text-gray-400 dark:text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg"
                       title="Edit rule"
                     >
                       <Edit2 size={16} />
                     </button>
-                    <button
+                    <button aria-label="Delete rule"
                       onClick={() => handleDelete(rule.id)}
                       className="p-2 text-gray-400 dark:text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"
                       title="Delete rule"
@@ -327,7 +327,7 @@ export default function MatchRules() {
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full max-h-[90vh] flex flex-col">
             <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700 flex-shrink-0">
               <h2 className="text-lg font-semibold">{editingRule ? 'Edit' : 'Create'} Auto-Categorization Rule</h2>
-              <button onClick={closeModal} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+              <button aria-label="Close" onClick={closeModal} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
                 <X size={20} />
               </button>
             </div>
