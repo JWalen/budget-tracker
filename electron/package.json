@@ -7,7 +7,8 @@
   "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "dist": "electron-builder"
+    "prepare-dist": "node prepare-dist.js",
+    "dist": "npm run prepare-dist && electron-builder --mac --arm64"
   },
   "dependencies": {
     "embedded-postgres": "^17.10.0-beta.17"
@@ -20,34 +21,30 @@
     "appId": "com.jwalen.budgettracker",
     "productName": "Budget Tracker",
     "directories": {
-      "output": "release",
-      "buildResources": "build"
+      "output": "release"
     },
+    "asar": false,
     "files": [
       "main.js",
-      "preload.js",
       "loading.html",
       "assets/**",
-      "backend-dist/**",
-      "frontend-dist/**",
       "node_modules/**"
     ],
-    "asarUnpack": [
-      "node_modules/@embedded-postgres/**",
-      "backend-dist/**"
+    "extraResources": [
+      { "from": "backend-dist", "to": "backend-dist" },
+      { "from": "frontend-dist", "to": "frontend-dist" },
+      { "from": "db", "to": "db" }
     ],
     "mac": {
       "category": "public.app-category.finance",
+      "icon": "assets/icon.png",
+      "identity": null,
       "target": [
         {
           "target": "dmg",
-          "arch": [
-            "arm64",
-            "x64"
-          ]
+          "arch": ["arm64"]
         }
-      ],
-      "icon": "assets/icon.png"
+      ]
     }
   }
 }

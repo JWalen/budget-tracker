@@ -3,3 +3,4 @@ release/
 backend-dist/
 frontend-dist/
 assets/icon.png
+db/

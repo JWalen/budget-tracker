@@ -13,9 +13,26 @@ const fs = require('fs');
 const net = require('net');
 const crypto = require('crypto');
 const http = require('http');
+const os = require('os');
 const { fork } = require('child_process');
 
 const isDev = !app.isPackaged;
+
+// Pin the app name so the data directory (~/Library/Application Support/Budget
+// Tracker) is identical whether launched in dev (npm start) or from the packaged
+// app — otherwise your data would live under two different folders.
+app.setName('Budget Tracker');
+
+// Packaged apps have no visible stdout, so mirror startup diagnostics to a file
+// next to the app data. Falls back to the OS temp dir before userData is ready.
+let LOG_FILE = path.join(os.tmpdir(), 'budget-tracker-desktop.log');
+function log(...args) {
+  const line = `[${new Date().toISOString()}] ${args.map(String).join(' ')}\n`;
+  try { fs.appendFileSync(LOG_FILE, line); } catch {}
+  console.log(...args);
+}
+process.on('uncaughtException', (e) => { log('uncaughtException:', e && e.stack || e); });
+process.on('unhandledRejection', (e) => { log('unhandledRejection:', e && e.stack || e); });
 
 // --- paths -----------------------------------------------------------------
 // In dev we point at the sibling backend/frontend build outputs; packaged builds
@@ -30,11 +47,12 @@ function resolvePaths() {
       initSql: path.join(repo, 'database', 'init.sql'),
     };
   }
-  const base = path.join(process.resourcesPath, 'app.asar.unpacked');
+  // Packaged: shipped via electron-builder `extraResources` (copied verbatim,
+  // preserving the backend's nested node_modules) into Contents/Resources/.
   return {
-    backendEntry: path.join(base, 'backend-dist', 'index.js'),
-    frontendDir: path.join(__dirname, 'frontend-dist'),
-    initSql: path.join(base, 'database', 'init.sql'),
+    backendEntry: path.join(process.resourcesPath, 'backend-dist', 'index.js'),
+    frontendDir: path.join(process.resourcesPath, 'frontend-dist'),
+    initSql: path.join(process.resourcesPath, 'db', 'init.sql'),
   };
 }
 
@@ -183,6 +201,9 @@ function createWindow(url) {
 }
 
 async function bootstrap() {
+  try { LOG_FILE = path.join(app.getPath('userData'), 'desktop.log'); } catch {}
+  log('bootstrap start; isDev=', isDev, 'resourcesPath=', process.resourcesPath);
+  log('paths=', JSON.stringify(resolvePaths()));
   const loading = new BrowserWindow({
     width: 420, height: 300, resizable: false, frame: false,
     backgroundColor: '#0f172a', title: 'Budget Tracker',
@@ -191,13 +212,18 @@ async function bootstrap() {
 
   try {
     const cfg = loadConfig();
+    log('config loaded');
     const pgPort = await startPostgres(cfg);
+    log('postgres started on', pgPort);
     const apiPort = await freePort();
     startBackend(cfg, pgPort, apiPort);
+    log('backend forked on', apiPort);
     await waitForHealth(apiPort);
+    log('backend healthy; loading window');
     createWindow(`http://127.0.0.1:${apiPort}`);
     loading.close();
   } catch (err) {
+    log('STARTUP FAILED:', err && err.stack || err);
     loading.close();
     dialog.showErrorBox('Budget Tracker — startup failed', String(err && err.stack || err));
     app.quit();
@@ -211,7 +237,20 @@ async function shutdown() {
   try { if (pg) await pg.stop(); } catch (e) { console.error('pg stop error', e); }
 }
 
-app.whenReady().then(bootstrap);
+// Single-instance lock: a second launch would start another embedded Postgres
+// against the same data directory and conflict/corrupt it. Refuse the second
+// instance and focus the existing window instead.
+if (!app.requestSingleInstanceLock()) {
+  app.quit();
+} else {
+  app.on('second-instance', () => {
+    if (mainWindow) {
+      if (mainWindow.isMinimized()) mainWindow.restore();
+      mainWindow.focus();
+    }
+  });
+  app.whenReady().then(bootstrap);
+}
 
 app.on('window-all-closed', async () => {
   await shutdown();
