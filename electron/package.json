@@ -1,0 +1,53 @@
+{
+  "name": "budget-tracker-desktop",
+  "version": "2.10.0",
+  "description": "Budget Tracker desktop app (Electron + embedded Postgres, no Docker)",
+  "main": "main.js",
+  "author": "Joshua Walen",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "dist": "electron-builder"
+  },
+  "dependencies": {
+    "embedded-postgres": "^17.10.0-beta.17"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.jwalen.budgettracker",
+    "productName": "Budget Tracker",
+    "directories": {
+      "output": "release",
+      "buildResources": "build"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "loading.html",
+      "assets/**",
+      "backend-dist/**",
+      "frontend-dist/**",
+      "node_modules/**"
+    ],
+    "asarUnpack": [
+      "node_modules/@embedded-postgres/**",
+      "backend-dist/**"
+    ],
+    "mac": {
+      "category": "public.app-category.finance",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64",
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icon.png"
+    }
+  }
+}
