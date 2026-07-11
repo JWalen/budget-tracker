@@ -14,8 +14,10 @@ function copyDir(src, dest) {
   fs.cpSync(src, dest, { recursive: true });
 }
 // execFile (no shell) with fixed args — avoids any shell interpretation.
+// On Windows the npm launcher is npm.cmd, which execFile needs spelled out.
+const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 function run(cmd, args, cwd) {
-  execFileSync(cmd, args, { cwd, stdio: 'inherit' });
+  execFileSync(cmd === 'npm' ? NPM : cmd, args, { cwd, stdio: 'inherit' });
 }
 
 console.log('==> Building backend…');
