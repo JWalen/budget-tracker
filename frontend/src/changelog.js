@@ -1,5 +1,21 @@
 export const changelog = [
   {
+    version: '2.9.0',
+    date: '2026-07-11',
+    changes: [
+      'Security: closed a backup-restore flaw that could let one account overwrite another’s data; backups no longer include password hashes or MFA secrets; first-admin bootstrap is now race-safe',
+      'Fixed features that previously errored: multi-currency summary, applying a budget template, saving backup settings, and adding a family member with an allowance',
+      'Backup Export, Restore, and Download now work end-to-end (with the correct file format and authenticated downloads)',
+      'Reports: budget performance no longer over-counts spending across multi-month ranges, and category labels display correctly',
+      'Money & dates: recurring items on the 29th–31st no longer skip months; transactions/imports land on the correct day regardless of timezone; debt balances are computed exactly',
+      'Charts now theme correctly in dark mode (no more white tooltip boxes)',
+      'Failed data loads now show a clear error with retry instead of a screen of zeros',
+      'Much faster first load — the app is split into per-page bundles (initial download ~4× smaller)',
+      'Installable PWA with safe offline caching that never stores your financial data; caches clear on logout',
+      'Notifications are now reliably recorded; automatic cleanup keeps the database tidy',
+    ],
+  },
+  {
     version: '2.8.0',
     date: '2026-07-02',
     changes: [

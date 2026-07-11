@@ -1,5 +1,34 @@
 # Changelog
 
+## [2.9.0] - 2026-07-11
+
+Production-readiness pass: security, correctness, infra, and UX hardening across the stack.
+
+### Security
+- **Backup restore no longer trusts client-supplied row ids** — rows are inserted fresh and foreign keys remapped, closing a cross-tenant overwrite/hijack via `ON CONFLICT (id) DO UPDATE` (`backupSchedule.ts`).
+- **Backups exclude credential material** — full backups select an explicit non-secret user column list (no `password_hash`/`mfa_secret`).
+- **First-admin bootstrap is atomic** (`is_admin = NOT EXISTS(...)` inside the INSERT) and registration is transactional; added a `REGISTRATION_ENABLED` gate.
+- **Encryption keys** — MFA/backup keys derive from the boot-validated `ENCRYPTION_KEY`; removed the deterministic dev fallback.
+
+### Fixed
+- **Always-500 features now work**: multi-currency summary and budget-template apply (queried non-existent `organization_id`), save-backup-config and family-allowance creation (missing `UNIQUE` for `ON CONFLICT`).
+- **Backup Export / Restore / Download** wired end-to-end (route mounted, `/:id/download` added, frontend sends multipart + authenticated blob download).
+- **Reports**: budget-performance constrains spend to each budget's own month (no N× over-count) and quotes camelCase aliases so labels aren't `undefined`.
+- **Money & dates**: month-end-safe recurrence (no skipped months), no UTC round-trip on stored dates, debt balances computed in SQL, import amount validation + correct month extraction, `COALESCE` on account/category updates.
+- **Frontend**: charts theme in dark mode; load failures surface a toast + retry; bulk selection clears on month/owner change; pages refetch on shared-budget switch; `AuthContext` no longer logs out on transient errors.
+
+### Added
+- **PWA** — safe service worker (never caches `/api`, network-first navigations, versioned asset cache, cache clear on logout), manifest linked, update flow.
+- **Maintenance scheduler** — hourly cleanup of expired tokens, old login attempts, and read notifications.
+- **Notifications persist** regardless of Socket.IO availability.
+
+### Changed / Infra
+- Backend Dockerfile: multi-stage, `npm ci`, dev-dep prune, non-root `USER node`, exec-form `node` for signal handling; graceful shutdown (SIGTERM drain + `pool.end`).
+- Prod compose: volumes for uploads/backups/logs, `LOG_TO_CONSOLE`, memory limits, frontend healthcheck.
+- Nginx: gzip, immutable asset caching, `X-Forwarded-Proto`, security headers.
+- Code-split all authed routes (initial bundle ~1 MB → ~239 kB); route-level `ErrorBoundary`; memoized Auth/Toast contexts.
+- Removed unused deps (`prisma`, `@sentry/react`, `rate-limit`, `react-lazyload`, `socket.io-client`) and dead frontend utils/API methods.
+
 ## [2.8.0] - 2026-07-02
 
 Consolidates the AI, import, and error-handling work done after the provider switch.
