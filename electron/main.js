@@ -89,10 +89,65 @@ function loadConfig() {
   return cfg;
 }
 
+// Recover from an unclean shutdown (force-quit / crash / power loss). A leftover
+// postmaster.pid stops Postgres from starting; if it belongs to a still-running
+// orphaned postmaster (a previous instance's DB), stop it — the single-instance
+// lock guarantees no *legitimate* second instance, so any live postmaster here is
+// an orphan. Then remove the stale lock so a clean start can proceed.
+function recoverDataDir(dataDir) {
+  const pidFile = path.join(dataDir, 'postmaster.pid');
+  if (!fs.existsSync(pidFile)) return;
+  try {
+    const pid = parseInt(fs.readFileSync(pidFile, 'utf-8').split('\n')[0].trim(), 10);
+    if (pid > 0) {
+      let alive = false;
+      try { process.kill(pid, 0); alive = true; } catch { alive = false; }
+      if (alive) {
+        log('Terminating orphaned Postgres from a previous run, pid', pid);
+        try { process.kill(pid, 'SIGTERM'); } catch {}
+        // Give it a moment to release the data dir.
+        const until = Date.now() + 5000;
+        while (Date.now() < until) {
+          try { process.kill(pid, 0); } catch { break; }
+        }
+      }
+    }
+  } catch (e) {
+    log('recoverDataDir error (continuing):', e && e.message);
+  }
+  try { fs.rmSync(pidFile, { force: true }); } catch {}
+}
+
+// Probe a real connection so we only fork the backend once Postgres actually
+// accepts queries — a resolved start() isn't always the same as "ready".
+async function waitForPgReady(cfg, port, timeoutMs = 20000) {
+  const { Client } = require('pg');
+  const start = Date.now();
+  let lastErr;
+  while (Date.now() - start < timeoutMs) {
+    const client = new Client({ host: '127.0.0.1', port, user: cfg.dbUser, password: cfg.dbPassword, database: 'budget' });
+    try {
+      await client.connect();
+      await client.query('SELECT 1');
+      await client.end();
+      return;
+    } catch (e) {
+      lastErr = e;
+      try { await client.end(); } catch {}
+      await new Promise((r) => setTimeout(r, 400));
+    }
+  }
+  throw new Error(`Postgres did not accept connections in time: ${lastErr && lastErr.message}`);
+}
+
 async function startPostgres(cfg) {
   const { default: EmbeddedPostgres } = await import('embedded-postgres');
   const dataDir = path.join(app.getPath('userData'), 'pgdata');
   const port = await freePort();
+  const firstRun = !fs.existsSync(path.join(dataDir, 'PG_VERSION'));
+
+  // Clean up after any unclean shutdown before starting.
+  if (!firstRun) recoverDataDir(dataDir);
 
   pg = new EmbeddedPostgres({
     databaseDir: dataDir,
@@ -102,17 +157,24 @@ async function startPostgres(cfg) {
     persistent: true,
     authMethod: 'scram-sha-256',
     onLog: () => {},
-    onError: (e) => console.error('[pg]', e),
+    onError: (e) => log('[pg]', e && e.message ? e.message : e),
   });
 
-  // initdb only on first launch (no cluster yet).
-  const firstRun = !fs.existsSync(path.join(dataDir, 'PG_VERSION'));
   if (firstRun) await pg.initialise();
-  await pg.start();
+  try {
+    await pg.start();
+  } catch (e) {
+    // A dirty data dir can fail the first start; recover the lock and retry once.
+    log('pg.start failed, recovering and retrying:', e && e.message);
+    recoverDataDir(dataDir);
+    await pg.start();
+  }
   if (firstRun) {
     await pg.createDatabase('budget');
     await applyInitSql(cfg, port);
   }
+  // Don't fork the backend until Postgres truly answers queries.
+  await waitForPgReady(cfg, port);
   return port;
 }
 
@@ -150,12 +212,31 @@ function startBackend(cfg, pgPort, apiPort) {
     LOG_TO_FILE: 'false',
     LOG_TO_CONSOLE: 'true',
   };
-  backendProc = fork(backendEntry, [], { env, stdio: ['ignore', 'pipe', 'pipe', 'ipc'] });
-  backendProc.stdout?.on('data', (d) => process.stdout.write(`[backend] ${d}`));
-  backendProc.stderr?.on('data', (d) => process.stderr.write(`[backend] ${d}`));
+  // Run the backend with a writable working directory. Launched from Finder the
+  // inherited cwd is "/" (read-only), which breaks any cwd-relative file access.
+  backendProc = fork(backendEntry, [], {
+    env,
+    cwd: app.getPath('userData'),
+    stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
+  });
+  // Mirror the backend's output into the desktop log so a packaged-app failure
+  // (no visible stdout) is always diagnosable; keep the last lines for the dialog.
+  let recentOutput = '';
+  const capture = (d) => {
+    const s = `[backend] ${d}`;
+    process.stdout.write(s);
+    try { fs.appendFileSync(LOG_FILE, s); } catch {}
+    recentOutput = (recentOutput + d).slice(-2000);
+  };
+  backendProc.stdout?.on('data', capture);
+  backendProc.stderr?.on('data', capture);
   backendProc.on('exit', (code) => {
+    log('backend exited with code', code);
     if (!shuttingDown) {
-      dialog.showErrorBox('Budget Tracker', `The backend exited unexpectedly (code ${code}).`);
+      dialog.showErrorBox(
+        'Budget Tracker',
+        `The backend stopped unexpectedly (code ${code}).\n\nRecent output:\n${recentOutput.slice(-600)}\n\nA log is at:\n${LOG_FILE}`
+      );
       app.quit();
     }
   });
