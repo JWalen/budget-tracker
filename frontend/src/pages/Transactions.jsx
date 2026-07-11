@@ -106,6 +106,9 @@ export default function Transactions() {
 
   useEffect(() => {
     loadData();
+    // Clear any bulk selection when the visible set changes — otherwise a bulk
+    // action could apply to now-hidden rows from the previous month/owner.
+    setSelectedTransactions(new Set());
   }, [month, year, activeBudgetOwner?.id]);
 
   const loadData = async () => {
@@ -121,6 +124,7 @@ export default function Transactions() {
       setAccounts(accData.filter(a => a.is_active));
     } catch (error) {
       console.error('Failed to load transactions:', error);
+      toast.error(error.message || 'Could not load transactions');
     } finally {
       setLoading(false);
     }

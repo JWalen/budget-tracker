@@ -437,7 +437,10 @@ export default function Layout() {
             </div>
           )}
           <div className="p-4 lg:p-8">
-            <Outlet />
+            {/* Key the routed subtree by the active budget owner so every page
+                remounts (and refetches) when switching to a shared budget —
+                otherwise pages that load only on mount show the prior owner's data. */}
+            <Outlet key={activeBudgetOwner?.id ?? 'own'} />
           </div>
         </main>
       </div>
