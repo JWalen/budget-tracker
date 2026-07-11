@@ -85,6 +85,22 @@ export default function Backups() {
     }
   };
 
+  const handleDownloadHistory = async (id) => {
+    try {
+      const { blob, filename } = await api.downloadBackup(id);
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (error) {
+      toast.error(error.message || 'Failed to download backup');
+    }
+  };
+
   const performBackup = async (downloadOnly = false) => {
     setBackupInProgress(true);
     try {
@@ -337,7 +353,7 @@ export default function Backups() {
             {schedules.map((schedule) => (
               <div key={schedule.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                 <div className="flex items-center gap-3">
-                  <button
+                  <button aria-label="Toggle schedule"
                     onClick={() => toggleSchedule(schedule.id, !schedule.enabled)}
                     className={`p-2 rounded-lg ${
                       schedule.enabled
@@ -354,7 +370,7 @@ export default function Backups() {
                     </p>
                   </div>
                 </div>
-                <button
+                <button aria-label="Delete schedule"
                   onClick={() => deleteSchedule(schedule.id)}
                   className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"
                 >
@@ -416,9 +432,10 @@ export default function Backups() {
                     <td className="py-3">
                       <div className="flex items-center gap-2">
                         <button
-                          onClick={() => api.downloadBackup(backup.id)}
+                          onClick={() => handleDownloadHistory(backup.id)}
                           className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                           title="Download"
+                          aria-label="Download backup"
                         >
                           <Download size={16} />
                         </button>

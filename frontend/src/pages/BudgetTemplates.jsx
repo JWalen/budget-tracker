@@ -1,10 +1,14 @@
 import { useState, useEffect } from 'react';
 import { Sparkles, Loader2, Check } from 'lucide-react';
 import api from '../api/client';
+import { useToast } from '../context/ToastContext';
 
 export default function BudgetTemplates() {
+  const toast = useToast();
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [income, setIncome] = useState('');
+  const [applyingId, setApplyingId] = useState(null);
 
   useEffect(() => {
     loadTemplates();
@@ -16,18 +20,35 @@ export default function BudgetTemplates() {
       setTemplates(data);
     } catch (error) {
       console.error('Failed to load templates:', error);
+      toast.error(error.message || 'Could not load templates');
     } finally {
       setLoading(false);
     }
   };
 
-  const handleApplyTemplate = async (templateId) => {
+  const handleApplyTemplate = async (template) => {
+    // Percentage-based templates need a monthly income to compute amounts.
+    const needsIncome = template.type !== 'envelope';
+    const incomeValue = Number(income);
+    if (needsIncome && (!Number.isFinite(incomeValue) || incomeValue <= 0)) {
+      toast.error('Enter your monthly income first to apply this template');
+      return;
+    }
+
+    const now = new Date();
+    setApplyingId(template.id);
     try {
-      await api.applyBudgetTemplate(templateId);
-      alert('Template applied successfully!');
+      const result = await api.applyBudgetTemplate(template.id, {
+        income: needsIncome ? incomeValue : undefined,
+        month: now.getMonth() + 1,
+        year: now.getFullYear(),
+      });
+      toast.success(result.message || 'Template applied successfully');
     } catch (error) {
       console.error('Failed to apply template:', error);
-      alert('Failed to apply template');
+      toast.error(error.message || 'Failed to apply template');
+    } finally {
+      setApplyingId(null);
     }
   };
 
@@ -46,6 +67,26 @@ export default function BudgetTemplates() {
         <p className="text-gray-600 dark:text-gray-400 mt-1">
           Choose a pre-built budgeting strategy
         </p>
+      </div>
+
+      <div className="card">
+        <label htmlFor="template-income" className="label">Monthly income</label>
+        <p className="text-sm text-gray-500 dark:text-gray-400 mb-2">
+          Used to calculate percentage-based budgets (e.g. 50/30/20). Applied to the current month.
+        </p>
+        <div className="relative max-w-xs">
+          <span className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-500">$</span>
+          <input
+            id="template-income"
+            type="number"
+            min="0"
+            step="0.01"
+            value={income}
+            onChange={(e) => setIncome(e.target.value)}
+            placeholder="0.00"
+            className="input pl-7"
+          />
+        </div>
       </div>
 
       <div className="grid md:grid-cols-2 gap-6">
@@ -79,10 +120,18 @@ export default function BudgetTemplates() {
             )}
 
             <button
-              onClick={() => handleApplyTemplate(template.id)}
-              className="btn btn-primary w-full"
+              onClick={() => handleApplyTemplate(template)}
+              disabled={applyingId === template.id}
+              className="btn-primary w-full"
             >
-              Apply Template
+              {applyingId === template.id ? (
+                <>
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                  Applying…
+                </>
+              ) : (
+                'Apply Template'
+              )}
             </button>
           </div>
         ))}

@@ -1,5 +1,59 @@
 # Changelog
 
+## [2.10.0] - 2026-07-11
+
+Installable-app milestone plus a security, testing, and reliability hardening pass.
+
+### Added
+- **Installable PWA** — real PNG icon set (192/512 `any` + maskable, 180 apple-touch), iOS meta tags, and an in-app "Install app" button. Installs on desktop Chrome/Edge, Android, and iOS (Add to Home Screen).
+- **Scheduled backups execute** — the scheduler runs due `backup_schedules`, writes to the mounted `/backups` volume, records history, prunes per retention, and advances `next_run` (verified end-to-end).
+
+### Security
+- `authMiddleware` verifies via `TokenService.verifyAccessToken` with **HS256 pinned** + issuer/audience/type (was a bare `jwt.verify`).
+- **Refresh tokens hashed at rest** (sha256); also fixed logout, which previously revoked nothing server-side — refresh-after-logout now 401s.
+- `trust proxy` only behind a proxy; Swagger `/api-docs` off in production unless opted in.
+- Household **invite/remove restricted to owner/admin**; login lockout scoped to IP + (email,IP) so a third party can't lock out a victim.
+
+### Changed / Fixed
+- **Test suite trustworthy** — 97/97 green from a clean DB; `globalSetup` provisions the converged production schema (init.sql + schema.sql); `cleanDatabase` truncates dynamically (the stale `budget_shares` entry silently disabled all cleanup); CI drops the manual init.sql seed and points **staging at the prod compose file**.
+- **Backup scripts hardened** — read DB creds from inside the container, `pipefail` + empty-output guard; proven with a backup → restore drill (identical data, all 37 tables).
+- Currency: exchange-rate failures surface an error instead of silently converting at `1.0`.
+- Accessibility: 83 `aria-label`s on icon-only buttons across 23 pages/components.
+- Import: forward a rule's `categoryId` on confirm (bill+category dual-assign); upload rate limit 10→40/hour.
+
+### Deferred (next round)
+- Shared-budget scoping on family/AI routes (only affects multi-user shared budgets; single-owner is correct).
+- Pagination caps on a few list endpoints (scale-later).
+
+## [2.9.0] - 2026-07-11
+
+Production-readiness pass: security, correctness, infra, and UX hardening across the stack.
+
+### Security
+- **Backup restore no longer trusts client-supplied row ids** — rows are inserted fresh and foreign keys remapped, closing a cross-tenant overwrite/hijack via `ON CONFLICT (id) DO UPDATE` (`backupSchedule.ts`).
+- **Backups exclude credential material** — full backups select an explicit non-secret user column list (no `password_hash`/`mfa_secret`).
+- **First-admin bootstrap is atomic** (`is_admin = NOT EXISTS(...)` inside the INSERT) and registration is transactional; added a `REGISTRATION_ENABLED` gate.
+- **Encryption keys** — MFA/backup keys derive from the boot-validated `ENCRYPTION_KEY`; removed the deterministic dev fallback.
+
+### Fixed
+- **Always-500 features now work**: multi-currency summary and budget-template apply (queried non-existent `organization_id`), save-backup-config and family-allowance creation (missing `UNIQUE` for `ON CONFLICT`).
+- **Backup Export / Restore / Download** wired end-to-end (route mounted, `/:id/download` added, frontend sends multipart + authenticated blob download).
+- **Reports**: budget-performance constrains spend to each budget's own month (no N× over-count) and quotes camelCase aliases so labels aren't `undefined`.
+- **Money & dates**: month-end-safe recurrence (no skipped months), no UTC round-trip on stored dates, debt balances computed in SQL, import amount validation + correct month extraction, `COALESCE` on account/category updates.
+- **Frontend**: charts theme in dark mode; load failures surface a toast + retry; bulk selection clears on month/owner change; pages refetch on shared-budget switch; `AuthContext` no longer logs out on transient errors.
+
+### Added
+- **PWA** — safe service worker (never caches `/api`, network-first navigations, versioned asset cache, cache clear on logout), manifest linked, update flow.
+- **Maintenance scheduler** — hourly cleanup of expired tokens, old login attempts, and read notifications.
+- **Notifications persist** regardless of Socket.IO availability.
+
+### Changed / Infra
+- Backend Dockerfile: multi-stage, `npm ci`, dev-dep prune, non-root `USER node`, exec-form `node` for signal handling; graceful shutdown (SIGTERM drain + `pool.end`).
+- Prod compose: volumes for uploads/backups/logs, `LOG_TO_CONSOLE`, memory limits, frontend healthcheck.
+- Nginx: gzip, immutable asset caching, `X-Forwarded-Proto`, security headers.
+- Code-split all authed routes (initial bundle ~1 MB → ~239 kB); route-level `ErrorBoundary`; memoized Auth/Toast contexts.
+- Removed unused deps (`prisma`, `@sentry/react`, `rate-limit`, `react-lazyload`, `socket.io-client`) and dead frontend utils/API methods.
+
 ## [2.8.0] - 2026-07-02
 
 Consolidates the AI, import, and error-handling work done after the provider switch.

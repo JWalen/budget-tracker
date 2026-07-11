@@ -133,21 +133,33 @@ router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) =>
     const { id } = req.params;
     const { name, account_type, account_number_last4, institution, balance, color, is_active } = req.body;
 
+    // Reject a non-numeric balance up front (would otherwise 500 on the cast).
+    if (balance !== undefined && !Number.isFinite(Number(balance))) {
+      return res.status(400).json({ error: 'Balance must be a number' });
+    }
+
+    // COALESCE keeps existing values for any field the client omits — a partial
+    // update like { is_active: false } must not null out name/balance/color.
     const result = await query(
       `UPDATE bank_accounts
-      SET name = $1, account_type = $2, account_number_last4 = $3,
-          institution = $4, balance = $5, color = $6, is_active = $7,
+      SET name = COALESCE($1, name),
+          account_type = COALESCE($2, account_type),
+          account_number_last4 = COALESCE($3, account_number_last4),
+          institution = COALESCE($4, institution),
+          balance = COALESCE($5, balance),
+          color = COALESCE($6, color),
+          is_active = COALESCE($7, is_active),
           updated_at = CURRENT_TIMESTAMP
       WHERE id = $8 AND user_id = $9
       RETURNING *`,
       [
-        name,
-        account_type,
-        account_number_last4,
-        institution,
-        balance,
-        color,
-        is_active,
+        name ?? null,
+        account_type ?? null,
+        account_number_last4 ?? null,
+        institution ?? null,
+        balance ?? null,
+        color ?? null,
+        is_active ?? null,
         id,
         budgetUserId
       ]

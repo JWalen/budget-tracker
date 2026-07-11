@@ -291,7 +291,7 @@ export default function AdminBackup() {
                     </div>
                   </div>
                 </div>
-                <button
+                <button aria-label="Download backup"
                   className="p-2 text-gray-600 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400"
                   onClick={() => handleDownloadBackup(backup)}
                   title="Download full backup"

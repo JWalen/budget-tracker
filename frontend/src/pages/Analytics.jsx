@@ -19,6 +19,7 @@ import {
 import { format, subMonths } from 'date-fns';
 import api from '../api/client';
 import { formatCurrency, formatPercent } from '../utils/format';
+import { ChartTooltip, useChartTheme } from '../components/ChartTheme';
 import { useToast } from '../context/ToastContext';
 import {
   TrendingUp,
@@ -32,6 +33,7 @@ import {
 
 export default function Analytics() {
   const toast = useToast();
+  const chart = useChartTheme();
   const [loading, setLoading] = useState(true);
   const [summary, setSummary] = useState(null);
   const [spendingTrends, setSpendingTrends] = useState([]);
@@ -84,17 +86,10 @@ export default function Analytics() {
   const exportToCSV = async () => {
     const month = selectedMonth.getMonth() + 1;
     const year = selectedMonth.getFullYear();
-    const type = 'summary'; // Can be changed to 'category-breakdown' or 'budget-performance'
-    const url = `/api/analytics/export/csv?month=${month}&year=${year}&type=${type}`;
+    const type = 'summary';
 
     try {
-      const res = await fetch(url, {
-        headers: { Authorization: 'Bearer ' + localStorage.getItem('token') },
-      });
-      if (!res.ok) {
-        throw new Error(`Export failed (${res.status})`);
-      }
-      const blob = await res.blob();
+      const blob = await api.exportAnalyticsCsv({ month, year, type });
       const objectUrl = window.URL.createObjectURL(blob);
       const link = document.createElement('a');
       link.href = objectUrl;
@@ -122,9 +117,9 @@ export default function Analytics() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900 dark:text-gray-100">
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">
             Analytics
           </h1>
           <p className="mt-2 text-gray-600 dark:text-gray-400">
@@ -135,7 +130,12 @@ export default function Analytics() {
           <input
             type="month"
             value={format(selectedMonth, 'yyyy-MM')}
-            onChange={(e) => setSelectedMonth(new Date(e.target.value))}
+            onChange={(e) => {
+              // Parse as a LOCAL date. `new Date('2026-07')` is UTC midnight, which
+              // is the previous month in negative-UTC timezones (wrong-month data).
+              const [y, m] = e.target.value.split('-');
+              if (y && m) setSelectedMonth(new Date(Number(y), Number(m) - 1, 1));
+            }}
             className="input"
           />
           <button onClick={exportToCSV} className="btn btn-outline flex items-center gap-2">
@@ -233,15 +233,9 @@ export default function Analytics() {
         <ResponsiveContainer width="100%" height={300}>
           <AreaChart data={incomeVsExpenses}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-gray-300 dark:stroke-gray-700" />
-            <XAxis dataKey="month" className="text-sm" />
-            <YAxis className="text-sm" />
-            <Tooltip
-              contentStyle={{
-                backgroundColor: 'rgba(255, 255, 255, 0.95)',
-                border: '1px solid #e5e7eb',
-                borderRadius: '0.5rem',
-              }}
-            />
+            <XAxis dataKey="month" tick={{ fill: chart.axisTick, fontSize: 12 }} stroke={chart.grid} />
+            <YAxis tick={{ fill: chart.axisTick, fontSize: 12 }} stroke={chart.grid} />
+            <Tooltip content={<ChartTooltip currency />} />
             <Legend />
             <Area type="monotone" dataKey="income" stackId="1" stroke="#10b981" fill="#10b981" name="Income" />
             <Area type="monotone" dataKey="expenses" stackId="2" stroke="#ef4444" fill="#ef4444" name="Expenses" />
@@ -272,7 +266,7 @@ export default function Analytics() {
                   <Cell key={`cell-${index}`} fill={entry.color || COLORS[index % COLORS.length]} />
                 ))}
               </Pie>
-              <Tooltip />
+              <Tooltip content={<ChartTooltip currency />} />
             </PieChart>
           </ResponsiveContainer>
         </div>
@@ -286,9 +280,9 @@ export default function Analytics() {
           <ResponsiveContainer width="100%" height={300}>
             <BarChart data={budgetVariance}>
               <CartesianGrid strokeDasharray="3 3" className="stroke-gray-300 dark:stroke-gray-700" />
-              <XAxis dataKey="category" className="text-sm" />
-              <YAxis className="text-sm" />
-              <Tooltip />
+              <XAxis dataKey="category" tick={{ fill: chart.axisTick, fontSize: 12 }} stroke={chart.grid} />
+              <YAxis tick={{ fill: chart.axisTick, fontSize: 12 }} stroke={chart.grid} />
+              <Tooltip content={<ChartTooltip currency />} />
               <Legend />
               <Bar dataKey="budget" fill="#8b5cf6" name="Budget" />
               <Bar dataKey="spent" fill="#0ea5e9" name="Spent" />
@@ -306,9 +300,9 @@ export default function Analytics() {
         <ResponsiveContainer width="100%" height={300}>
           <LineChart data={cashFlow}>
             <CartesianGrid strokeDasharray="3 3" className="stroke-gray-300 dark:stroke-gray-700" />
-            <XAxis dataKey="day" className="text-sm" />
-            <YAxis className="text-sm" />
-            <Tooltip />
+            <XAxis dataKey="day" tick={{ fill: chart.axisTick, fontSize: 12 }} stroke={chart.grid} />
+            <YAxis tick={{ fill: chart.axisTick, fontSize: 12 }} stroke={chart.grid} />
+            <Tooltip content={<ChartTooltip currency />} />
             <Legend />
             <Line type="monotone" dataKey="income" stroke="#10b981" name="Income" />
             <Line type="monotone" dataKey="expenses" stroke="#ef4444" name="Expenses" />

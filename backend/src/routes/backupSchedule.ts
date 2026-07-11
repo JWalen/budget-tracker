@@ -322,7 +322,7 @@ router.post('/create', requireEditAccess, async (req: AuthRequest, res: Response
 });
 
 // Helper functions
-function calculateNextRun(frequency: string, time: string): Date {
+export function calculateNextRun(frequency: string, time: string): Date {
   const now = new Date();
   const next = new Date();
 
@@ -366,7 +366,7 @@ function formatFileSize(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-async function createUserBackup(userId: number): Promise<any> {
+export async function createUserBackup(userId: number): Promise<any> {
   const backup: any = {
     version: '1.0',
     created_at: new Date().toISOString(),
@@ -460,10 +460,16 @@ async function createUserBackup(userId: number): Promise<any> {
   return backup;
 }
 
-async function createFullBackup(): Promise<any> {
-  // Get all data for admin backup
+// Non-secret column list for the users table. A full backup must never carry
+// password_hash, mfa_secret, or any other credential material off the database.
+const USERS_EXPORT_COLUMNS =
+  'id, email, name, is_admin, mfa_enabled, currency, created_at, updated_at';
+
+export async function createFullBackup(): Promise<any> {
+  // Get all data for admin backup. `users` uses an explicit non-secret column
+  // list; every other table is dumped in full. `budget_shares` is intentionally
+  // absent — it is dropped on every boot (schema.sql) and would 500 the query.
   const tables = [
-    'users',
     'categories',
     'bank_accounts',
     'account_balances',
@@ -477,7 +483,6 @@ async function createFullBackup(): Promise<any> {
     'pay_periods',
     'pay_period_bills',
     'match_rules',
-    'budget_shares',
     'spending_limits',
     'spending_alerts',
     'approval_requests',
@@ -491,6 +496,9 @@ async function createFullBackup(): Promise<any> {
     data: {}
   };
 
+  const usersResult = await query(`SELECT ${USERS_EXPORT_COLUMNS} FROM users`);
+  backup.data.users = usersResult.rows;
+
   for (const table of tables) {
     const result = await query(`SELECT * FROM ${table}`);
     backup.data[table] = result.rows;
@@ -499,7 +507,7 @@ async function createFullBackup(): Promise<any> {
   return backup;
 }
 
-async function saveBackup(filename: string, data: any, storageType: string, userId: number): Promise<{ path: string, size: number }> {
+export async function saveBackup(filename: string, data: any, storageType: string, userId: number): Promise<{ path: string, size: number }> {
   const jsonData = JSON.stringify(data, null, 2);
   const size = Buffer.byteLength(jsonData);
 
@@ -614,23 +622,55 @@ router.post('/restore', requireEditAccess, async (req: AuthRequest, res: Respons
       }
     }
 
-    // Restore data from backup
-    const restoreTables = [
+    // Restore data from backup.
+    //
+    // SECURITY: we never honor a client-supplied `id`. IDs are global serials, so
+    // trusting them let an attacker's backup collide with (and ON CONFLICT-overwrite)
+    // another user's rows, and also left the table's sequence behind the inserted ids.
+    // Instead every row is INSERTed fresh with a DB-generated id, and foreign keys are
+    // remapped through per-table old->new id maps built as we go. References to tables
+    // that are NOT part of a per-user backup (bank_accounts, family_members) are verified
+    // to belong to the caller and nulled out otherwise.
+    //
+    // Order matters: parents before the children that reference them.
+    const restoreOrder = [
       'categories',
-      'match_rules',
+      'bills',
+      'pay_periods',
       'transactions',
       'recurring_transactions',
       'budgets',
-      'bills',
       'debts',
-      'pay_periods',
+      'match_rules',
       'bill_payments',
-      'pay_period_bills'
+      'pay_period_bills',
     ];
 
-    for (const table of restoreTables) {
+    // old id -> new id, per parent table
+    const idMap: Record<string, Map<number, number>> = {
+      categories: new Map(),
+      bills: new Map(),
+      pay_periods: new Map(),
+      transactions: new Map(),
+    };
+
+    // Ownership sets for tables referenced but not restored here.
+    const ownedAccounts = new Set<number>(
+      (await client.query('SELECT id FROM bank_accounts WHERE user_id = $1', [userId])).rows.map(r => r.id)
+    );
+    const ownedMembers = new Set<number>(
+      (await client.query('SELECT id FROM family_members WHERE user_id = $1', [userId])).rows.map(r => r.id)
+    );
+
+    const remap = (map: Map<number, number>, oldVal: any): number | null => {
+      if (oldVal == null) return null;
+      const mapped = map.get(Number(oldVal));
+      return mapped == null ? null : mapped;
+    };
+
+    for (const table of restoreOrder) {
       const data = backupData.data[table] || [];
-      if (data.length === 0) continue;
+      if (!Array.isArray(data) || data.length === 0) continue;
 
       const allowedColumns = RESTORE_ALLOWED_COLUMNS[table];
       const hasUserId = allowedColumns.has('user_id');
@@ -638,38 +678,58 @@ router.post('/restore', requireEditAccess, async (req: AuthRequest, res: Respons
       for (const row of data) {
         if (!row || typeof row !== 'object') continue;
 
-        // Force user_id to the current user for user-owned tables.
-        if (hasUserId) {
-          row.user_id = userId;
+        const oldId = row.id != null ? Number(row.id) : null;
+
+        // Build the insert payload from allow-listed, non-id columns only.
+        const insert: Record<string, any> = {};
+        for (const col of Object.keys(row)) {
+          if (!allowedColumns.has(col) || col === 'id') continue;
+          insert[col] = row[col];
         }
 
-        // Only ever use allow-listed column identifiers — never arbitrary JSON keys.
-        const columns = Object.keys(row).filter(col => allowedColumns.has(col));
-        if (columns.length === 0) continue;
+        // Force ownership to the caller.
+        if (hasUserId) insert.user_id = userId;
 
-        const values = columns.map(col => row[col]);
+        // Remap foreign keys through the id maps / ownership checks.
+        if ('category_id' in insert) insert.category_id = remap(idMap.categories, insert.category_id);
+        if ('transaction_id' in insert) insert.transaction_id = remap(idMap.transactions, insert.transaction_id);
+        if ('bill_id' in insert) {
+          insert.bill_id = remap(idMap.bills, insert.bill_id);
+          // bill_id is the required parent for these child tables — skip orphans.
+          if (insert.bill_id == null) continue;
+        }
+        if ('pay_period_id' in insert) {
+          insert.pay_period_id = remap(idMap.pay_periods, insert.pay_period_id);
+          if (insert.pay_period_id == null) continue;
+        }
+        if ('account_id' in insert && insert.account_id != null && !ownedAccounts.has(Number(insert.account_id))) {
+          insert.account_id = null;
+        }
+        if ('member_id' in insert && insert.member_id != null && !ownedMembers.has(Number(insert.member_id))) {
+          insert.member_id = null;
+        }
+        // match_rules.target_id only remaps when it points at a bill we just restored.
+        if (table === 'match_rules' && 'target_id' in insert) {
+          if (row.target_type === 'bill') {
+            insert.target_id = remap(idMap.bills, insert.target_id);
+          } else if (row.target_type === 'category') {
+            insert.target_id = remap(idMap.categories, insert.target_id);
+          }
+        }
+
+        const columns = Object.keys(insert);
+        if (columns.length === 0) continue;
+        const values = columns.map(c => insert[c]);
         const placeholders = columns.map((_, i) => `$${i + 1}`).join(', ');
 
-        if (row.id != null && columns.includes('id')) {
-          const updateCols = columns.filter(c => c !== 'id');
-          const conflictClause = updateCols.length > 0
-            ? ` ON CONFLICT (id) DO UPDATE SET ${updateCols.map(c => `${c} = EXCLUDED.${c}`).join(', ')}`
-            : ' ON CONFLICT (id) DO NOTHING';
+        const result = await client.query(
+          `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders}) RETURNING id`,
+          values
+        );
 
-          await client.query(
-            `INSERT INTO ${table} (${columns.join(', ')}) VALUES (${placeholders})${conflictClause}`,
-            values
-          );
-        } else {
-          // No ID — let the database generate one.
-          const columnsNoId = columns.filter(c => c !== 'id');
-          const valuesNoId = columnsNoId.map(col => row[col]);
-          const placeholdersNoId = columnsNoId.map((_, i) => `$${i + 1}`).join(', ');
-
-          await client.query(
-            `INSERT INTO ${table} (${columnsNoId.join(', ')}) VALUES (${placeholdersNoId})`,
-            valuesNoId
-          );
+        // Record old->new id for parents so children can remap.
+        if (oldId != null && idMap[table]) {
+          idMap[table].set(oldId, result.rows[0].id);
         }
       }
     }
@@ -682,6 +742,53 @@ router.post('/restore', requireEditAccess, async (req: AuthRequest, res: Respons
     res.status(500).json({ error: 'Failed to restore backup' });
   } finally {
     client.release();
+  }
+});
+
+// Download a previously created backup file by history id. Ownership is enforced
+// (admin backups additionally require an admin caller). Streams the stored file
+// with an auth-checked handler — the frontend must fetch this with the Bearer
+// token, not window.open (which sends no Authorization header).
+router.get('/:id/download', async (req: AuthRequest, res: Response) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    if (!Number.isInteger(id)) {
+      return res.status(400).json({ error: 'Invalid backup id' });
+    }
+
+    const historyResult = await query(
+      'SELECT * FROM backup_history WHERE id = $1',
+      [id]
+    );
+    const record = historyResult.rows[0];
+    if (!record) {
+      return res.status(404).json({ error: 'Backup not found' });
+    }
+
+    // Authorization: the owner, or any admin for admin backups.
+    const isOwner = record.user_id === req.userId;
+    const admin = await isUserAdmin(req.userId);
+    if (!isOwner && !(record.is_admin_backup && admin)) {
+      return res.status(404).json({ error: 'Backup not found' });
+    }
+
+    if (record.status !== 'success' || !record.storage_path) {
+      return res.status(409).json({ error: 'Backup file is not available for download' });
+    }
+
+    let data: Buffer;
+    try {
+      data = await fs.readFile(record.storage_path);
+    } catch {
+      return res.status(410).json({ error: 'Backup file is no longer on disk' });
+    }
+
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', `attachment; filename="${record.filename}"`);
+    res.send(data);
+  } catch (error) {
+    logger.error('Download backup error:', error as Error);
+    res.status(500).json({ error: 'Failed to download backup' });
   }
 });
 

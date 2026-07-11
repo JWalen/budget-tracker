@@ -204,7 +204,6 @@ router.put('/user/default', async (req: TenantRequest, res: Response) => {
 router.get('/summary', async (req: TenantRequest, res: Response) => {
   try {
     const userId = req.userId!;
-    const organizationId = req.organizationId!;
 
     // Get user's default currency
     const userResult = await query('SELECT default_currency FROM users WHERE id = $1', [userId]);
@@ -218,9 +217,9 @@ router.get('/summary', async (req: TenantRequest, res: Response) => {
         SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as total_income,
         COUNT(*) as transaction_count
        FROM transactions
-       WHERE organization_id = $1
+       WHERE user_id = $1
        GROUP BY currency`,
-      [organizationId]
+      [userId]
     );
 
     // Convert all to default currency

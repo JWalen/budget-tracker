@@ -317,7 +317,7 @@ export default function AIAssistant() {
                 className="flex-1 input"
                 disabled={loading || !aiStatus?.available}
               />
-              <button
+              <button aria-label="Send message"
                 type="submit"
                 disabled={loading || !input.trim() || !aiStatus?.available}
                 className="btn-primary px-4"

@@ -1,13 +1,29 @@
 import { S3Client, PutObjectCommand, DeleteObjectCommand, GetObjectCommand } from '@aws-sdk/client-s3';
 import { Upload } from '@aws-sdk/lib-storage';
 import { getSignedUrl } from '@aws-sdk/s3-request-presigner';
-import sharp from 'sharp';
 import crypto from 'crypto';
 import path from 'path';
 import fs from 'fs/promises';
 import { LoggerClass } from './logger';
 
 const logger = new LoggerClass('Storage');
+
+// sharp is a native module and only used for optional receipt thumbnails. Load it
+// lazily and tolerate its absence (e.g. a platform without the prebuilt binary)
+// so an upload never fails just because thumbnailing is unavailable.
+let sharpModule: any | null | undefined;
+function getSharp(): any | null {
+  if (sharpModule === undefined) {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-var-requires
+      sharpModule = require('sharp');
+    } catch (e) {
+      sharpModule = null;
+      logger.warn('sharp unavailable — receipt thumbnails disabled', { error: (e as Error).message });
+    }
+  }
+  return sharpModule;
+}
 
 let s3Client: S3Client | null = null;
 let useLocalStorage = true;
@@ -152,14 +168,18 @@ export const uploadFile = async (
       const filePath = path.join(uploadPath, filename);
       await fs.writeFile(filePath, file.buffer);
 
-      // Generate thumbnail for images
+      // Generate thumbnail for images (best-effort — skip if sharp is unavailable).
       let thumbnailPath: string | undefined;
-      if (mimeType.startsWith('image/')) {
-        const thumbFilename = `thumb_${filename}`;
-        thumbnailPath = path.join(uploadPath, thumbFilename);
-        await sharp(file.buffer)
-          .resize(200, 200, { fit: 'inside' })
-          .toFile(thumbnailPath);
+      const sharp = getSharp();
+      if (sharp && mimeType.startsWith('image/')) {
+        try {
+          const thumbFilename = `thumb_${filename}`;
+          const thumbFull = path.join(uploadPath, thumbFilename);
+          await sharp(file.buffer).resize(200, 200, { fit: 'inside' }).toFile(thumbFull);
+          thumbnailPath = thumbFull;
+        } catch (e) {
+          logger.warn('Thumbnail generation failed; storing receipt without one', { error: (e as Error).message });
+        }
       }
 
       return {
@@ -191,25 +211,25 @@ export const uploadFile = async (
 
       await upload.done();
 
-      // Generate and upload thumbnail for images
+      // Generate and upload thumbnail for images (best-effort).
       let thumbnailPath: string | undefined;
-      if (mimeType.startsWith('image/')) {
-        const thumbBuffer = await sharp(file.buffer)
-          .resize(200, 200, { fit: 'inside' })
-          .toBuffer();
-
-        const thumbKey = `${userFolder}/thumb_${filename}`;
-
-        await s3Client!.send(
-          new PutObjectCommand({
-            Bucket: bucket,
-            Key: thumbKey,
-            Body: thumbBuffer,
-            ContentType: mimeType,
-          })
-        );
-
-        thumbnailPath = thumbKey;
+      const sharp = getSharp();
+      if (sharp && mimeType.startsWith('image/')) {
+        try {
+          const thumbBuffer = await sharp(file.buffer).resize(200, 200, { fit: 'inside' }).toBuffer();
+          const thumbKey = `${userFolder}/thumb_${filename}`;
+          await s3Client!.send(
+            new PutObjectCommand({
+              Bucket: bucket,
+              Key: thumbKey,
+              Body: thumbBuffer,
+              ContentType: mimeType,
+            })
+          );
+          thumbnailPath = thumbKey;
+        } catch (e) {
+          logger.warn('S3 thumbnail generation failed; storing receipt without one', { error: (e as Error).message });
+        }
       }
 
       return {

@@ -862,7 +862,7 @@ export default function Help() {
                 {updateStatus === 'idle' ? 'Update Available' : 'Updating...'}
               </h2>
               {(updateStatus === 'idle' || updateStatus === 'error') && (
-                <button onClick={closeModal} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
+                <button aria-label="Close" onClick={closeModal} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
                   <X size={20} />
                 </button>
               )}

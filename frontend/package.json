@@ -1,7 +1,7 @@
 {
   "name": "budget-app",
   "private": true,
-  "version": "2.6.0",
+  "version": "2.10.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -13,10 +13,8 @@
     "lucide-react": "^0.294.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0",
-    "react-lazyload": "^3.2.1",
     "react-router-dom": "^6.21.0",
-    "recharts": "^2.15.4",
-    "socket.io-client": "^4.8.3"
+    "recharts": "^2.15.4"
   },
   "devDependencies": {
     "@types/react": "^18.2.43",

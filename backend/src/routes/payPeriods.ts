@@ -3,6 +3,7 @@ import { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
 import { LoggerClass } from '../services/logger';
+import { addMonthsClamped, toDateString } from '../utils/dateUtils';
 
 const logger = new LoggerClass('PayPeriods');
 const router = Router();
@@ -276,17 +277,18 @@ async function generateRecurringInstances(userId: number, basePP: any): Promise<
     if (nextDate > threeMonthsOut) break;
 
     // Check if this date already exists
+    const nextDateStr = toDateString(nextDate);
     const existing = await query(
       `SELECT id FROM pay_periods
        WHERE user_id = $1 AND name = $2 AND date = $3`,
-      [userId, basePP.name, nextDate.toISOString().split('T')[0]]
+      [userId, basePP.name, nextDateStr]
     );
 
     if (existing.rows.length === 0) {
       const result = await query(
         `INSERT INTO pay_periods (user_id, name, amount, date, is_recurring, frequency)
          VALUES ($1, $2, $3, $4, $5, $6) RETURNING *`,
-        [userId, basePP.name, basePP.amount, nextDate.toISOString().split('T')[0], true, basePP.frequency]
+        [userId, basePP.name, basePP.amount, nextDateStr, true, basePP.frequency]
       );
       generated.push(result.rows[0]);
     }
@@ -305,8 +307,8 @@ function getNextDate(current: Date, frequency: string): Date {
       next.setDate(next.getDate() + 14);
       break;
     case 'monthly':
-      next.setMonth(next.getMonth() + 1);
-      break;
+      // Month-end safe: Jan 31 -> Feb 28/29, not Mar 3.
+      return addMonthsClamped(current, 1);
     case 'semimonthly':
       // 1st and 15th pattern
       if (next.getDate() < 15) {

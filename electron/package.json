@@ -1,0 +1,69 @@
+{
+  "name": "budget-tracker-desktop",
+  "version": "2.10.0",
+  "description": "Budget Tracker desktop app (Electron + embedded Postgres, no Docker)",
+  "main": "main.js",
+  "author": "Joshua Walen",
+  "license": "MIT",
+  "scripts": {
+    "start": "electron .",
+    "prepare-dist": "node prepare-dist.js",
+    "dist": "npm run prepare-dist && electron-builder --mac --arm64",
+    "dist:win": "npm run prepare-dist && electron-builder --win --x64",
+    "dist:mac": "npm run prepare-dist && electron-builder --mac --arm64"
+  },
+  "dependencies": {
+    "embedded-postgres": "^17.10.0-beta.17"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.jwalen.budgettracker",
+    "productName": "Budget Tracker",
+    "directories": {
+      "output": "release"
+    },
+    "asar": false,
+    "files": [
+      "main.js",
+      "loading.html",
+      "assets/**",
+      "node_modules/**"
+    ],
+    "extraResources": [
+      { "from": "backend-dist", "to": "backend-dist" },
+      { "from": "frontend-dist", "to": "frontend-dist" },
+      { "from": "db", "to": "db" }
+    ],
+    "mac": {
+      "category": "public.app-category.finance",
+      "icon": "assets/icon.png",
+      "identity": null,
+      "target": [
+        {
+          "target": "dmg",
+          "arch": ["arm64"]
+        }
+      ]
+    },
+    "win": {
+      "icon": "assets/icon.png",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Budget Tracker"
+    }
+  }
+}

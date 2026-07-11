@@ -67,9 +67,18 @@ router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) =>
       return res.status(400).json({ error: 'Invalid type' });
     }
 
+    // COALESCE preserves existing color/icon when omitted (previously nulled them);
+    // `type` is now actually persisted (it was validated but never written before).
     const result = await query(
-      'UPDATE categories SET name = $1, color = $2, icon = $3, exclude_from_income = $4 WHERE id = $5 AND user_id = $6 RETURNING *',
-      [name, color, icon, exclude_from_income || false, id, budgetUserId]
+      `UPDATE categories
+       SET name = $1,
+           type = COALESCE($2, type),
+           color = COALESCE($3, color),
+           icon = COALESCE($4, icon),
+           exclude_from_income = COALESCE($5, exclude_from_income)
+       WHERE id = $6 AND user_id = $7 RETURNING *`,
+      [name.trim(), type ?? null, color ?? null, icon ?? null,
+       exclude_from_income ?? null, id, budgetUserId]
     );
     if (result.rows.length === 0) {
       return res.status(404).json({ error: 'Category not found' });

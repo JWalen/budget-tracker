@@ -3,6 +3,7 @@ import pool, { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
 import { LoggerClass } from '../services/logger';
+import { nextOccurrence, toDateString, todayDateString } from '../utils/dateUtils';
 
 const logger = new LoggerClass('Recurring');
 const router = Router();
@@ -90,6 +91,17 @@ router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) =>
     const { category_id, amount, description, type, frequency, next_date, active } = req.body;
     const budgetUserId = (req as any).budgetUserId;
 
+    // Confirm the recurring transaction exists and belongs to this budget first,
+    // so a cross-user id gets a clean 404 (not a 400 from the category check that
+    // happens to fire because the attacker doesn't own the referenced category).
+    const owned = await query(
+      'SELECT id FROM recurring_transactions WHERE id = $1 AND user_id = $2',
+      [id, budgetUserId]
+    );
+    if (owned.rows.length === 0) {
+      return res.status(404).json({ error: 'Recurring transaction not found' });
+    }
+
     const numericAmount = Number(amount);
     if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
       return res.status(400).json({ error: 'Amount must be a positive number' });
@@ -153,7 +165,7 @@ router.delete('/:id', requireEditAccess, async (req: AuthRequest, res: Response)
 // Process due recurring transactions (creates actual transactions)
 router.post('/process', requireEditAccess, async (req: AuthRequest, res: Response) => {
   try {
-    const today = new Date().toISOString().split('T')[0];
+    const today = todayDateString();
     const budgetUserId = (req as any).budgetUserId;
 
     // Get candidate due recurring transactions for this user
@@ -186,32 +198,16 @@ router.post('/process', requireEditAccess, async (req: AuthRequest, res: Respons
 
           const rec = locked.rows[0];
 
-          // Calculate next date based on frequency
-          let nextDate = new Date(rec.next_date);
-          switch (rec.frequency) {
-            case 'daily':
-              nextDate.setDate(nextDate.getDate() + 1);
-              break;
-            case 'weekly':
-              nextDate.setDate(nextDate.getDate() + 7);
-              break;
-            case 'biweekly':
-              nextDate.setDate(nextDate.getDate() + 14);
-              break;
-            case 'monthly':
-              nextDate.setMonth(nextDate.getMonth() + 1);
-              break;
-            case 'yearly':
-              nextDate.setFullYear(nextDate.getFullYear() + 1);
-              break;
-            default:
-              // Unknown frequency - leave row unchanged and skip (no transaction, no advance)
-              logger.warn('Skipping recurring transaction with invalid frequency', {
-                id: rec.id,
-                frequency: rec.frequency,
-              });
-              await client.query('ROLLBACK');
-              continue;
+          // Calculate next date based on frequency (month-end safe, no UTC shift).
+          const nextDate = nextOccurrence(new Date(rec.next_date), rec.frequency);
+          if (!nextDate) {
+            // Unknown frequency - leave row unchanged and skip (no transaction, no advance)
+            logger.warn('Skipping recurring transaction with invalid frequency', {
+              id: rec.id,
+              frequency: rec.frequency,
+            });
+            await client.query('ROLLBACK');
+            continue;
           }
 
           // Create the transaction
@@ -224,7 +220,7 @@ router.post('/process', requireEditAccess, async (req: AuthRequest, res: Respons
           // Update next_date
           await client.query(
             'UPDATE recurring_transactions SET next_date = $1 WHERE id = $2',
-            [nextDate.toISOString().split('T')[0], rec.id]
+            [toDateString(nextDate), rec.id]
           );
 
           await client.query('COMMIT');

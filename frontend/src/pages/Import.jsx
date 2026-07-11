@@ -311,6 +311,10 @@ export default function Import() {
           type: tx.type || 'expense',
           matchId: tx.match?.id || null,
           matchType: tx.match?.type || null,
+          // Forward the rule's category so a bill-targeted rule that also carries a
+          // category still categorizes the transaction (dual assignment). Without
+          // this the backend's row.categoryId is always undefined for bill matches.
+          categoryId: tx.match?.categoryId || null,
         }));
 
       const result = await api.confirmImport({
@@ -426,7 +430,7 @@ export default function Import() {
         <div className="flex items-center gap-3 p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-xl">
           <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 shrink-0" />
           <p className="text-red-700 dark:text-red-300 text-sm">{error}</p>
-          <button
+          <button aria-label="Dismiss error"
             onClick={() => setError(null)}
             className="ml-auto p-1 text-red-400 hover:text-red-600 dark:hover:text-red-300"
           >
@@ -797,7 +801,7 @@ export default function Import() {
                                 <span className="text-[10px] opacity-70">({tx.matchConfidence})</span>
                               )}
                             </span>
-                            <button
+                            <button aria-label="Clear match"
                               onClick={() => clearMatch(idx)}
                               className="p-0.5 text-gray-400 hover:text-red-500"
                               title="Clear match"
@@ -814,14 +818,14 @@ export default function Import() {
                                 <span className="text-[10px] opacity-70">({tx.suggestedMatch.confidence})</span>
                               )}
                             </span>
-                            <button
+                            <button aria-label="Confirm match"
                               onClick={() => confirmMatch(idx)}
                               className="p-0.5 text-green-500 hover:text-green-700 dark:hover:text-green-300"
                               title="Confirm match"
                             >
                               <Check size={14} />
                             </button>
-                            <button
+                            <button aria-label="Dismiss match"
                               onClick={() => dismissMatch(idx)}
                               className="p-0.5 text-gray-400 hover:text-red-500"
                               title="Dismiss match"

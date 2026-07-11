@@ -111,7 +111,7 @@ export default function ChatWidget() {
                 <p className="text-[10px] text-primary-100 opacity-90">Your Budget Assistant</p>
               </div>
             </div>
-            <button 
+            <button aria-label="Minimize chat" 
               onClick={() => setIsOpen(false)}
               className="text-white/80 hover:text-white hover:bg-white/10 p-1.5 rounded-lg transition-colors"
             >
@@ -161,7 +161,7 @@ export default function ChatWidget() {
                 disabled={!isAiAvailable}
                 className="flex-1 text-sm bg-gray-100 dark:bg-gray-700 border-0 rounded-full px-4 py-2.5 focus:ring-2 focus:ring-primary-500 dark:text-white placeholder-gray-400 focus:outline-none transition-shadow"
               />
-              <button 
+              <button aria-label="Send message" 
                 type="submit"
                 disabled={!input.trim() || loading || !isAiAvailable}
                 className="absolute right-1.5 top-1/2 -translate-y-1/2 bg-primary-600 hover:bg-primary-700 text-white p-1.5 rounded-full disabled:opacity-50 disabled:cursor-not-allowed transition-all shadow-sm hover:shadow"

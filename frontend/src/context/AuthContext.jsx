@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { api } from '../api/client';
+import { clearAppCaches } from '../utils/pwa';
 
 const AuthContext = createContext(null);
 
@@ -12,7 +13,10 @@ export const AuthProvider = ({ children }) => {
     if (token) {
       api.getMe()
         .then(setUser)
-        .catch(() => localStorage.removeItem('token'))
+        // Do NOT drop the token on a generic failure (server restarting, offline,
+        // a 500) — that logs out a user holding a valid JWT during a blip. Real
+        // 401s are handled by the auth:unauthorized listener below.
+        .catch((err) => console.error('Session check failed:', err))
         .finally(() => setLoading(false));
     } else {
       setLoading(false);
@@ -61,6 +65,8 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('token');
     localStorage.removeItem('budgetOwnerId');
     setUser(null);
+    // Purge any cached assets so nothing lingers for the next user on a shared device.
+    clearAppCaches();
   };
 
   const refreshUser = async () => {
@@ -72,8 +78,13 @@ export const AuthProvider = ({ children }) => {
     }
   };
 
+  const value = useMemo(
+    () => ({ user, login, register, logout, loading, refreshUser }),
+    [user, loading]
+  );
+
   return (
-    <AuthContext.Provider value={{ user, login, register, logout, loading, refreshUser }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
