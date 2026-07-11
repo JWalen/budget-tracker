@@ -1,7 +1,7 @@
 import { Router, Response } from 'express';
 import { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
-import { validators, validateDateRange } from '../middleware/validation';
+import { validators, validateDateRange, handleValidationErrors } from '../middleware/validation';
 import { body } from 'express-validator';
 import { LoggerClass } from '../services/logger';
 
@@ -55,6 +55,7 @@ router.post('/',
     body('allowance_frequency').optional().isIn(['weekly', 'biweekly', 'monthly']),
     body('spending_limit').optional().isFloat({ min: 0 }),
     body('avatar_color').optional().matches(/^#[0-9A-F]{6}$/i),
+    handleValidationErrors,
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -102,6 +103,7 @@ router.put('/:id',
     body('spending_limit').optional().isFloat({ min: 0 }),
     body('avatar_color').optional().matches(/^#[0-9A-F]{6}$/i),
     body('is_active').optional().isBoolean(),
+    handleValidationErrors,
   ],
   async (req: AuthRequest, res: Response) => {
     try {
@@ -234,6 +236,7 @@ router.post('/:id/limits',
     body('budget_id').optional().isInt({ min: 1 }),
     body('limit_amount').isFloat({ min: 0 }),
     body('period').isIn(['daily', 'weekly', 'monthly']),
+    handleValidationErrors,
   ],
   async (req: AuthRequest, res: Response) => {
     try {

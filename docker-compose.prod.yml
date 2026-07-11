@@ -52,13 +52,21 @@ services:
       SMTP_PASS: ${SMTP_PASS:-}
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       
-      # Logging
+      # Logging — also emit to stdout so `docker compose logs` and the
+      # orchestrator's log pipeline actually see output in production.
       LOG_LEVEL: ${LOG_LEVEL:-info}
       LOG_TO_FILE: "true"
-      
+      LOG_TO_CONSOLE: "true"
+
+      # Error tracking (optional)
+      SENTRY_DSN: ${SENTRY_DSN:-}
+
       # Backup encryption (optional but recommended)
       BACKUP_ENCRYPTION_KEY: ${BACKUP_ENCRYPTION_KEY:-}
       MFA_ENCRYPTION_KEY: ${MFA_ENCRYPTION_KEY:-}
+
+      # Close public sign-up in production once the first admin exists.
+      REGISTRATION_ENABLED: ${REGISTRATION_ENABLED:-true}
     networks:
       - internal
     depends_on:
@@ -71,7 +79,17 @@ services:
       retries: 3
       start_period: 40s
     restart: unless-stopped
-    # SECURITY: No volume mounts in production (no source code access)
+    # Persist user-uploaded receipts, generated backups, and file logs across
+    # container recreates. Without these, every `up --force-recreate` deploy
+    # wipes receipts and backups (the exact data these features exist to protect).
+    volumes:
+      - uploads_data:/app/uploads
+      - backups_data:/backups
+      - logs_data:/app/logs
+    deploy:
+      resources:
+        limits:
+          memory: 512M
 
   frontend:
     build: ./frontend
@@ -91,7 +109,17 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "wget -qO- http://localhost:80/ >/dev/null 2>&1 || exit 1"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
     restart: unless-stopped
+    deploy:
+      resources:
+        limits:
+          memory: 128M
 
 networks:
   internal:
@@ -101,4 +129,10 @@ networks:
 
 volumes:
   postgres_data:
+    driver: local
+  uploads_data:
+    driver: local
+  backups_data:
+    driver: local
+  logs_data:
     driver: local

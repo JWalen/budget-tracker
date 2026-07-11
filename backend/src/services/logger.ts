@@ -4,10 +4,22 @@ import path from 'path';
 import fs from 'fs';
 import { randomUUID } from 'crypto';
 
-// Create logs directory if it doesn't exist
+// Create logs directory if it doesn't exist. Under a non-root container user the
+// working directory may not be writable — treat that as "file logging off"
+// rather than crashing the process on boot.
 const logsDir = path.join(process.cwd(), 'logs');
-if (!fs.existsSync(logsDir)) {
-  fs.mkdirSync(logsDir, { recursive: true });
+let fileLoggingAvailable = process.env.LOG_TO_FILE !== 'false';
+if (fileLoggingAvailable) {
+  try {
+    if (!fs.existsSync(logsDir)) {
+      fs.mkdirSync(logsDir, { recursive: true });
+    }
+  } catch {
+    // Can't create the dir (read-only FS / non-root): fall back to stdout only.
+    fileLoggingAvailable = false;
+    // eslint-disable-next-line no-console
+    console.warn(`Log directory ${logsDir} not writable — logging to stdout only`);
+  }
 }
 
 // Define log levels
@@ -51,8 +63,14 @@ const fileFormat = winston.format.combine(
 // Create transports
 const transports: winston.transport[] = [];
 
-// Console transport (only in development or when LOG_TO_CONSOLE is true)
-if (process.env.NODE_ENV === 'development' || process.env.LOG_TO_CONSOLE === 'true') {
+// Console transport. Enabled in development, when LOG_TO_CONSOLE=true, or whenever
+// file logging isn't available — so a container never runs with *no* log output
+// (12-factor: log to stdout and let the orchestrator collect it).
+if (
+  process.env.NODE_ENV === 'development' ||
+  process.env.LOG_TO_CONSOLE === 'true' ||
+  !fileLoggingAvailable
+) {
   transports.push(
     new winston.transports.Console({
       format: consoleFormat,
@@ -61,7 +79,7 @@ if (process.env.NODE_ENV === 'development' || process.env.LOG_TO_CONSOLE === 'tr
 }
 
 // File transport for all logs
-if (process.env.LOG_TO_FILE !== 'false') {
+if (fileLoggingAvailable) {
   transports.push(
     new DailyRotateFile({
       filename: path.join(logsDir, 'app-%DATE%.log'),

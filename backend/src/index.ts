@@ -14,7 +14,7 @@ import {
   securityHeaders
 } from './middleware/security';
 import { LoggerClass, requestLogger } from './services/logger';
-import { query } from './config/database';
+import pool, { query } from './config/database';
 import { authMiddleware } from './middleware/auth';
 import authRoutes from './routes/auth';
 import transactionRoutes from './routes/transactions';
@@ -157,6 +157,11 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/debts', debtRoutes);
 app.use('/api/bills', billRoutes);
 app.use('/api/import', importRoutes);
+// backupRoutes (SQL export / restore / admin) is mounted first so its /export,
+// /restore and /admin/* handlers take precedence; backupScheduleRoutes then
+// serves the scheduling endpoints (/history, /schedules, /config, /create,
+// /download-now, /:id/download).
+app.use('/api/backup', backupRoutes);
 app.use('/api/backup', backupScheduleRoutes);
 app.use('/api/pay-periods', payPeriodRoutes);
 app.use('/api/reports', reportsRoutes);
@@ -274,13 +279,42 @@ async function start() {
     process.exit(1);
   }
 
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     logger.info(`Server started successfully`, {
       port: PORT,
       environment: process.env.NODE_ENV,
       nodeVersion: process.version,
     });
   });
+
+  // Graceful shutdown: stop accepting new connections, let in-flight requests
+  // finish, close the DB pool, then exit. A hard timeout guards against hangs.
+  // Without this, every deploy SIGKILLs mid-request after the orchestrator's grace period.
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info(`${signal} received — draining connections`);
+    const forced = setTimeout(() => {
+      logger.error('Forced shutdown after timeout');
+      process.exit(1);
+    }, 10_000);
+    forced.unref();
+
+    server.close(async () => {
+      try {
+        await pool.end();
+        logger.info('Shutdown complete');
+        process.exit(0);
+      } catch (err) {
+        logger.error('Error during shutdown', err as Error);
+        process.exit(1);
+      }
+    });
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 start();

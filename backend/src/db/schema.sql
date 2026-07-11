@@ -203,6 +203,26 @@ ALTER TABLE transactions ADD COLUMN IF NOT EXISTS original_amount DECIMAL(10,2);
 ALTER TABLE budgets ADD COLUMN IF NOT EXISTS currency VARCHAR(3) DEFAULT 'USD';
 ALTER TABLE match_rules ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES categories(id) ON DELETE CASCADE;
 
+-- --- Missing unique constraints required by ON CONFLICT upserts -------------
+-- backup_config and allowance_transactions upsert on these columns; without a
+-- matching UNIQUE constraint Postgres rejects the ON CONFLICT clause (every
+-- save-config / allowance create currently 500s). Guarded so re-running is safe.
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'backup_config_user_unique'
+  ) AND EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'backup_config') THEN
+    ALTER TABLE backup_config ADD CONSTRAINT backup_config_user_unique UNIQUE (user_id);
+  END IF;
+END $$;
+
+DO $$ BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'allowance_tx_member_unique'
+  ) AND EXISTS (SELECT 1 FROM information_schema.tables WHERE table_name = 'allowance_transactions') THEN
+    ALTER TABLE allowance_transactions ADD CONSTRAINT allowance_tx_member_unique UNIQUE (member_id);
+  END IF;
+END $$;
+
 -- --- Remove legacy sharing model (replaced by Households) --------------------
 DROP TABLE IF EXISTS budget_shares CASCADE;
 

@@ -24,16 +24,21 @@ export class EncryptionService {
         envKey = process.env.ENCRYPTION_KEY;
     }
 
+    // Fall back to a purpose-derived key from the (required, boot-validated)
+    // ENCRYPTION_KEY when a dedicated MFA/backup key isn't set. This gives every
+    // purpose a distinct 256-bit key with no environment-specific, guessable
+    // fallback — the old deterministic `dev-key-*` path leaked a publicly known
+    // constant, and throwing at request time turned a config gap into a 500.
     if (!envKey || envKey.includes('change_this')) {
-      console.error(`WARNING: ${purpose.toUpperCase()} encryption key not properly configured!`);
-      console.error('Generate a secure key with: openssl rand -hex 32');
-      // Use a fallback for development only
-      if (process.env.NODE_ENV === 'development') {
-        return crypto.createHash('sha256')
-          .update(`dev-key-${purpose}-insecure`)
-          .digest();
+      if (purpose !== 'general') {
+        const base = process.env.ENCRYPTION_KEY;
+        if (base && !base.includes('change_this')) {
+          return crypto.createHmac('sha256', base).update(`purpose:${purpose}`).digest();
+        }
       }
-      throw new Error('Encryption key not configured');
+      // ENCRYPTION_KEY itself is validated at boot (index.ts), so reaching here
+      // means the app was started without required config — fail loudly.
+      throw new Error(`Encryption key not configured for purpose "${purpose}"`);
     }
 
     // Ensure key is 32 bytes (256 bits)
