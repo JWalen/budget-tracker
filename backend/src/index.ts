@@ -115,7 +115,13 @@ function validateEnvironment() {
 validateEnvironment();
 
 const app = express();
-app.set('trust proxy', 1);
+// Only trust the X-Forwarded-* headers when actually running behind a reverse
+// proxy (set TRUST_PROXY=true in prod, where nginx/NPM terminates). When the API
+// is reachable directly (dev), trusting the header lets any client spoof its IP
+// and rotate past the IP-keyed rate limiters.
+if (process.env.TRUST_PROXY === 'true' || process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
 const PORT = process.env.PORT || 5000;
 
 // Security middleware (order matters!)
@@ -182,11 +188,14 @@ app.use('/api/sharing', sharingRoutes);
 // exposed financial PII with no auth). They are served through the authenticated,
 // ownership-checked route GET /api/receipts/:id/file instead.
 
-// API Documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'Budget Tracker API Docs',
-}));
+// API Documentation — off by default in production (mapping the full API surface
+// for attackers). Set ENABLE_API_DOCS=true to expose it deliberately.
+if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_API_DOCS === 'true') {
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'Budget Tracker API Docs',
+  }));
+}
 
 // Health check
 app.get('/api/health', async (req, res) => {

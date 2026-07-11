@@ -116,11 +116,11 @@ export class TokenService {
     // Clean up old sessions if limit exceeded
     await this.cleanupExcessSessions(userId);
 
-    // Store refresh token in database
+    // Store the HASH of the token value, never the value itself.
     await query(
       `INSERT INTO refresh_tokens (user_id, token, expires_at, ip_address, user_agent)
        VALUES ($1, $2, $3, $4, $5)`,
-      [userId, tokenValue, expiresAt, ipAddress || null, userAgent || null]
+      [userId, this.hashToken(tokenValue), expiresAt, ipAddress || null, userAgent || null]
     );
 
     // Update user's active sessions count
@@ -135,6 +135,25 @@ export class TokenService {
     return refreshToken;
   }
 
+  // Refresh tokens are stored HASHED at rest (sha256 of the random token value),
+  // so a DB read never yields a usable session token. The plaintext value only
+  // ever lives in the httpOnly cookie as the JWT subject.
+  private static hashToken(value: string): string {
+    return crypto.createHash('sha256').update(value).digest('hex');
+  }
+
+  // Normalize a revoke input to the stored token value. Logout passes the whole
+  // refresh JWT (from the cookie); its `sub` is the token value we hashed.
+  private static tokenValueFrom(input: string): string {
+    if (input.split('.').length === 3) {
+      try {
+        const decoded = jwt.decode(input) as { sub?: string } | null;
+        if (decoded?.sub) return decoded.sub;
+      } catch { /* fall through — treat as a raw value */ }
+    }
+    return input;
+  }
+
   /**
    * Verify and decode access token
    */
@@ -146,6 +165,7 @@ export class TokenService {
       }
 
       const decoded = jwt.verify(token, secret, {
+        algorithms: ['HS256'],   // pin the algorithm — never accept alg:none or a swapped alg
         issuer: 'budget-tracker',
         audience: 'budget-tracker-api'
       }) as TokenPayload;
@@ -185,14 +205,14 @@ export class TokenService {
         throw new Error('Invalid token type');
       }
 
-      // Check if token exists in database and is not revoked
+      // Look up by the hash of the JWT subject (that's what we stored).
       const result = await query(
         `SELECT * FROM refresh_tokens
          WHERE token = $1
          AND user_id = $2
          AND revoked_at IS NULL
          AND expires_at > CURRENT_TIMESTAMP`,
-        [decoded.sub, decoded.userId]
+        [this.hashToken(decoded.sub), decoded.userId]
       );
 
       if (result.rows.length === 0) {
@@ -239,8 +259,13 @@ export class TokenService {
    */
   static async revokeRefreshToken(token: string, userId?: number): Promise<boolean> {
     try {
+      // Accept either the raw token value or the full refresh JWT (logout passes
+      // the cookie JWT). Normalize, then hash to match the stored value. This also
+      // fixes logout, which previously passed the JWT against the stored subject
+      // and silently matched nothing.
+      const hashed = this.hashToken(this.tokenValueFrom(token));
       let query_str = 'UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE token = $1';
-      const params: any[] = [token];
+      const params: any[] = [hashed];
 
       if (userId) {
         query_str += ' AND user_id = $2';
@@ -257,6 +282,24 @@ export class TokenService {
       return false;
     } catch (error) {
       logger.error('Failed to revoke refresh token', error);
+      return false;
+    }
+  }
+
+  /**
+   * Revoke a specific session by its refresh_tokens row id (scoped to the user).
+   * Used by the "revoke session" UI — avoids hashing a value already read from
+   * the DB (which is itself the stored hash).
+   */
+  static async revokeSessionById(sessionId: number, userId: number): Promise<boolean> {
+    try {
+      const result = await query(
+        'UPDATE refresh_tokens SET revoked_at = CURRENT_TIMESTAMP WHERE id = $1 AND user_id = $2 AND revoked_at IS NULL',
+        [sessionId, userId]
+      );
+      return !!(result.rowCount && result.rowCount > 0);
+    } catch (error) {
+      logger.error('Failed to revoke session by id', error);
       return false;
     }
   }
