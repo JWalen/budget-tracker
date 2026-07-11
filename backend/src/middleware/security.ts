@@ -4,6 +4,12 @@ import rateLimit from 'express-rate-limit';
 import { Request, Response, NextFunction } from 'express';
 
 // Configure CORS with proper origins
+// Desktop (Electron) mode: the UI is served from and calls the backend on a
+// random loopback port (http://127.0.0.1:<port>), so allow any localhost origin.
+// It's a local single-user app; loopback is inherently the trusted origin.
+const desktopMode = !!process.env.SERVE_FRONTEND_DIR;
+const LOOPBACK_ORIGIN = /^http:\/\/(localhost|127\.0\.0\.1)(:\d+)?$/;
+
 export const corsConfig = cors({
   origin: (origin, callback) => {
     const allowedOrigins = [
@@ -14,7 +20,7 @@ export const corsConfig = cors({
     // Allow requests with no origin (like mobile apps or Postman)
     if (!origin) return callback(null, true);
 
-    if (allowedOrigins.includes(origin)) {
+    if (allowedOrigins.includes(origin) || (desktopMode && LOOPBACK_ORIGIN.test(origin))) {
       callback(null, true);
     } else {
       callback(new Error('Not allowed by CORS'));

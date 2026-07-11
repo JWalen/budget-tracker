@@ -1,4 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
+import path from 'path';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import helmet from 'helmet';
@@ -125,10 +126,17 @@ if (process.env.TRUST_PROXY === 'true' || process.env.NODE_ENV === 'production')
 const PORT = process.env.PORT || 5000;
 
 // Security middleware (order matters!)
-app.use(helmet()); // Security headers
+// In desktop (Electron) mode the frontend is served from this same origin and
+// loaded inside a local Electron window, so the default CSP — which blocks the
+// inline styles React/recharts emit — would break the UI. Relax CSP there; the
+// app isn't internet-facing in that mode.
+const desktopMode = !!process.env.SERVE_FRONTEND_DIR;
+app.use(helmet(desktopMode ? { contentSecurityPolicy: false } : undefined)); // Security headers
 app.use(compression()); // Gzip compression
 app.use(enforceHTTPS); // Check HTTPS first
-app.use(helmetConfig);
+if (!desktopMode) {
+  app.use(helmetConfig);
+}
 app.use(securityHeaders); // Additional security headers
 app.use(corsConfig);
 app.use(cookieParser());
@@ -240,6 +248,19 @@ app.get('/api/ready', async (req, res) => {
     res.status(503).json({ ready: false, error: 'Database not ready' });
   }
 });
+
+// Desktop (Electron) mode: serve the built frontend from this same server so the
+// UI and the API share one origin and the relative `/api` calls just work — no
+// nginx/proxy. Enabled by pointing SERVE_FRONTEND_DIR at the frontend dist.
+if (process.env.SERVE_FRONTEND_DIR) {
+  const frontendDir = process.env.SERVE_FRONTEND_DIR;
+  app.use(express.static(frontendDir));
+  // SPA fallback for any non-API path so client-side routes resolve to index.html.
+  // The negative lookahead leaves /api requests to fall through to the JSON 404.
+  app.get(/^(?!\/api\/).*/, (_req: Request, res: Response) => {
+    res.sendFile(path.join(frontendDir, 'index.html'));
+  });
+}
 
 // JSON 404 for unmatched API routes (otherwise Express returns an HTML page the
 // frontend can't parse, collapsing to a generic "Request failed").
