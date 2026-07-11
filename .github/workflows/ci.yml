@@ -186,13 +186,20 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
           script: |
-            set -e
+            set -euo pipefail
             BACKUP_DIR="${{ secrets.DEPLOY_PATH || '~/docker/budget-tracker' }}/backups"
             mkdir -p "$BACKUP_DIR"
             TIMESTAMP=$(date +%Y%m%d_%H%M%S)
+            OUT="$BACKUP_DIR/pre-deploy-${TIMESTAMP}.sql.gz"
             echo "Creating pre-deploy database backup..."
-            docker exec budget-db pg_dump -U "$DB_USER" -d "$DB_NAME" | gzip > "$BACKUP_DIR/pre-deploy-${TIMESTAMP}.sql.gz"
-            echo "Backup saved: pre-deploy-${TIMESTAMP}.sql.gz"
+            # Read credentials from inside the container (the prod DB container is
+            # budget-db-prod) rather than relying on undefined shell vars, and use
+            # pipefail so a failed dump aborts instead of writing an empty .gz.
+            docker exec budget-db-prod sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"' | gzip > "$OUT"
+            if [ "$(gzip -dc "$OUT" | head -c 1 | wc -c)" -eq 0 ]; then
+              echo "Pre-deploy backup is empty — aborting deploy"; exit 1
+            fi
+            echo "Backup saved: $OUT"
 
       - name: Deploy to server via SSH
         uses: appleboy/ssh-action@v1
