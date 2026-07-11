@@ -291,7 +291,7 @@ export default function Bills() {
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Bills</h1>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <button
+            <button aria-label="Previous month"
               onClick={goToPrevMonth}
               className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
             >
@@ -300,7 +300,7 @@ export default function Bills() {
             <span className="font-medium text-gray-900 dark:text-gray-100 min-w-[140px] text-center">
               {MONTHS[month - 1]} {year}
             </span>
-            <button
+            <button aria-label="Next month"
               onClick={goToNextMonth}
               className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
             >
@@ -321,7 +321,7 @@ export default function Bills() {
         <div className="bg-red-50 dark:bg-red-900/30 border border-red-200 dark:border-red-700 rounded-xl p-4 flex items-center gap-3">
           <AlertCircle className="text-red-600 dark:text-red-400 flex-shrink-0" size={20} />
           <p className="text-red-800 dark:text-red-300 text-sm">{error}</p>
-          <button
+          <button aria-label="Dismiss error"
             onClick={() => setError(null)}
             className="ml-auto text-red-600 dark:text-red-400 hover:text-red-800 dark:hover:text-red-200"
           >
@@ -384,14 +384,14 @@ export default function Bills() {
                   </div>
                   {!isReadOnly && (
                     <div className="flex items-center gap-1 ml-2 flex-shrink-0">
-                      <button
+                      <button aria-label="Edit bill"
                         onClick={() => openEditModal(bill)}
                         className="p-2 text-gray-400 dark:text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg"
                         title="Edit bill"
                       >
                         <Pencil size={16} />
                       </button>
-                      <button
+                      <button aria-label="Delete bill"
                         onClick={() => handleDelete(bill)}
                         className="p-2 text-gray-400 dark:text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"
                         title="Delete bill"
@@ -464,7 +464,7 @@ export default function Bills() {
               <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                 {editingBill ? 'Edit Bill' : 'Add Bill'}
               </h2>
-              <button
+              <button aria-label="Close"
                 onClick={closeBillModal}
                 className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
               >
@@ -574,7 +574,7 @@ export default function Bills() {
               <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
                 Mark &quot;{payingBill.name}&quot; as Paid
               </h2>
-              <button
+              <button aria-label="Close"
                 onClick={closePayModal}
                 className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
               >

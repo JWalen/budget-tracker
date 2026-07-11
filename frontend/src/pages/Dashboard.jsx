@@ -100,13 +100,13 @@ export default function Dashboard() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Dashboard</h1>
         <div className="flex items-center gap-2">
-          <button onClick={goToPrevMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+          <button aria-label="Previous month" onClick={goToPrevMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
             <ChevronLeft size={20} />
           </button>
           <span className="font-medium text-gray-900 dark:text-gray-100 min-w-[140px] text-center">
             {MONTHS[month - 1]} {year}
           </span>
-          <button onClick={goToNextMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+          <button aria-label="Next month" onClick={goToNextMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
             <ChevronRight size={20} />
           </button>
         </div>

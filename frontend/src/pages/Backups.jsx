@@ -353,7 +353,7 @@ export default function Backups() {
             {schedules.map((schedule) => (
               <div key={schedule.id} className="flex items-center justify-between p-3 bg-gray-50 dark:bg-gray-800 rounded-lg">
                 <div className="flex items-center gap-3">
-                  <button
+                  <button aria-label="Toggle schedule"
                     onClick={() => toggleSchedule(schedule.id, !schedule.enabled)}
                     className={`p-2 rounded-lg ${
                       schedule.enabled
@@ -370,7 +370,7 @@ export default function Backups() {
                     </p>
                   </div>
                 </div>
-                <button
+                <button aria-label="Delete schedule"
                   onClick={() => deleteSchedule(schedule.id)}
                   className="p-2 text-gray-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"
                 >
