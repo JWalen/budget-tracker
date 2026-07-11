@@ -49,15 +49,35 @@ Postgres and the backend are shut down cleanly on quit.
 
 Deleting that folder resets the app to a clean slate.
 
-## Package a .dmg
+## Package installers
 
+Each installer must be built **on its own OS** because the app bundles native
+binaries (embedded PostgreSQL, sharp) that are platform-specific — `npm install`
+fetches the right ones only on the matching platform.
+
+**macOS** (produces `electron/release/*.dmg`):
 ```bash
-cd electron && npm run dist
+cd electron && npm run dist:mac
 ```
 
-Produces a `.dmg` in `electron/release/`. Installing it on **other** Macs additionally
-requires Apple code-signing + notarization; running the `.dmg` you built on your own
-Mac does not.
+**Windows** (run on a Windows machine — produces `electron/release/*.exe`, an NSIS
+installer):
+```bash
+cd electron && npm run dist:win
+```
+
+### Build both from CI (recommended)
+
+`.github/workflows/build-desktop.yml` builds the macOS `.dmg` and Windows `.exe`
+on native GitHub-hosted runners and uploads them as artifacts. Trigger it from the
+Actions tab ("Build Desktop Apps" → Run workflow) or by pushing a `v*` tag. This is
+the reliable way to produce a working Windows installer without a Windows machine.
+
+### Signing
+
+The `.dmg`/`.exe` you build for yourself run as-is. Distributing to **other** machines
+needs code-signing (Apple notarization on macOS; an Authenticode cert on Windows) to
+avoid Gatekeeper / SmartScreen warnings.
 
 ## Verify without a window
 
