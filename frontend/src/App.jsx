@@ -1,43 +1,49 @@
+import { lazy, Suspense } from 'react';
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
 import { ThemeProvider } from './context/ThemeContext';
 import { BudgetProvider } from './context/BudgetContext';
 import { ToastProvider } from './context/ToastContext';
+import ErrorBoundary from './components/ErrorBoundary';
+import PageSpinner from './components/PageSpinner';
 import Layout from './components/Layout';
+
+// Auth pages stay eager so the login screen paints without a chunk round-trip.
 import Login from './pages/Login';
 import Register from './pages/Register';
-import Dashboard from './pages/Dashboard';
-import Transactions from './pages/Transactions';
-import Budgets from './pages/Budgets';
-import Recurring from './pages/Recurring';
-import Categories from './pages/Categories';
-import Settings from './pages/Settings';
-import Debts from './pages/Debts';
-import Bills from './pages/Bills';
-import Import from './pages/Import';
-import Calendar from './pages/Calendar';
-import Help from './pages/Help';
 
-// New Feature Pages
-import Analytics from './pages/Analytics';
-import Organizations from './pages/Organizations';
-import Receipts from './pages/Receipts';
-import BudgetTemplates from './pages/BudgetTemplates';
-import Currency from './pages/Currency';
-import Notifications from './pages/Notifications';
-import AIAssistant from './pages/AIAssistant';
-import PayPeriods from './pages/PayPeriods';
-import Accounts from './pages/Accounts';
-import MatchRules from './pages/MatchRules';
-import Backups from './pages/Backups';
-import Reports from './pages/Reports';
-import AdminDashboard from './pages/Admin/AdminDashboard';
-import AdminUsers from './pages/Admin/AdminUsers';
-import AdminLogs from './pages/Admin/AdminLogs';
-import AdminBackup from './pages/Admin/AdminBackup';
-import AdminAISettings from './pages/Admin/AdminAISettings';
-import AdminEmailSettings from './pages/Admin/AdminEmailSettings';
-import FamilyMembers from './pages/FamilyMembers';
+// Everything behind auth is code-split — each page loads on first visit instead
+// of shipping all ~30 pages (recharts, admin, import wizard…) in one 1 MB bundle.
+const Dashboard = lazy(() => import('./pages/Dashboard'));
+const Transactions = lazy(() => import('./pages/Transactions'));
+const Budgets = lazy(() => import('./pages/Budgets'));
+const Recurring = lazy(() => import('./pages/Recurring'));
+const Categories = lazy(() => import('./pages/Categories'));
+const Settings = lazy(() => import('./pages/Settings'));
+const Debts = lazy(() => import('./pages/Debts'));
+const Bills = lazy(() => import('./pages/Bills'));
+const Import = lazy(() => import('./pages/Import'));
+const Calendar = lazy(() => import('./pages/Calendar'));
+const Help = lazy(() => import('./pages/Help'));
+const Analytics = lazy(() => import('./pages/Analytics'));
+const Organizations = lazy(() => import('./pages/Organizations'));
+const Receipts = lazy(() => import('./pages/Receipts'));
+const BudgetTemplates = lazy(() => import('./pages/BudgetTemplates'));
+const Currency = lazy(() => import('./pages/Currency'));
+const Notifications = lazy(() => import('./pages/Notifications'));
+const AIAssistant = lazy(() => import('./pages/AIAssistant'));
+const PayPeriods = lazy(() => import('./pages/PayPeriods'));
+const Accounts = lazy(() => import('./pages/Accounts'));
+const MatchRules = lazy(() => import('./pages/MatchRules'));
+const Backups = lazy(() => import('./pages/Backups'));
+const Reports = lazy(() => import('./pages/Reports'));
+const AdminDashboard = lazy(() => import('./pages/Admin/AdminDashboard'));
+const AdminUsers = lazy(() => import('./pages/Admin/AdminUsers'));
+const AdminLogs = lazy(() => import('./pages/Admin/AdminLogs'));
+const AdminBackup = lazy(() => import('./pages/Admin/AdminBackup'));
+const AdminAISettings = lazy(() => import('./pages/Admin/AdminAISettings'));
+const AdminEmailSettings = lazy(() => import('./pages/Admin/AdminEmailSettings'));
+const FamilyMembers = lazy(() => import('./pages/FamilyMembers'));
 
 const ProtectedRoute = ({ children }) => {
   const { user, loading } = useAuth();
@@ -132,7 +138,11 @@ function App() {
         <ToastProvider>
           <AuthProvider>
             <BudgetProvider>
-              <AppRoutes />
+              <ErrorBoundary>
+                <Suspense fallback={<PageSpinner />}>
+                  <AppRoutes />
+                </Suspense>
+              </ErrorBoundary>
             </BudgetProvider>
           </AuthProvider>
         </ToastProvider>

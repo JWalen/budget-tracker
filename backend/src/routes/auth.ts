@@ -3,7 +3,7 @@ import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { authenticator } from 'otplib';
 import QRCode from 'qrcode';
-import { query } from '../config/database';
+import { query, pool } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import EncryptionService from '../services/encryption';
 import { LoggerClass } from '../services/logger';
@@ -27,16 +27,24 @@ export const validatePassword = (password: string): boolean => {
 // found on login (prevents timing-based account enumeration).
 const DUMMY_BCRYPT_HASH = '$2a$12$C6UzMDM.H6dfI/f/IKcEeO3g7q5x2mZ8x0j1wZ7fJc3z0xhq2m4Hy';
 
-// Check rate limiting
+// Check rate limiting. Scoped so an attacker on a DIFFERENT IP can't lock a
+// victim out of their own account: we block on per-IP volume (brute force from
+// one source) and per-email-from-the-same-IP (targeted), never on failures for
+// an email coming from other IPs.
 const checkRateLimit = async (email: string, ip: string): Promise<boolean> => {
   const result = await query(
-    `SELECT COUNT(*) as count FROM login_attempts
-     WHERE (email = $1 OR ip_address = $2)
-     AND success = false
+    `SELECT
+       COUNT(*) FILTER (WHERE ip_address = $2) AS ip_count,
+       COUNT(*) FILTER (WHERE email = $1 AND ip_address = $2) AS email_ip_count
+     FROM login_attempts
+     WHERE success = false
      AND created_at > NOW() - INTERVAL '15 minutes'`,
     [email, ip]
   );
-  return parseInt(result.rows[0].count) < 5;
+  const ipCount = parseInt(result.rows[0].ip_count, 10);
+  const emailIpCount = parseInt(result.rows[0].email_ip_count, 10);
+  // Allow up to 5 targeted attempts per (email, IP) and 15 total from one IP.
+  return emailIpCount < 5 && ipCount < 15;
 };
 
 // Log login attempt
@@ -47,34 +55,58 @@ const logAttempt = async (email: string, ip: string, success: boolean) => {
   );
 };
 
+// Basic email shape check (defence-in-depth; the DB has its own constraints).
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
 // Register
 router.post('/register', async (req: Request, res: Response) => {
+  // Allow operators to close public sign-up in production without a code change.
+  // Defaults to open so existing/dev deployments are unaffected.
+  if (process.env.REGISTRATION_ENABLED === 'false') {
+    return res.status(403).json({ error: 'Registration is disabled' });
+  }
+
+  const { email, password, name } = req.body;
+
+  // Validate inputs up front (previously email/name were unvalidated, so a
+  // missing name hit the NOT NULL constraint as a 500).
+  if (typeof email !== 'string' || !EMAIL_RE.test(email.trim())) {
+    return res.status(400).json({ error: 'A valid email address is required' });
+  }
+  if (typeof name !== 'string' || name.trim().length < 1 || name.trim().length > 100) {
+    return res.status(400).json({ error: 'Name is required (1–100 characters)' });
+  }
+  if (!validatePassword(password)) {
+    return res.status(400).json({ error: PASSWORD_POLICY_MESSAGE });
+  }
+
+  const normalizedEmail = email.trim().toLowerCase();
+  const cleanName = name.trim();
+
+  const client = await pool.connect();
   try {
-    const { email, password, name } = req.body;
-
-    // Validate password strength
-    if (!validatePassword(password)) {
-      return res.status(400).json({ error: PASSWORD_POLICY_MESSAGE });
-    }
-
-    // Check if user exists
-    const existingUser = await query('SELECT id FROM users WHERE email = $1', [email]);
-    if (existingUser.rows.length > 0) {
-      return res.status(400).json({ error: 'Email already registered' });
-    }
-
-    // Check if this is the first user (should become admin)
-    const userCount = await query('SELECT COUNT(*) as count FROM users');
-    const isFirstUser = parseInt(userCount.rows[0].count) === 0;
-
-    // Hash password with cost factor 12
+    // Hash password with cost factor 12 (before the transaction — CPU-bound).
     const passwordHash = await bcrypt.hash(password, 12);
 
-    // Create user (first user becomes admin)
-    const result = await query(
-      'INSERT INTO users (email, password_hash, name, is_admin) VALUES ($1, $2, $3, $4) RETURNING id, email, name, mfa_enabled, is_admin',
-      [email, passwordHash, name, isFirstUser]
-    );
+    await client.query('BEGIN');
+
+    // Create user. First-ever user becomes admin, evaluated atomically inside the
+    // INSERT so two concurrent registrations can't both win the admin bootstrap.
+    let result;
+    try {
+      result = await client.query(
+        `INSERT INTO users (email, password_hash, name, is_admin)
+         VALUES ($1, $2, $3, NOT EXISTS (SELECT 1 FROM users))
+         RETURNING id, email, name, mfa_enabled, is_admin`,
+        [normalizedEmail, passwordHash, cleanName]
+      );
+    } catch (e: any) {
+      if (e.code === '23505') {
+        await client.query('ROLLBACK');
+        return res.status(400).json({ error: 'Email already registered' });
+      }
+      throw e;
+    }
 
     const user = result.rows[0];
 
@@ -93,7 +125,7 @@ router.post('/register', async (req: Request, res: Response) => {
     ];
 
     for (const cat of defaultCategories) {
-      await query(
+      await client.query(
         'INSERT INTO categories (user_id, name, type, color) VALUES ($1, $2, $3, $4)',
         [user.id, cat.name, cat.type, cat.color]
       );
@@ -101,19 +133,21 @@ router.post('/register', async (req: Request, res: Response) => {
 
     // Create a personal household (organization) so household-scoped features
     // (notifications, receipts, templates, currency) and shared-budget access work.
-    const org = await query(
+    const org = await client.query(
       `INSERT INTO organizations (name, slug, owner_id)
        VALUES ($1, $2, $3)
        ON CONFLICT (slug) DO UPDATE SET owner_id = EXCLUDED.owner_id
        RETURNING id`,
-      [`${name || 'My'}'s Household`, `personal-${user.id}`, user.id]
+      [`${cleanName}'s Household`, `personal-${user.id}`, user.id]
     );
-    await query(
+    await client.query(
       `INSERT INTO organization_members (organization_id, user_id, role)
        VALUES ($1, $2, 'owner')
        ON CONFLICT (organization_id, user_id) DO NOTHING`,
       [org.rows[0].id, user.id]
     );
+
+    await client.query('COMMIT');
 
     // Generate tokens
     const { accessToken, refreshToken, expiresIn } = await TokenService.generateTokenPair(
@@ -140,8 +174,14 @@ router.post('/register', async (req: Request, res: Response) => {
       expiresIn,
     });
   } catch (error) {
+    // Roll back if we failed before COMMIT; a no-op if already committed.
+    try { await client.query('ROLLBACK'); } catch { /* already committed/closed */ }
     logger.error('Register error', error);
-    res.status(500).json({ error: 'Server error' });
+    if (!res.headersSent) {
+      res.status(500).json({ error: 'Server error' });
+    }
+  } finally {
+    client.release();
   }
 });
 
@@ -483,18 +523,12 @@ router.delete('/sessions/:sessionId', authMiddleware, async (req: AuthRequest, r
   try {
     const { sessionId } = req.params;
 
-    // Verify the session belongs to the user
-    const result = await query(
-      'SELECT token FROM refresh_tokens WHERE id = $1 AND user_id = $2',
-      [sessionId, req.userId]
-    );
-
-    if (result.rows.length === 0) {
+    // Revoke by id, scoped to the user (tokens are stored hashed, so we can't
+    // round-trip the stored value back through revokeRefreshToken).
+    const revoked = await TokenService.revokeSessionById(parseInt(sessionId, 10), req.userId!);
+    if (!revoked) {
       return res.status(404).json({ error: 'Session not found' });
     }
-
-    // Revoke the token
-    await TokenService.revokeRefreshToken(result.rows[0].token, req.userId);
 
     res.json({ message: 'Session revoked' });
   } catch (error) {

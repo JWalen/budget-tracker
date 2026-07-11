@@ -259,7 +259,7 @@ export default function AdminLogs() {
                 Showing {((page - 1) * pagination.limit) + 1} to {Math.min(page * pagination.limit, pagination.total)} of {pagination.total} logs
               </p>
               <div className="flex items-center space-x-2">
-                <button
+                <button aria-label="Previous page"
                   onClick={() => setPage(page - 1)}
                   disabled={page === 1}
                   className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"
@@ -269,7 +269,7 @@ export default function AdminLogs() {
                 <span className="text-sm text-gray-700 dark:text-gray-300">
                   Page {page} of {pagination.pages}
                 </span>
-                <button
+                <button aria-label="Next page"
                   onClick={() => setPage(page + 1)}
                   disabled={page === pagination.pages}
                   className="p-2 text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white disabled:opacity-50 disabled:cursor-not-allowed"

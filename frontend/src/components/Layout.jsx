@@ -1,7 +1,11 @@
+import { Suspense } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useBudget } from '../context/BudgetContext';
+import ErrorBoundary from './ErrorBoundary';
+import PageSpinner from './PageSpinner';
+import InstallPWA from './InstallPWA';
 import {
   LayoutDashboard,
   ArrowLeftRight,
@@ -358,7 +362,7 @@ export default function Layout() {
         <main className="flex-1 lg:pl-64">
           {/* Top icon bar */}
           <div className="hidden lg:flex items-center justify-between px-6 py-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
-            <button
+            <button aria-label="Toggle theme"
               onClick={toggleTheme}
               className="p-2 rounded-lg transition-colors text-gray-500 dark:text-gray-400 hover:bg-gray-100 dark:hover:bg-gray-700 hover:text-gray-700 dark:hover:text-gray-200"
               title="Toggle theme"
@@ -407,6 +411,7 @@ export default function Layout() {
                     <p className="text-sm font-medium text-gray-900 dark:text-gray-100">{user?.name}</p>
                     <p className="text-xs text-gray-500 dark:text-gray-400">{user?.email}</p>
                   </div>
+                  <InstallPWA variant="menu" />
                   <button
                     onClick={() => { setShowUserMenu(false); handleLogout(); }}
                     className="w-full flex items-center gap-2 px-4 py-2 text-sm text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700"
@@ -437,7 +442,16 @@ export default function Layout() {
             </div>
           )}
           <div className="p-4 lg:p-8">
-            <Outlet />
+            {/* Key the routed subtree by the active budget owner so every page
+                remounts (and refetches) when switching to a shared budget —
+                otherwise pages that load only on mount show the prior owner's data.
+                ErrorBoundary keeps one page's crash from white-screening the app;
+                Suspense shows a spinner while a lazy page chunk loads. */}
+            <ErrorBoundary key={activeBudgetOwner?.id ?? 'own'}>
+              <Suspense fallback={<PageSpinner />}>
+                <Outlet />
+              </Suspense>
+            </ErrorBoundary>
           </div>
         </main>
       </div>

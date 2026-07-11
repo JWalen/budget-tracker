@@ -275,7 +275,7 @@ export default function Recurring() {
                 </span>
                 {!isReadOnly && (
                   <div className="flex items-center gap-1">
-                    <button
+                    <button aria-label="Toggle recurring transaction"
                       onClick={() => handleToggleActive(item)}
                       disabled={togglingId === item.id}
                       className={`p-2 rounded-lg disabled:opacity-50 ${
@@ -287,13 +287,13 @@ export default function Recurring() {
                     >
                       {item.active ? <Pause size={16} /> : <Play size={16} />}
                     </button>
-                    <button
+                    <button aria-label="Edit recurring transaction"
                       onClick={() => openModal(item)}
                       className="p-2 text-gray-400 dark:text-gray-500 hover:text-gray-600 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
                     >
                       <Pencil size={16} />
                     </button>
-                    <button
+                    <button aria-label="Delete recurring transaction"
                       onClick={() => handleDelete(item.id)}
                       className="p-2 text-gray-400 dark:text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"
                     >
@@ -315,7 +315,7 @@ export default function Recurring() {
               <h2 className="text-lg font-semibold">
                 {editing ? 'Edit Recurring' : 'New Recurring Transaction'}
               </h2>
-              <button onClick={closeModal} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+              <button aria-label="Close" onClick={closeModal} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
                 <X size={20} />
               </button>
             </div>

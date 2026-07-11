@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { api } from '../api/client';
 import { useBudget } from '../context/BudgetContext';
+import { useToast } from '../context/ToastContext';
 import {
   TrendingUp,
   TrendingDown,
@@ -22,12 +23,16 @@ import {
   Legend,
 } from 'recharts';
 import { formatCurrency, MONTHS } from '../utils/format';
+import { ChartTooltip, useChartTheme } from '../components/ChartTheme';
 
 export default function Dashboard() {
   const { activeBudgetOwner } = useBudget();
+  const chart = useChartTheme();
+  const toast = useToast();
   const [summary, setSummary] = useState(null);
   const [trend, setTrend] = useState([]);
   const [loading, setLoading] = useState(true);
+  const [loadError, setLoadError] = useState(false);
   const [currentDate, setCurrentDate] = useState(new Date());
 
   const month = currentDate.getMonth() + 1;
@@ -39,6 +44,7 @@ export default function Dashboard() {
 
   const loadData = async () => {
     setLoading(true);
+    setLoadError(false);
     try {
       const [summaryData, trendData] = await Promise.all([
         api.getSummary({ month, year }),
@@ -47,7 +53,11 @@ export default function Dashboard() {
       setSummary(summaryData);
       setTrend(trendData);
     } catch (error) {
+      // Surface the failure instead of silently showing a dashboard of zeros —
+      // in a finance app that reads as "you have no money", not "load failed".
       console.error('Failed to load dashboard:', error);
+      setLoadError(true);
+      toast.error(error.message || 'Could not load your dashboard');
     } finally {
       setLoading(false);
     }
@@ -69,6 +79,19 @@ export default function Dashboard() {
     );
   }
 
+  if (loadError && !summary) {
+    return (
+      <div className="flex flex-col items-center justify-center h-64 gap-4 text-center">
+        <AlertTriangle className="w-10 h-10 text-red-500" />
+        <div>
+          <p className="font-medium text-gray-900 dark:text-gray-100">Couldn't load your dashboard</p>
+          <p className="text-sm text-gray-500 dark:text-gray-400">Check your connection and try again.</p>
+        </div>
+        <button onClick={loadData} className="btn-primary">Retry</button>
+      </div>
+    );
+  }
+
   const overBudget = summary?.budgets?.filter(b => parseFloat(b.spent) > parseFloat(b.amount_limit)) || [];
 
   return (
@@ -77,13 +100,13 @@ export default function Dashboard() {
       <div className="flex items-center justify-between">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Dashboard</h1>
         <div className="flex items-center gap-2">
-          <button onClick={goToPrevMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+          <button aria-label="Previous month" onClick={goToPrevMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
             <ChevronLeft size={20} />
           </button>
           <span className="font-medium text-gray-900 dark:text-gray-100 min-w-[140px] text-center">
             {MONTHS[month - 1]} {year}
           </span>
-          <button onClick={goToNextMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+          <button aria-label="Next month" onClick={goToNextMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
             <ChevronRight size={20} />
           </button>
         </div>
@@ -173,7 +196,7 @@ export default function Dashboard() {
                       <Cell key={index} fill={entry.color} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value) => formatCurrency(value)} />
+                  <Tooltip content={<ChartTooltip currency />} />
                 </PieChart>
               </ResponsiveContainer>
             </div>
@@ -229,9 +252,9 @@ export default function Dashboard() {
           <div className="h-64">
             <ResponsiveContainer width="100%" height="100%">
               <LineChart data={trend}>
-                <XAxis dataKey="month" />
-                <YAxis tickFormatter={(value) => `$${value}`} />
-                <Tooltip formatter={(value) => formatCurrency(value)} />
+                <XAxis dataKey="month" tick={{ fill: chart.axisTick }} stroke={chart.grid} />
+                <YAxis tickFormatter={(value) => `$${value}`} tick={{ fill: chart.axisTick }} stroke={chart.grid} />
+                <Tooltip content={<ChartTooltip currency />} />
                 <Legend />
                 <Line
                   type="monotone"

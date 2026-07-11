@@ -152,8 +152,8 @@ router.post('/:id/apply', requireWriteAccess, async (req: TenantRequest, res: Re
 
     // Get user's categories
     const userCategoriesResult = await query(
-      'SELECT * FROM categories WHERE organization_id = $1 AND type = $2',
-      [organizationId, 'expense']
+      'SELECT * FROM categories WHERE user_id = $1 AND type = $2',
+      [userId, 'expense']
     );
 
     const userCategories = userCategoriesResult.rows;
@@ -184,12 +184,12 @@ router.post('/:id/apply', requireWriteAccess, async (req: TenantRequest, res: Re
         if (userCategory) {
           // Create or update budget
           const budgetResult = await query(
-            `INSERT INTO budgets (user_id, organization_id, category_id, amount_limit, month, year)
-             VALUES ($1, $2, $3, $4, $5, $6)
+            `INSERT INTO budgets (user_id, category_id, amount_limit, month, year)
+             VALUES ($1, $2, $3, $4, $5)
              ON CONFLICT (user_id, category_id, month, year)
-             DO UPDATE SET amount_limit = $4
+             DO UPDATE SET amount_limit = $3
              RETURNING *`,
-            [userId, organizationId, userCategory.id, amount, month, year]
+            [userId, userCategory.id, amount, month, year]
           );
 
           budgetsCreated.push(budgetResult.rows[0]);
@@ -219,12 +219,12 @@ router.post('/:id/apply', requireWriteAccess, async (req: TenantRequest, res: Re
 
         if (userCategory) {
           const budgetResult = await query(
-            `INSERT INTO budgets (user_id, organization_id, category_id, amount_limit, month, year)
-             VALUES ($1, $2, $3, $4, $5, $6)
+            `INSERT INTO budgets (user_id, category_id, amount_limit, month, year)
+             VALUES ($1, $2, $3, $4, $5)
              ON CONFLICT (user_id, category_id, month, year)
-             DO UPDATE SET amount_limit = $4
+             DO UPDATE SET amount_limit = $3
              RETURNING *`,
-            [userId, organizationId, userCategory.id, amount, month, year]
+            [userId, userCategory.id, amount, month, year]
           );
 
           budgetsCreated.push(budgetResult.rows[0]);
@@ -240,12 +240,12 @@ router.post('/:id/apply', requireWriteAccess, async (req: TenantRequest, res: Re
         const amount = parseFloat(category.amount);
         if (userCategory && Number.isFinite(amount) && amount > 0) {
           const budgetResult = await query(
-            `INSERT INTO budgets (user_id, organization_id, category_id, amount_limit, month, year)
-             VALUES ($1, $2, $3, $4, $5, $6)
+            `INSERT INTO budgets (user_id, category_id, amount_limit, month, year)
+             VALUES ($1, $2, $3, $4, $5)
              ON CONFLICT (user_id, category_id, month, year)
-             DO UPDATE SET amount_limit = $4
+             DO UPDATE SET amount_limit = $3
              RETURNING *`,
-            [userId, organizationId, userCategory.id, amount, month, year]
+            [userId, userCategory.id, amount, month, year]
           );
 
           budgetsCreated.push(budgetResult.rows[0]);

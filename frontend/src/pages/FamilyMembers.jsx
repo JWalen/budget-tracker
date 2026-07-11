@@ -241,13 +241,13 @@ export default function FamilyMembers() {
                   </div>
                 </div>
                 <div className="flex gap-1">
-                  <button
+                  <button aria-label="Edit family member"
                     onClick={() => startEdit(member)}
                     className="p-1 hover:bg-gray-100 dark:hover:bg-gray-700 rounded"
                   >
                     <Edit2 size={16} className="text-gray-500" />
                   </button>
-                  <button
+                  <button aria-label="Delete family member"
                     onClick={() => handleDelete(member.id)}
                     className="p-1 hover:bg-red-50 dark:hover:bg-red-900/20 rounded"
                   >

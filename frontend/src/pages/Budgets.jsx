@@ -220,13 +220,13 @@ export default function Budgets() {
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Budgets</h1>
         <div className="flex items-center gap-4">
           <div className="flex items-center gap-2">
-            <button onClick={goToPrevMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+            <button aria-label="Previous month" onClick={goToPrevMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
               <ChevronLeft size={20} />
             </button>
             <span className="font-medium text-gray-900 dark:text-gray-100 min-w-[140px] text-center">
               {MONTHS[month - 1]} {year}
             </span>
-            <button onClick={goToNextMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+            <button aria-label="Next month" onClick={goToNextMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
               <ChevronRight size={20} />
             </button>
           </div>
@@ -287,14 +287,14 @@ export default function Budgets() {
                   </div>
                   {!isReadOnly && (
                     <div className="flex items-center gap-1">
-                      <button
+                      <button aria-label="Edit budget"
                         onClick={() => openEditModal(budget)}
                         className="p-2 text-gray-400 dark:text-gray-500 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900/30 rounded-lg"
                         title="Edit budget"
                       >
                         <Edit2 size={16} />
                       </button>
-                      <button
+                      <button aria-label="Delete budget"
                         onClick={() => handleDelete(budget.id)}
                         className="p-2 text-gray-400 dark:text-gray-500 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-900/30 rounded-lg"
                         title="Delete budget"
@@ -345,7 +345,7 @@ export default function Budgets() {
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full">
             <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
               <h2 className="text-lg font-semibold">Set Budget Limit</h2>
-              <button onClick={closeModal} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
+              <button aria-label="Close" onClick={closeModal} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
                 <X size={20} />
               </button>
             </div>
@@ -401,7 +401,7 @@ export default function Budgets() {
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full">
             <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
               <h2 className="text-lg font-semibold">Edit Budget</h2>
-              <button
+              <button aria-label="Close"
                 onClick={() => setShowEditModal(false)}
                 className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
               >
@@ -473,7 +473,7 @@ export default function Budgets() {
           <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full">
             <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
               <h2 className="text-lg font-semibold">Copy Budgets to Other Months</h2>
-              <button
+              <button aria-label="Close"
                 onClick={() => setShowCopyModal(false)}
                 className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
               >

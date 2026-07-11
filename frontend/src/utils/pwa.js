@@ -1,209 +1,108 @@
-/**
- * Register service worker for PWA support
- */
-export const registerServiceWorker = () => {
-  if ('serviceWorker' in navigator) {
-    window.addEventListener('load', () => {
-      navigator.serviceWorker
-        .register('/service-worker.js')
-        .then((registration) => {
-          console.log('SW registered:', registration);
+// PWA helpers. Deliberately does NOT persist auth tokens or financial data to
+// IndexedDB/Cache — see service-worker.js for the caching-safety rationale.
 
-          // Check for updates periodically
-          setInterval(() => {
-            registration.update();
-          }, 60000); // Every minute
-        })
-        .catch((error) => {
-          console.error('SW registration failed:', error);
+/**
+ * Register the service worker and wire an update flow. When a new SW is waiting,
+ * `onUpdate` is called so the app can prompt the user to reload.
+ */
+export const registerServiceWorker = ({ onUpdate } = {}) => {
+  if (!('serviceWorker' in navigator)) return;
+
+  window.addEventListener('load', () => {
+    navigator.serviceWorker
+      .register('/service-worker.js')
+      .then((registration) => {
+        // Detect a new worker taking over and surface an update prompt.
+        registration.addEventListener('updatefound', () => {
+          const installing = registration.installing;
+          if (!installing) return;
+          installing.addEventListener('statechange', () => {
+            if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+              if (onUpdate) onUpdate(registration);
+            }
+          });
         });
-    });
-  }
+
+        // Check for updates periodically.
+        setInterval(() => registration.update(), 60_000);
+      })
+      .catch((error) => console.error('SW registration failed:', error));
+  });
+};
+
+/** Tell a waiting worker to activate, then reload once it takes control. */
+export const applyUpdate = (registration) => {
+  const waiting = registration?.waiting;
+  if (!waiting) return;
+  waiting.postMessage('SKIP_WAITING');
+  navigator.serviceWorker.addEventListener('controllerchange', () => window.location.reload(), {
+    once: true,
+  });
 };
 
 /**
- * Request notification permission
+ * Purge every Cache Storage entry. Call on logout so no cached asset/response
+ * lingers for the next person on a shared device.
  */
+export const clearAppCaches = async () => {
+  try {
+    if (navigator.serviceWorker?.controller) {
+      navigator.serviceWorker.controller.postMessage('CLEAR_CACHES');
+    }
+    if ('caches' in window) {
+      const names = await caches.keys();
+      await Promise.all(names.map((n) => caches.delete(n)));
+    }
+  } catch (error) {
+    console.error('Failed to clear caches:', error);
+  }
+};
+
+/** Request notification permission (no-op if unsupported or already decided). */
 export const requestNotificationPermission = async () => {
-  if (!('Notification' in window)) {
-    console.log('This browser does not support notifications');
-    return false;
-  }
-
-  if (Notification.permission === 'granted') {
-    return true;
-  }
-
+  if (!('Notification' in window)) return false;
+  if (Notification.permission === 'granted') return true;
   if (Notification.permission !== 'denied') {
-    const permission = await Notification.requestPermission();
-    return permission === 'granted';
+    return (await Notification.requestPermission()) === 'granted';
   }
-
   return false;
 };
 
-/**
- * Show local notification
- */
-export const showNotification = (title, options) => {
-  if (Notification.permission === 'granted') {
-    navigator.serviceWorker.ready.then((registration) => {
-      registration.showNotification(title, {
-        body: options.body,
-        icon: '/icons/icon-192x192.png',
-        badge: '/icons/badge-72x72.png',
-        vibrate: [200, 100, 200],
-        ...options,
-      });
-    });
-  }
-};
+/** Whether the app is running as an installed PWA. */
+export const isStandalone = () =>
+  window.matchMedia('(display-mode: standalone)').matches ||
+  window.navigator.standalone === true;
 
-/**
- * Check if app is running standalone (PWA)
- */
-export const isStandalone = () => {
-  return (
-    window.matchMedia('(display-mode: standalone)').matches ||
-    window.navigator.standalone === true
-  );
-};
-
-/**
- * Prompt user to install PWA
- */
 let deferredPrompt = null;
 
 export const setupInstallPrompt = (onInstallable) => {
   window.addEventListener('beforeinstallprompt', (e) => {
-    // Prevent the mini-infobar from appearing
     e.preventDefault();
     deferredPrompt = e;
-    
-    if (onInstallable) {
-      onInstallable(true);
-    }
+    if (onInstallable) onInstallable(true);
   });
-
   window.addEventListener('appinstalled', () => {
-    console.log('PWA was installed');
     deferredPrompt = null;
-    
-    if (onInstallable) {
-      onInstallable(false);
-    }
+    if (onInstallable) onInstallable(false);
   });
 };
 
 export const promptInstall = async () => {
-  if (!deferredPrompt) {
-    return false;
-  }
-
+  if (!deferredPrompt) return false;
   deferredPrompt.prompt();
   const { outcome } = await deferredPrompt.userChoice;
-  
-  console.log(`User ${outcome} the install prompt`);
   deferredPrompt = null;
-  
   return outcome === 'accepted';
 };
 
-/**
- * Check online/offline status
- */
+/** Subscribe to online/offline changes; returns an unsubscribe function. */
 export const setupOnlineStatus = (onStatusChange) => {
-  const updateOnlineStatus = () => {
-    const isOnline = navigator.onLine;
-    onStatusChange(isOnline);
-  };
-
-  window.addEventListener('online', updateOnlineStatus);
-  window.addEventListener('offline', updateOnlineStatus);
-
-  // Initial check
-  updateOnlineStatus();
-
-  // Cleanup function
+  const update = () => onStatusChange(navigator.onLine);
+  window.addEventListener('online', update);
+  window.addEventListener('offline', update);
+  update();
   return () => {
-    window.removeEventListener('online', updateOnlineStatus);
-    window.removeEventListener('offline', updateOnlineStatus);
+    window.removeEventListener('online', update);
+    window.removeEventListener('offline', update);
   };
-};
-
-/**
- * Register background sync
- */
-export const registerBackgroundSync = async (tag) => {
-  if ('serviceWorker' in navigator && 'SyncManager' in window) {
-    try {
-      const registration = await navigator.serviceWorker.ready;
-      await registration.sync.register(tag);
-      console.log('Background sync registered:', tag);
-      return true;
-    } catch (error) {
-      console.error('Background sync registration failed:', error);
-      return false;
-    }
-  }
-  return false;
-};
-
-/**
- * Save transaction for offline sync
- */
-export const saveOfflineTransaction = async (transaction) => {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open('BudgetTrackerDB', 1);
-
-    request.onerror = () => reject(request.error);
-
-    request.onsuccess = () => {
-      const db = request.result;
-      const tx = db.transaction('pendingTransactions', 'readwrite');
-      const store = tx.objectStore('pendingTransactions');
-
-      const addRequest = store.add({
-        data: transaction,
-        token: localStorage.getItem('token'),
-        timestamp: new Date().toISOString(),
-      });
-
-      addRequest.onsuccess = () => {
-        // Register sync
-        registerBackgroundSync('sync-transactions');
-        resolve(addRequest.result);
-      };
-
-      addRequest.onerror = () => reject(addRequest.error);
-    };
-
-    request.onupgradeneeded = (event) => {
-      const db = event.target.result;
-      if (!db.objectStoreNames.contains('pendingTransactions')) {
-        db.createObjectStore('pendingTransactions', { keyPath: 'id', autoIncrement: true });
-      }
-    };
-  });
-};
-
-/**
- * Get pending offline transactions
- */
-export const getPendingTransactions = async () => {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open('BudgetTrackerDB', 1);
-
-    request.onerror = () => reject(request.error);
-
-    request.onsuccess = () => {
-      const db = request.result;
-      const tx = db.transaction('pendingTransactions', 'readonly');
-      const store = tx.objectStore('pendingTransactions');
-      const getRequest = store.getAll();
-
-      getRequest.onsuccess = () => resolve(getRequest.result);
-      getRequest.onerror = () => reject(getRequest.error);
-    };
-  });
 };

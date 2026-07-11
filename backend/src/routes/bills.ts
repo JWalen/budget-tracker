@@ -4,6 +4,7 @@ import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
 import { LoggerClass } from '../services/logger';
 import { handleRouteError } from '../utils/apiError';
+import { todayDateString } from '../utils/dateUtils';
 
 const logger = new LoggerClass('Bills');
 const router = Router();
@@ -192,7 +193,7 @@ router.post('/:id/pay', requireEditAccess, async (req: AuthRequest, res: Respons
 
       // Optionally create a new transaction
       if (create_transaction && !txId) {
-        const today = new Date().toISOString().split('T')[0];
+        const today = todayDateString();
         const txResult = await client.query(
           `INSERT INTO transactions (user_id, category_id, amount, description, date, type)
            VALUES ($1, $2, $3, $4, $5, 'expense') RETURNING *`,

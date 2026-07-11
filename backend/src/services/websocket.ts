@@ -119,12 +119,9 @@ export const sendNotificationToUser = async (
   }
 ) => {
   try {
-    if (!io) {
-      logger.warn('Socket.IO not initialized, cannot send notification');
-      return;
-    }
-
-    // Save to database
+    // Always persist the notification so the Notifications page shows it. Real-time
+    // delivery via Socket.IO is best-effort on top; a missing `io` must NOT skip
+    // the DB write (which previously made the whole feature silently do nothing).
     const result = await query(
       'INSERT INTO notifications (user_id, type, title, message, data) VALUES ($1, $2, $3, $4, $5) RETURNING *',
       [userId, notification.type, notification.title, notification.message, JSON.stringify(notification.data || {})]
@@ -132,10 +129,12 @@ export const sendNotificationToUser = async (
 
     const savedNotification = result.rows[0];
 
-    // Send via WebSocket
-    io.to(`user:${userId}`).emit('notification', savedNotification);
+    // Push over WebSocket if it's wired up.
+    if (io) {
+      io.to(`user:${userId}`).emit('notification', savedNotification);
+    }
 
-    logger.info(`Notification sent to user ${userId}: ${notification.type}`);
+    logger.info(`Notification created for user ${userId}: ${notification.type}`);
   } catch (error) {
     logger.error('Send notification error', error as Error);
   }
@@ -155,18 +154,13 @@ export const sendNotificationToOrganization = async (
   }
 ) => {
   try {
-    if (!io) {
-      logger.warn('Socket.IO not initialized, cannot send notification');
-      return;
-    }
-
     // Get all members of organization
     const membersResult = await query(
       'SELECT user_id FROM organization_members WHERE organization_id = $1',
       [organizationId]
     );
 
-    // Save notifications for all members
+    // Persist notifications for all members regardless of socket availability.
     for (const member of membersResult.rows) {
       if (member.user_id === notification.excludeUserId) {
         continue;
@@ -185,21 +179,21 @@ export const sendNotificationToOrganization = async (
       );
     }
 
-    // Broadcast via WebSocket (excludes sender if provided)
-    if (notification.excludeUserId) {
+    // Broadcast via WebSocket if wired up (excludes sender if provided).
+    if (io && notification.excludeUserId) {
       const sockets = userSockets.get(notification.excludeUserId) || new Set();
       io.to(`org:${organizationId}`).except(Array.from(sockets)).emit('notification', {
         organizationId,
         ...notification,
       });
-    } else {
+    } else if (io) {
       io.to(`org:${organizationId}`).emit('notification', {
         organizationId,
         ...notification,
       });
     }
 
-    logger.info(`Notification sent to organization ${organizationId}: ${notification.type}`);
+    logger.info(`Notification created for organization ${organizationId}: ${notification.type}`);
   } catch (error) {
     logger.error('Send organization notification error', error as Error);
   }

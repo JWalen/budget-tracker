@@ -1,21 +1,31 @@
 import * as Sentry from '@sentry/node';
-import { nodeProfilingIntegration } from '@sentry/profiling-node';
 
 export const initSentry = () => {
   if (process.env.NODE_ENV === 'production' && process.env.SENTRY_DSN) {
+    // Load the profiling integration lazily and defensively: it pulls in a
+    // native binding that isn't present on every platform/Node build, and a
+    // top-level import would crash the whole app at startup even when Sentry is
+    // disabled. If it can't load, run Sentry without CPU profiling.
+    const integrations: any[] = [
+      Sentry.httpIntegration(),
+      Sentry.expressIntegration(),
+    ];
+    try {
+      const { nodeProfilingIntegration } = require('@sentry/profiling-node');
+      integrations.unshift(nodeProfilingIntegration());
+    } catch (e) {
+      console.warn('Sentry CPU profiling unavailable — continuing without it:', (e as Error).message);
+    }
+
     Sentry.init({
       dsn: process.env.SENTRY_DSN,
       environment: process.env.NODE_ENV,
-      
+
       // Performance Monitoring
       tracesSampleRate: 0.1, // 10% of transactions
       profilesSampleRate: 0.1, // 10% of transactions
-      
-      integrations: [
-        nodeProfilingIntegration(),
-        Sentry.httpIntegration(),
-        Sentry.expressIntegration(),
-      ],
+
+      integrations,
 
       // Error filtering
       beforeSend(event, hint) {

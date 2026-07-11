@@ -86,8 +86,12 @@ export const getExchangeRate = async (fromCurrency: string, toCurrency: string):
       return rate;
     }
   } catch (error) {
+    // Do NOT silently fall back to 1.0 — that reports e.g. EUR↔JPY at par and
+    // produces wrong money with no signal. Surface the failure so the route can
+    // return a 5xx and the UI can say "rates unavailable". Same-currency (rate 1)
+    // is handled up front and never reaches here.
     logger.error('Get exchange rate error', error as Error);
-    return 1.0; // Fallback
+    throw new Error('Exchange rate unavailable');
   }
 };
 

@@ -43,7 +43,7 @@ describe('Auth API', () => {
 
       expect(response.status).toBe(400);
       expect(response.body).toHaveProperty('error');
-      expect(response.body.error).toContain('Password must be at least 8 characters');
+      expect(response.body.error).toContain('Password must be at least 12 characters');
     });
 
     it('should reject duplicate email addresses', async () => {

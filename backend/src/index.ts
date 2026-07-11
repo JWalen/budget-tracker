@@ -1,4 +1,5 @@
 import express, { Request, Response, NextFunction } from 'express';
+import path from 'path';
 import cors from 'cors';
 import dotenv from 'dotenv';
 import helmet from 'helmet';
@@ -14,7 +15,8 @@ import {
   securityHeaders
 } from './middleware/security';
 import { LoggerClass, requestLogger } from './services/logger';
-import { query } from './config/database';
+import pool, { query } from './config/database';
+import { startScheduler, stopScheduler } from './services/scheduler';
 import { authMiddleware } from './middleware/auth';
 import authRoutes from './routes/auth';
 import transactionRoutes from './routes/transactions';
@@ -114,14 +116,27 @@ function validateEnvironment() {
 validateEnvironment();
 
 const app = express();
-app.set('trust proxy', 1);
+// Only trust the X-Forwarded-* headers when actually running behind a reverse
+// proxy (set TRUST_PROXY=true in prod, where nginx/NPM terminates). When the API
+// is reachable directly (dev), trusting the header lets any client spoof its IP
+// and rotate past the IP-keyed rate limiters.
+if (process.env.TRUST_PROXY === 'true' || process.env.NODE_ENV === 'production') {
+  app.set('trust proxy', 1);
+}
 const PORT = process.env.PORT || 5000;
 
 // Security middleware (order matters!)
-app.use(helmet()); // Security headers
+// In desktop (Electron) mode the frontend is served from this same origin and
+// loaded inside a local Electron window, so the default CSP — which blocks the
+// inline styles React/recharts emit — would break the UI. Relax CSP there; the
+// app isn't internet-facing in that mode.
+const desktopMode = !!process.env.SERVE_FRONTEND_DIR;
+app.use(helmet(desktopMode ? { contentSecurityPolicy: false } : undefined)); // Security headers
 app.use(compression()); // Gzip compression
 app.use(enforceHTTPS); // Check HTTPS first
-app.use(helmetConfig);
+if (!desktopMode) {
+  app.use(helmetConfig);
+}
 app.use(securityHeaders); // Additional security headers
 app.use(corsConfig);
 app.use(cookieParser());
@@ -157,6 +172,11 @@ app.use('/api/admin', adminRoutes);
 app.use('/api/debts', debtRoutes);
 app.use('/api/bills', billRoutes);
 app.use('/api/import', importRoutes);
+// backupRoutes (SQL export / restore / admin) is mounted first so its /export,
+// /restore and /admin/* handlers take precedence; backupScheduleRoutes then
+// serves the scheduling endpoints (/history, /schedules, /config, /create,
+// /download-now, /:id/download).
+app.use('/api/backup', backupRoutes);
 app.use('/api/backup', backupScheduleRoutes);
 app.use('/api/pay-periods', payPeriodRoutes);
 app.use('/api/reports', reportsRoutes);
@@ -176,11 +196,14 @@ app.use('/api/sharing', sharingRoutes);
 // exposed financial PII with no auth). They are served through the authenticated,
 // ownership-checked route GET /api/receipts/:id/file instead.
 
-// API Documentation
-app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
-  customCss: '.swagger-ui .topbar { display: none }',
-  customSiteTitle: 'Budget Tracker API Docs',
-}));
+// API Documentation — off by default in production (mapping the full API surface
+// for attackers). Set ENABLE_API_DOCS=true to expose it deliberately.
+if (process.env.NODE_ENV !== 'production' || process.env.ENABLE_API_DOCS === 'true') {
+  app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, {
+    customCss: '.swagger-ui .topbar { display: none }',
+    customSiteTitle: 'Budget Tracker API Docs',
+  }));
+}
 
 // Health check
 app.get('/api/health', async (req, res) => {
@@ -225,6 +248,19 @@ app.get('/api/ready', async (req, res) => {
     res.status(503).json({ ready: false, error: 'Database not ready' });
   }
 });
+
+// Desktop (Electron) mode: serve the built frontend from this same server so the
+// UI and the API share one origin and the relative `/api` calls just work — no
+// nginx/proxy. Enabled by pointing SERVE_FRONTEND_DIR at the frontend dist.
+if (process.env.SERVE_FRONTEND_DIR) {
+  const frontendDir = process.env.SERVE_FRONTEND_DIR;
+  app.use(express.static(frontendDir));
+  // SPA fallback for any non-API path so client-side routes resolve to index.html.
+  // The negative lookahead leaves /api requests to fall through to the JSON 404.
+  app.get(/^(?!\/api\/).*/, (_req: Request, res: Response) => {
+    res.sendFile(path.join(frontendDir, 'index.html'));
+  });
+}
 
 // JSON 404 for unmatched API routes (otherwise Express returns an HTML page the
 // frontend can't parse, collapsing to a generic "Request failed").
@@ -274,13 +310,45 @@ async function start() {
     process.exit(1);
   }
 
-  app.listen(PORT, () => {
+  const server = app.listen(PORT, () => {
     logger.info(`Server started successfully`, {
       port: PORT,
       environment: process.env.NODE_ENV,
       nodeVersion: process.version,
     });
+    // Start periodic maintenance (token/login-attempt/notification cleanup).
+    startScheduler();
   });
+
+  // Graceful shutdown: stop accepting new connections, let in-flight requests
+  // finish, close the DB pool, then exit. A hard timeout guards against hangs.
+  // Without this, every deploy SIGKILLs mid-request after the orchestrator's grace period.
+  let shuttingDown = false;
+  const shutdown = (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    logger.info(`${signal} received — draining connections`);
+    stopScheduler();
+    const forced = setTimeout(() => {
+      logger.error('Forced shutdown after timeout');
+      process.exit(1);
+    }, 10_000);
+    forced.unref();
+
+    server.close(async () => {
+      try {
+        await pool.end();
+        logger.info('Shutdown complete');
+        process.exit(0);
+      } catch (err) {
+        logger.error('Error during shutdown', err as Error);
+        process.exit(1);
+      }
+    });
+  };
+
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('SIGINT', () => shutdown('SIGINT'));
 }
 
 start();

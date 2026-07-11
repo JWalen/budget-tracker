@@ -7,42 +7,31 @@ export const testUser = {
   name: 'Test User',
 };
 
-export const cleanDatabase = async () => {
-  // Use TRUNCATE CASCADE to clean all tables efficiently and handle foreign keys
-  // List tables that should be preserved if any (e.g. migrations, but we don't have them here)
-  const tables = [
-    'refresh_tokens',
-    'login_attempts',
-    'pay_period_bills',
-    'bill_payments',
-    'pay_periods',
-    'debts',
-    'bills',
-    'budgets',
-    'recurring_transactions',
-    'transactions',
-    'match_rules',
-    'budget_shares',
-    'spending_limits',
-    'spending_alerts',
-    'approval_requests',
-    'allowance_transactions',
-    'family_members',
-    'account_balances',
-    'bank_accounts',
-    'categories',
-    'users',
-  ];
+// Reference/seed tables that hold shared data (not per-user) and must survive a
+// clean between tests.
+const PRESERVE_TABLES = new Set([
+  'currencies',
+  'budget_templates',
+  'system_settings',
+  'email_config',
+]);
 
-  try {
-    // Disable triggers temporarily to speed up deletion if needed, but TRUNCATE CASCADE is usually enough
-    await query(`TRUNCATE TABLE ${tables.join(', ')} CASCADE`);
-  } catch (error: any) {
-    if (error.code !== '42P01') { // 42P01 is "undefined_table"
-      console.error('Error cleaning database:', error);
-      throw error;
-    }
-  }
+export const cleanDatabase = async () => {
+  // Truncate every user-data table dynamically. Doing this from the live schema
+  // (rather than a hardcoded list) means a dropped table like budget_shares can't
+  // make the whole TRUNCATE fail with 42P01 and silently truncate nothing — the
+  // bug that let user rows accumulate across tests and throw duplicate-key errors.
+  const result = await query(
+    `SELECT tablename FROM pg_tables WHERE schemaname = 'public'`
+  );
+  const tables = result.rows
+    .map((r: any) => r.tablename)
+    .filter((t: string) => !PRESERVE_TABLES.has(t));
+
+  if (tables.length === 0) return;
+
+  const list = tables.map((t: string) => `"${t}"`).join(', ');
+  await query(`TRUNCATE TABLE ${list} RESTART IDENTITY CASCADE`);
 };
 
 export const createTestUser = async (overrides: Partial<typeof testUser> = {}) => {
@@ -82,5 +71,11 @@ export const createTestTransaction = async (userId: number, categoryId: number, 
 
 export const getAuthToken = (userId: number): string => {
   const jwt = require('jsonwebtoken');
-  return jwt.sign({ userId }, process.env.JWT_SECRET, { expiresIn: '7d' });
+  // Must match what TokenService issues and verifyAccessToken checks: type +
+  // issuer + audience, signed HS256. A bare { userId } token is now rejected.
+  return jwt.sign(
+    { userId, type: 'access' },
+    process.env.JWT_SECRET,
+    { expiresIn: '7d', issuer: 'budget-tracker', audience: 'budget-tracker-api' }
+  );
 };
