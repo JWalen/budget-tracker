@@ -256,6 +256,12 @@ router.post('/:id/invite', tenantMiddleware, requireWriteAccess, async (req: Ten
       return res.status(403).json({ error: 'Organization mismatch' });
     }
 
+    // Only owners/admins may invite. A plain member being able to invite means a
+    // member could grant edit access to the owner's budget to arbitrary emails.
+    if (req.userRole !== 'owner' && req.userRole !== 'admin') {
+      return res.status(403).json({ error: 'Only household owners or admins can invite members' });
+    }
+
     if (!email) {
       return res.status(400).json({ error: 'Email is required' });
     }
@@ -344,9 +350,11 @@ router.delete('/:id/members/:userId', tenantMiddleware, requireWriteAccess, asyn
       return res.status(400).json({ error: 'Cannot remove organization owner' });
     }
 
-    // Members can only remove themselves
-    if (req.userRole === 'member' && removeUserId !== currentUserId) {
-      return res.status(403).json({ error: 'Members can only remove themselves' });
+    // Only owners/admins may remove other members; anyone may remove themselves
+    // (leave the household). This blocks members and viewers from ejecting others.
+    const isPrivileged = req.userRole === 'owner' || req.userRole === 'admin';
+    if (!isPrivileged && removeUserId !== currentUserId) {
+      return res.status(403).json({ error: 'Only owners or admins can remove other members' });
     }
 
     await query(

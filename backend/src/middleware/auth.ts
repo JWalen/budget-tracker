@@ -1,5 +1,5 @@
 import { Request, Response, NextFunction } from 'express';
-import jwt from 'jsonwebtoken';
+import TokenService from '../services/tokenService';
 
 export interface AuthRequest extends Request {
   userId?: number;
@@ -12,11 +12,14 @@ export const authMiddleware = (req: AuthRequest, res: Response, next: NextFuncti
     return res.status(401).json({ error: 'No token provided' });
   }
 
-  try {
-    const decoded = jwt.verify(token, process.env.JWT_SECRET!) as { userId: number };
-    req.userId = decoded.userId;
-    next();
-  } catch (error) {
+  // Route through TokenService so the access token is validated with the algorithm
+  // pinned to HS256 and the issuer/audience/type checked — not a bare jwt.verify
+  // that would accept any HS-signed token.
+  const decoded = TokenService.verifyAccessToken(token);
+  if (!decoded) {
     return res.status(401).json({ error: 'Invalid token' });
   }
+
+  req.userId = decoded.userId;
+  next();
 };

@@ -27,16 +27,24 @@ export const validatePassword = (password: string): boolean => {
 // found on login (prevents timing-based account enumeration).
 const DUMMY_BCRYPT_HASH = '$2a$12$C6UzMDM.H6dfI/f/IKcEeO3g7q5x2mZ8x0j1wZ7fJc3z0xhq2m4Hy';
 
-// Check rate limiting
+// Check rate limiting. Scoped so an attacker on a DIFFERENT IP can't lock a
+// victim out of their own account: we block on per-IP volume (brute force from
+// one source) and per-email-from-the-same-IP (targeted), never on failures for
+// an email coming from other IPs.
 const checkRateLimit = async (email: string, ip: string): Promise<boolean> => {
   const result = await query(
-    `SELECT COUNT(*) as count FROM login_attempts
-     WHERE (email = $1 OR ip_address = $2)
-     AND success = false
+    `SELECT
+       COUNT(*) FILTER (WHERE ip_address = $2) AS ip_count,
+       COUNT(*) FILTER (WHERE email = $1 AND ip_address = $2) AS email_ip_count
+     FROM login_attempts
+     WHERE success = false
      AND created_at > NOW() - INTERVAL '15 minutes'`,
     [email, ip]
   );
-  return parseInt(result.rows[0].count) < 5;
+  const ipCount = parseInt(result.rows[0].ip_count, 10);
+  const emailIpCount = parseInt(result.rows[0].email_ip_count, 10);
+  // Allow up to 5 targeted attempts per (email, IP) and 15 total from one IP.
+  return emailIpCount < 5 && ipCount < 15;
 };
 
 // Log login attempt
@@ -515,18 +523,12 @@ router.delete('/sessions/:sessionId', authMiddleware, async (req: AuthRequest, r
   try {
     const { sessionId } = req.params;
 
-    // Verify the session belongs to the user
-    const result = await query(
-      'SELECT token FROM refresh_tokens WHERE id = $1 AND user_id = $2',
-      [sessionId, req.userId]
-    );
-
-    if (result.rows.length === 0) {
+    // Revoke by id, scoped to the user (tokens are stored hashed, so we can't
+    // round-trip the stored value back through revokeRefreshToken).
+    const revoked = await TokenService.revokeSessionById(parseInt(sessionId, 10), req.userId!);
+    if (!revoked) {
       return res.status(404).json({ error: 'Session not found' });
     }
-
-    // Revoke the token
-    await TokenService.revokeRefreshToken(result.rows[0].token, req.userId);
 
     res.json({ message: 'Session revoked' });
   } catch (error) {
