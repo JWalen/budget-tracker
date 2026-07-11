@@ -1,5 +1,18 @@
 export const changelog = [
   {
+    version: '2.10.0',
+    date: '2026-07-11',
+    changes: [
+      'Installable app — add Budget Tracker to your home screen or desktop with its own icon and window (Install app in the account menu, or your browser’s install button)',
+      'Security hardening: tokens verified more strictly, refresh tokens stored hashed, logout now fully signs you out everywhere, and login lockout can no longer be triggered against your account from another device',
+      'Household controls: only owners/admins can invite or remove members',
+      'Scheduled backups now actually run on their schedule and are cleaned up per your retention setting',
+      'Accessibility: screen-reader labels on icon buttons throughout the app',
+      'Currency conversions now show a clear error if live rates are unavailable instead of silently using the wrong rate',
+      'Reliability: hardened database backup scripts (verified with a full backup-and-restore drill) and a trustworthy automated test suite',
+    ],
+  },
+  {
     version: '2.9.0',
     date: '2026-07-11',
     changes: [

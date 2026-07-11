@@ -1,5 +1,30 @@
 # Changelog
 
+## [2.10.0] - 2026-07-11
+
+Installable-app milestone plus a security, testing, and reliability hardening pass.
+
+### Added
+- **Installable PWA** — real PNG icon set (192/512 `any` + maskable, 180 apple-touch), iOS meta tags, and an in-app "Install app" button. Installs on desktop Chrome/Edge, Android, and iOS (Add to Home Screen).
+- **Scheduled backups execute** — the scheduler runs due `backup_schedules`, writes to the mounted `/backups` volume, records history, prunes per retention, and advances `next_run` (verified end-to-end).
+
+### Security
+- `authMiddleware` verifies via `TokenService.verifyAccessToken` with **HS256 pinned** + issuer/audience/type (was a bare `jwt.verify`).
+- **Refresh tokens hashed at rest** (sha256); also fixed logout, which previously revoked nothing server-side — refresh-after-logout now 401s.
+- `trust proxy` only behind a proxy; Swagger `/api-docs` off in production unless opted in.
+- Household **invite/remove restricted to owner/admin**; login lockout scoped to IP + (email,IP) so a third party can't lock out a victim.
+
+### Changed / Fixed
+- **Test suite trustworthy** — 97/97 green from a clean DB; `globalSetup` provisions the converged production schema (init.sql + schema.sql); `cleanDatabase` truncates dynamically (the stale `budget_shares` entry silently disabled all cleanup); CI drops the manual init.sql seed and points **staging at the prod compose file**.
+- **Backup scripts hardened** — read DB creds from inside the container, `pipefail` + empty-output guard; proven with a backup → restore drill (identical data, all 37 tables).
+- Currency: exchange-rate failures surface an error instead of silently converting at `1.0`.
+- Accessibility: 83 `aria-label`s on icon-only buttons across 23 pages/components.
+- Import: forward a rule's `categoryId` on confirm (bill+category dual-assign); upload rate limit 10→40/hour.
+
+### Deferred (next round)
+- Shared-budget scoping on family/AI routes (only affects multi-user shared budgets; single-owner is correct).
+- Pagination caps on a few list endpoints (scale-later).
+
 ## [2.9.0] - 2026-07-11
 
 Production-readiness pass: security, correctness, infra, and UX hardening across the stack.
