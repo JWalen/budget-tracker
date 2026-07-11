@@ -311,6 +311,10 @@ export default function Import() {
           type: tx.type || 'expense',
           matchId: tx.match?.id || null,
           matchType: tx.match?.type || null,
+          // Forward the rule's category so a bill-targeted rule that also carries a
+          // category still categorizes the transaction (dual assignment). Without
+          // this the backend's row.categoryId is always undefined for bill matches.
+          categoryId: tx.match?.categoryId || null,
         }));
 
       const result = await api.confirmImport({
