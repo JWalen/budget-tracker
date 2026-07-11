@@ -322,7 +322,7 @@ router.post('/create', requireEditAccess, async (req: AuthRequest, res: Response
 });
 
 // Helper functions
-function calculateNextRun(frequency: string, time: string): Date {
+export function calculateNextRun(frequency: string, time: string): Date {
   const now = new Date();
   const next = new Date();
 
@@ -366,7 +366,7 @@ function formatFileSize(bytes: number): string {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-async function createUserBackup(userId: number): Promise<any> {
+export async function createUserBackup(userId: number): Promise<any> {
   const backup: any = {
     version: '1.0',
     created_at: new Date().toISOString(),
@@ -465,7 +465,7 @@ async function createUserBackup(userId: number): Promise<any> {
 const USERS_EXPORT_COLUMNS =
   'id, email, name, is_admin, mfa_enabled, currency, created_at, updated_at';
 
-async function createFullBackup(): Promise<any> {
+export async function createFullBackup(): Promise<any> {
   // Get all data for admin backup. `users` uses an explicit non-secret column
   // list; every other table is dumped in full. `budget_shares` is intentionally
   // absent — it is dropped on every boot (schema.sql) and would 500 the query.
@@ -507,7 +507,7 @@ async function createFullBackup(): Promise<any> {
   return backup;
 }
 
-async function saveBackup(filename: string, data: any, storageType: string, userId: number): Promise<{ path: string, size: number }> {
+export async function saveBackup(filename: string, data: any, storageType: string, userId: number): Promise<{ path: string, size: number }> {
   const jsonData = JSON.stringify(data, null, 2);
   const size = Buffer.byteLength(jsonData);
 
