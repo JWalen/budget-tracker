@@ -15,6 +15,7 @@ import {
 } from './middleware/security';
 import { LoggerClass, requestLogger } from './services/logger';
 import pool, { query } from './config/database';
+import { startScheduler, stopScheduler } from './services/scheduler';
 import { authMiddleware } from './middleware/auth';
 import authRoutes from './routes/auth';
 import transactionRoutes from './routes/transactions';
@@ -285,6 +286,8 @@ async function start() {
       environment: process.env.NODE_ENV,
       nodeVersion: process.version,
     });
+    // Start periodic maintenance (token/login-attempt/notification cleanup).
+    startScheduler();
   });
 
   // Graceful shutdown: stop accepting new connections, let in-flight requests
@@ -295,6 +298,7 @@ async function start() {
     if (shuttingDown) return;
     shuttingDown = true;
     logger.info(`${signal} received — draining connections`);
+    stopScheduler();
     const forced = setTimeout(() => {
       logger.error('Forced shutdown after timeout');
       process.exit(1);
