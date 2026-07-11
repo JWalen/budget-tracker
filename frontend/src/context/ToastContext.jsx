@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, useCallback } from 'react';
+import { createContext, useContext, useState, useCallback, useMemo } from 'react';
 import { CheckCircle, AlertCircle, Info, X } from 'lucide-react';
 
 const ToastContext = createContext(null);
@@ -19,11 +19,16 @@ export const ToastProvider = ({ children }) => {
     return id;
   }, [remove]);
 
-  const toast = {
-    success: (m, t) => push(m, 'success', t),
-    error: (m, t) => push(m, 'error', t ?? 8000),
-    info: (m, t) => push(m, 'info', t),
-  };
+  // Stable identity so useToast() consumers don't re-render every time a toast
+  // appears/expires (push/remove are already stable useCallbacks).
+  const toast = useMemo(
+    () => ({
+      success: (m, t) => push(m, 'success', t),
+      error: (m, t) => push(m, 'error', t ?? 8000),
+      info: (m, t) => push(m, 'info', t),
+    }),
+    [push]
+  );
 
   return (
     <ToastContext.Provider value={toast}>

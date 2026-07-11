@@ -1,7 +1,10 @@
+import { Suspense } from 'react';
 import { Outlet, NavLink, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { useTheme } from '../context/ThemeContext';
 import { useBudget } from '../context/BudgetContext';
+import ErrorBoundary from './ErrorBoundary';
+import PageSpinner from './PageSpinner';
 import {
   LayoutDashboard,
   ArrowLeftRight,
@@ -439,8 +442,14 @@ export default function Layout() {
           <div className="p-4 lg:p-8">
             {/* Key the routed subtree by the active budget owner so every page
                 remounts (and refetches) when switching to a shared budget —
-                otherwise pages that load only on mount show the prior owner's data. */}
-            <Outlet key={activeBudgetOwner?.id ?? 'own'} />
+                otherwise pages that load only on mount show the prior owner's data.
+                ErrorBoundary keeps one page's crash from white-screening the app;
+                Suspense shows a spinner while a lazy page chunk loads. */}
+            <ErrorBoundary key={activeBudgetOwner?.id ?? 'own'}>
+              <Suspense fallback={<PageSpinner />}>
+                <Outlet />
+              </Suspense>
+            </ErrorBoundary>
           </div>
         </main>
       </div>
