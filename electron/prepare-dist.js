@@ -13,11 +13,13 @@ function copyDir(src, dest) {
   rmrf(dest);
   fs.cpSync(src, dest, { recursive: true });
 }
-// execFile (no shell) with fixed args — avoids any shell interpretation.
-// On Windows the npm launcher is npm.cmd, which execFile needs spelled out.
-const NPM = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+// Run a fixed command (no user input). On Windows the npm launcher is npm.cmd,
+// and Node 20+ refuses to execFile a .cmd/.bat without shell:true (EINVAL), so
+// use a shell there. Args are hardcoded literals, so shell use is safe.
+const isWin = process.platform === 'win32';
 function run(cmd, args, cwd) {
-  execFileSync(cmd === 'npm' ? NPM : cmd, args, { cwd, stdio: 'inherit' });
+  const bin = cmd === 'npm' ? (isWin ? 'npm.cmd' : 'npm') : cmd;
+  execFileSync(bin, args, { cwd, stdio: 'inherit', shell: isWin });
 }
 
 console.log('==> Building backend…');
