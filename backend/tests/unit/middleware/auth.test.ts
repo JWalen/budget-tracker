@@ -63,7 +63,11 @@ describe('Auth Middleware', () => {
   });
 
   it('should set userId when valid token provided', () => {
-    const token = jwt.sign({ userId: 42 }, process.env.JWT_SECRET!);
+    const token = jwt.sign(
+      { userId: 42, type: 'access' },
+      process.env.JWT_SECRET!,
+      { issuer: 'budget-tracker', audience: 'budget-tracker-api' }
+    );
     const req = {
       headers: { authorization: `Bearer ${token}` },
     } as AuthRequest;

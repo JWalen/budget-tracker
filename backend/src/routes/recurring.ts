@@ -91,6 +91,17 @@ router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) =>
     const { category_id, amount, description, type, frequency, next_date, active } = req.body;
     const budgetUserId = (req as any).budgetUserId;
 
+    // Confirm the recurring transaction exists and belongs to this budget first,
+    // so a cross-user id gets a clean 404 (not a 400 from the category check that
+    // happens to fire because the attacker doesn't own the referenced category).
+    const owned = await query(
+      'SELECT id FROM recurring_transactions WHERE id = $1 AND user_id = $2',
+      [id, budgetUserId]
+    );
+    if (owned.rows.length === 0) {
+      return res.status(404).json({ error: 'Recurring transaction not found' });
+    }
+
     const numericAmount = Number(amount);
     if (!Number.isFinite(numericAmount) || numericAmount <= 0) {
       return res.status(400).json({ error: 'Amount must be a positive number' });

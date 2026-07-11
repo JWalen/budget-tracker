@@ -45,14 +45,9 @@ jobs:
         working-directory: backend
         run: npm ci
 
-      - name: Initialize Database
-        working-directory: backend
-        env:
-          PGPASSWORD: budget_pass
-        run: |
-          sudo apt-get install -y postgresql-client
-          psql -h localhost -U budget_user -d budget_test -f ../database/init.sql
-
+      # Schema is provisioned by the test globalSetup (init.sql + schema.sql, the
+      # converged production schema) — no manual psql seed, which previously only
+      # loaded the stale init.sql and validated a schema production doesn't run.
       - name: Run tests
         working-directory: backend
         env:
@@ -150,21 +145,25 @@ jobs:
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_SSH_PORT || 22 }}
           script: |
-            set -e
+            set -euo pipefail
             cd ${{ secrets.DEPLOY_PATH || '~/docker/budget-tracker' }}
+            # Use the production compose file for staging too — never the dev file,
+            # which exposes the DB port and defaults to dev secrets / NODE_ENV=development.
+            COMPOSE_FILE="docker-compose.prod.yml"
+            [ -f "$COMPOSE_FILE" ] || COMPOSE_FILE="docker-compose.yml"
             echo "Pulling latest develop branch..."
             git pull origin develop
-            echo "Rebuilding containers..."
-            docker compose build --no-cache
+            echo "Rebuilding containers ($COMPOSE_FILE)..."
+            docker compose -f "$COMPOSE_FILE" build --no-cache
             echo "Restarting services..."
-            docker compose up -d --force-recreate
+            docker compose -f "$COMPOSE_FILE" up -d --force-recreate
             echo "Waiting for health checks..."
             sleep 10
-            docker compose ps
-            # Verify backend is healthy
-            if ! docker exec budget-api wget -qO- http://localhost:5000/api/health > /dev/null 2>&1; then
+            docker compose -f "$COMPOSE_FILE" ps
+            # Verify backend is healthy (prod compose names the container budget-api-prod)
+            if ! docker exec budget-api-prod wget -qO- http://localhost:5000/api/health > /dev/null 2>&1; then
               echo "ERROR: Backend health check failed after deploy!"
-              docker compose logs --tail=50 backend
+              docker compose -f "$COMPOSE_FILE" logs --tail=50 backend
               exit 1
             fi
             echo "Staging deploy complete!"

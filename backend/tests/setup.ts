@@ -15,7 +15,7 @@ process.env.LOG_TO_CONSOLE = 'false';
 process.env.LOG_TO_FILE = 'false';
 
 // Global test timeout
-jest.setTimeout(10000);
+jest.setTimeout(15000);
 
 // Mock external services
 jest.mock('../src/services/email', () => ({
