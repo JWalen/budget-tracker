@@ -135,7 +135,12 @@ export default function Analytics() {
           <input
             type="month"
             value={format(selectedMonth, 'yyyy-MM')}
-            onChange={(e) => setSelectedMonth(new Date(e.target.value))}
+            onChange={(e) => {
+              // Parse as a LOCAL date. `new Date('2026-07')` is UTC midnight, which
+              // is the previous month in negative-UTC timezones (wrong-month data).
+              const [y, m] = e.target.value.split('-');
+              if (y && m) setSelectedMonth(new Date(Number(y), Number(m) - 1, 1));
+            }}
             className="input"
           />
           <button onClick={exportToCSV} className="btn btn-outline flex items-center gap-2">

@@ -40,7 +40,7 @@ router.get('/expense-summary', async (req: AuthRequest, res: Response) => {
         c.color,
         c.type,
         COALESCE(SUM(t.amount), 0) as total,
-        COUNT(t.id) as transactionCount
+        COUNT(t.id) as "transactionCount"
       FROM categories c
       LEFT JOIN transactions t ON c.id = t.category_id
         AND t.user_id = $1
@@ -216,30 +216,38 @@ router.get('/budget-performance', async (req: AuthRequest, res: Response) => {
     // When the range is within a single year, restrict to the month span so
     // spent isn't over-counted across the whole year; otherwise use the
     // multi-year form (partial start year, full middle years, partial end year).
-    const budgetPeriodFilter =
-      startYear === endYear
-        ? '(b.year = $4 AND b.month BETWEEN $5 AND $7)'
-        : '((b.year = $4 AND b.month >= $5) OR (b.year = $6 AND b.month <= $7) OR (b.year > $4 AND b.year < $6))';
+    // Params are built per-branch so no parameter is left unreferenced (an unused
+    // $n makes Postgres error with "could not determine data type").
+    let budgetPeriodFilter: string;
+    let periodParams: number[];
+    if (startYear === endYear) {
+      budgetPeriodFilter = '(b.year = $2 AND b.month BETWEEN $3 AND $4)';
+      periodParams = [startYear, startMonth, endMonth];
+    } else {
+      budgetPeriodFilter =
+        '((b.year = $2 AND b.month >= $3) OR (b.year = $4 AND b.month <= $5) OR (b.year > $2 AND b.year < $4))';
+      periodParams = [startYear, startMonth, endYear, endMonth];
+    }
 
     const result = await query(
       `SELECT
         b.id,
-        b.amount_limit as limit,
-        c.name as categoryName,
+        b.amount_limit as "limit",
+        c.name as "categoryName",
         c.color,
         COALESCE(SUM(t.amount), 0) as spent
       FROM budgets b
       JOIN categories c ON b.category_id = c.id
       LEFT JOIN transactions t ON c.id = t.category_id
         AND t.user_id = $1
-        AND t.date >= $2
-        AND t.date <= $3
         AND t.type = 'expense'
+        AND EXTRACT(MONTH FROM t.date) = b.month
+        AND EXTRACT(YEAR FROM t.date) = b.year
       WHERE b.user_id = $1
         AND ${budgetPeriodFilter}
       GROUP BY b.id, b.amount_limit, c.name, c.color
       ORDER BY c.name`,
-      [budgetUserId, startDate, endDate, startYear, startMonth, endYear, endMonth]
+      [budgetUserId, ...periodParams]
     );
 
     res.json({

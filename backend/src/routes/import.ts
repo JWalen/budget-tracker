@@ -6,6 +6,7 @@ import { LoggerClass } from '../services/logger';
 import multer from 'multer';
 import { parse } from 'csv-parse/sync';
 import { uploadRateLimiter } from '../middleware/security';
+import { toDateOnly, monthYearOf } from '../utils/dateUtils';
 
 const router = Router();
 const logger = new LoggerClass('Import');
@@ -167,8 +168,8 @@ router.post('/upload', uploadRateLimiter, requireEditAccess, upload.single('file
 
       // Check for duplicates
       for (const tx of existingTxs) {
-        const txDate = new Date(tx.date).toISOString().split('T')[0];
-        const rowDate = new Date(row.date).toISOString().split('T')[0];
+        const txDate = toDateOnly(tx.date);
+        const rowDate = toDateOnly(row.date);
         if (txDate === rowDate &&
             Math.abs(parseFloat(tx.amount) - row.amount) < 0.01 &&
             tx.description?.toUpperCase() === descUpper) {
@@ -294,6 +295,15 @@ router.post('/confirm', requireEditAccess, async (req: AuthRequest, res: Respons
         continue;
       }
 
+      // Guard the amount too — a NaN/non-finite/negative amount would otherwise
+      // abort the whole batch with a 500 (or, for debt matches, increase the debt).
+      const rowAmount = Number(row.amount);
+      if (!Number.isFinite(rowAmount) || rowAmount <= 0) {
+        skipped++;
+        continue;
+      }
+      row.amount = rowAmount;
+
       // Determine category_id - use categoryId if it's for a bill match, otherwise use matchId if type is category
       let categoryId: number | null = row.matchType === 'category' ? row.matchId :
                         (row.matchType === 'bill' && row.categoryId) ? row.categoryId :
@@ -358,7 +368,7 @@ router.post('/confirm', requireEditAccess, async (req: AuthRequest, res: Respons
             `INSERT INTO bill_payments (bill_id, transaction_id, amount_paid, payment_date, month, year)
              VALUES ($1, $2, $3, $4, $5, $6)
              ON CONFLICT (bill_id, month, year) DO NOTHING`,
-            [row.matchId, tx.id, row.amount, row.date, parsedDate.getMonth() + 1, parsedDate.getFullYear()]
+            [row.matchId, tx.id, row.amount, row.date, monthYearOf(row.date).month, monthYearOf(row.date).year]
           );
           billsMatched++;
         } else if (row.matchType === 'debt') {
@@ -528,13 +538,13 @@ router.post('/apply-rules', requireEditAccess, async (req: AuthRequest, res: Res
 
               if (txDetails.rows.length > 0) {
                 const { amount, date } = txDetails.rows[0];
-                const txDate = new Date(date);
+                const { month, year } = monthYearOf(date);
 
                 await query(
                   `INSERT INTO bill_payments (bill_id, transaction_id, amount_paid, payment_date, month, year)
                    VALUES ($1, $2, $3, $4, $5, $6)
                    ON CONFLICT (bill_id, month, year) DO NOTHING`,
-                  [rule.target_id, tx.id, Math.abs(amount), date, txDate.getMonth() + 1, txDate.getFullYear()]
+                  [rule.target_id, tx.id, Math.abs(amount), date, month, year]
                 );
 
                 // If the rule also has a category_id, update the transaction's category

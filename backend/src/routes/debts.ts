@@ -4,6 +4,7 @@ import pool from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
 import { sharingMiddleware, requireEditAccess } from '../middleware/sharing';
 import { LoggerClass } from '../services/logger';
+import { todayDateString } from '../utils/dateUtils';
 
 const logger = new LoggerClass('Debts');
 const router = Router();
@@ -140,14 +141,14 @@ router.post('/:id/payment', requireEditAccess, async (req: AuthRequest, res: Res
     }
 
     const debt = debtResult.rows[0];
-    const currentBalance = parseFloat(debt.balance);
-    const newBalance = Math.max(0, currentBalance - paymentAmount);
-    // Compare with a cent tolerance rather than strict float equality.
-    const isPaid = newBalance < 0.005;
-
+    // Do the arithmetic in SQL against the DECIMAL column so we never accumulate
+    // binary-float residue (0.1 + 0.2 class errors) into a currency balance.
     await client.query(
-      'UPDATE debts SET balance = $1, is_paid = $2 WHERE id = $3 AND user_id = $4',
-      [newBalance, isPaid, id, budgetUserId]
+      `UPDATE debts
+       SET balance = GREATEST(0, balance - $1::numeric),
+           is_paid = (GREATEST(0, balance - $1::numeric) < 0.005)
+       WHERE id = $2 AND user_id = $3`,
+      [paymentAmount, id, budgetUserId]
     );
 
     let transaction = null;
@@ -166,7 +167,7 @@ router.post('/:id/payment', requireEditAccess, async (req: AuthRequest, res: Res
         }
       }
 
-      const today = new Date().toISOString().split('T')[0];
+      const today = todayDateString();
       const txResult = await client.query(
         `INSERT INTO transactions (user_id, category_id, amount, description, date, type)
          VALUES ($1, $2, $3, $4, $5, 'expense') RETURNING *`,

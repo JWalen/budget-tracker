@@ -429,17 +429,20 @@ export const api = {
       return { blob, filename };
     }),
 
-  restoreBackup: async (formData) => {
-    // Extract the JSON from the file
-    const file = formData.get('backup');
-    const text = await file.text();
-    const backupData = JSON.parse(text);
-
-    // Send as JSON, not FormData
+  restoreBackup: (formData) => {
+    // The backend (/backup/restore) expects the raw .sql export as multipart
+    // under field `file` — never JSON. Forward the uploaded file as-is. Don't set
+    // Content-Type: the browser sets the multipart boundary automatically.
+    const file = formData.get('backup') || formData.get('file');
+    const body = new FormData();
+    body.append('file', file);
     return fetch(`${API_URL}/backup/restore`, {
       method: 'POST',
-      headers: headers(),
-      body: JSON.stringify(backupData),
+      headers: {
+        ...(getToken() && { Authorization: `Bearer ${getToken()}` }),
+        ...(getBudgetOwnerId() && { 'X-Budget-Owner': getBudgetOwnerId() }),
+      },
+      body,
     }).then(handleResponse);
   },
 
@@ -509,8 +512,18 @@ export const api = {
       body: JSON.stringify(data),
     }).then(handleResponse),
 
-  downloadBackup: (id) => {
-    window.open(`${API_URL}/backup/${id}/download`, '_blank');
+  downloadBackup: async (id) => {
+    // Must go through fetch so the Bearer token is sent — window.open can't set
+    // Authorization and always 401s on the auth-guarded route.
+    const response = await fetch(`${API_URL}/backup/${id}/download`, { headers: headers() });
+    if (!response.ok) {
+      const error = await response.json().catch(() => ({ error: 'Download failed' }));
+      throw new Error(error.error || 'Download failed');
+    }
+    const blob = await response.blob();
+    const disposition = response.headers.get('Content-Disposition') || '';
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    return { blob, filename: match ? match[1] : `backup-${id}.json` };
   },
 
   downloadBackupNow: async (data) => {
