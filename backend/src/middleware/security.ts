@@ -64,7 +64,10 @@ export const createRateLimiter = (windowMs: number = 15 * 60 * 1000, max: number
 // Specific rate limiters for different endpoints
 export const authRateLimiter = createRateLimiter(15 * 60 * 1000, 5); // 5 attempts per 15 minutes
 export const apiRateLimiter = createRateLimiter(15 * 60 * 1000, 100); // 100 requests per 15 minutes
-export const uploadRateLimiter = createRateLimiter(60 * 60 * 1000, 10); // 10 uploads per hour
+// A single CSV import costs 2 calls (header-preview + mapped parse), so this is
+// really ~20 imports/hour — enough for multi-account sessions and re-mapping,
+// while still bounding abuse of the parse/matching work.
+export const uploadRateLimiter = createRateLimiter(60 * 60 * 1000, 40); // 40 uploads per hour
 
 // Input sanitization middleware
 export const sanitizeInput = (req: Request, res: Response, next: NextFunction) => {
