@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { api } from '../api/client';
+import { clearAppCaches } from '../utils/pwa';
 
 const AuthContext = createContext(null);
 
@@ -64,6 +65,8 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem('token');
     localStorage.removeItem('budgetOwnerId');
     setUser(null);
+    // Purge any cached assets so nothing lingers for the next user on a shared device.
+    clearAppCaches();
   };
 
   const refreshUser = async () => {

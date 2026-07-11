@@ -766,32 +766,6 @@ export const api = {
   getPendingInvites: () =>
     fetch(`${API_URL}/sharing/pending`, { headers: headers() }).then(handleResponse),
 
-  inviteShare: (email, role) =>
-    fetch(`${API_URL}/sharing/invite`, {
-      method: 'POST',
-      headers: headers(),
-      body: JSON.stringify({ email, role }),
-    }).then(handleResponse),
-
-  acceptInvite: (token) =>
-    fetch(`${API_URL}/sharing/accept/${token}`, {
-      method: 'POST',
-      headers: headers(),
-    }).then(handleResponse),
-
-  updateShare: (id, role) =>
-    fetch(`${API_URL}/sharing/${id}`, {
-      method: 'PUT',
-      headers: headers(),
-      body: JSON.stringify({ role }),
-    }).then(handleResponse),
-
-  deleteShare: (id) =>
-    fetch(`${API_URL}/sharing/${id}`, {
-      method: 'DELETE',
-      headers: headers(),
-    }).then(handleResponse),
-
   // Admin endpoints
   checkUpdates: () =>
     fetch(`${API_URL}/admin/system/updates`, { headers: headers() }).then(handleResponse),

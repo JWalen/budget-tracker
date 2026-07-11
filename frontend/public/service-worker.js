@@ -1,180 +1,94 @@
-const CACHE_NAME = 'budget-tracker-v1.0.0';
-const RUNTIME_CACHE = 'budget-tracker-runtime';
+// Budget Tracker service worker.
+//
+// Safety rules for a finance app:
+//   1. NEVER cache /api responses — financial data must not sit in Cache Storage
+//      (it would survive logout and be readable by anyone with the device).
+//   2. Navigations are network-first so a new deploy is picked up immediately
+//      instead of pinning users to a stale index.html forever.
+//   3. Only content-hashed static assets are cached (cache-first): a new build
+//      produces new filenames, so this can never serve a stale bundle.
+//   4. No background sync storing auth tokens in IndexedDB.
+//
+// Bump CACHE_VERSION to force old caches to be dropped on the next activate.
+const CACHE_VERSION = 'v2';
+const ASSET_CACHE = `bt-assets-${CACHE_VERSION}`;
 
-const PRECACHE_URLS = [
-  '/',
-  '/index.html',
-  '/manifest.json',
-  '/offline.html',
-];
-
-// Install event - precache essential files
 self.addEventListener('install', (event) => {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then((cache) => cache.addAll(PRECACHE_URLS))
-      .then(() => self.skipWaiting())
-  );
+  // Take over as soon as installed; no precache of named bundles (they're hashed).
+  event.waitUntil(self.skipWaiting());
 });
 
-// Activate event - clean up old caches
 self.addEventListener('activate', (event) => {
   event.waitUntil(
-    caches.keys().then((cacheNames) => {
-      return Promise.all(
-        cacheNames
-          .filter((name) => name !== CACHE_NAME && name !== RUNTIME_CACHE)
-          .map((name) => caches.delete(name))
-      );
-    }).then(() => self.clients.claim())
+    caches.keys()
+      .then((names) => Promise.all(
+        names.filter((n) => n !== ASSET_CACHE).map((n) => caches.delete(n))
+      ))
+      .then(() => self.clients.claim())
   );
 });
 
-// Fetch event - network first, fall back to cache
+// Allow the page to trigger skipWaiting (apply an update) and cache clearing.
+self.addEventListener('message', (event) => {
+  if (event.data === 'SKIP_WAITING') self.skipWaiting();
+  if (event.data === 'CLEAR_CACHES') {
+    event.waitUntil(caches.keys().then((names) => Promise.all(names.map((n) => caches.delete(n)))));
+  }
+});
+
 self.addEventListener('fetch', (event) => {
-  // Skip cross-origin requests
-  if (!event.request.url.startsWith(self.location.origin)) {
+  const { request } = event;
+
+  // Only handle same-origin GETs.
+  if (request.method !== 'GET' || !request.url.startsWith(self.location.origin)) {
     return;
   }
 
-  // API requests - network first
-  if (event.request.url.includes('/api/')) {
+  const url = new URL(request.url);
+
+  // 1. API: never touch the cache. Let it go straight to the network.
+  if (url.pathname.startsWith('/api/')) {
+    return;
+  }
+
+  // 2. Navigations (HTML): network-first, fall back to a cached shell offline.
+  if (request.mode === 'navigate') {
     event.respondWith(
-      fetch(event.request)
-        .then((response) => {
-          // Clone and cache successful responses
-          if (response.ok) {
-            const responseClone = response.clone();
-            caches.open(RUNTIME_CACHE).then((cache) => {
-              cache.put(event.request, responseClone);
-            });
-          }
-          return response;
-        })
-        .catch(() => {
-          // Try cache if network fails
-          return caches.match(event.request).then((cachedResponse) => {
-            if (cachedResponse) {
-              return cachedResponse;
-            }
-            // Return offline page for HTML requests
-            if (event.request.headers.get('accept').includes('text/html')) {
-              return caches.match('/offline.html');
-            }
-            return new Response('Network error', {
-              status: 408,
-              headers: { 'Content-Type': 'text/plain' },
-            });
-          });
-        })
+      fetch(request).catch(() => caches.match('/index.html').then((r) => r || caches.match('/')))
     );
     return;
   }
 
-  // Static assets - cache first
-  event.respondWith(
-    caches.match(event.request).then((cachedResponse) => {
-      if (cachedResponse) {
-        return cachedResponse;
-      }
+  // 3. Content-hashed static assets: cache-first with background refresh.
+  if (url.pathname.startsWith('/assets/') || /\.(?:js|css|woff2?|png|jpg|jpeg|svg|ico|webp)$/.test(url.pathname)) {
+    event.respondWith(
+      caches.match(request).then((cached) => {
+        const network = fetch(request).then((response) => {
+          if (response.ok) {
+            const clone = response.clone();
+            caches.open(ASSET_CACHE).then((cache) => cache.put(request, clone));
+          }
+          return response;
+        });
+        return cached || network;
+      })
+    );
+  }
+});
 
-      return fetch(event.request).then((response) => {
-        // Cache successful responses
-        if (response.ok) {
-          const responseClone = response.clone();
-          caches.open(RUNTIME_CACHE).then((cache) => {
-            cache.put(event.request, responseClone);
-          });
-        }
-        return response;
-      });
+// Push notifications (no data cached; icons optional).
+self.addEventListener('push', (event) => {
+  const data = event.data ? event.data.json() : {};
+  event.waitUntil(
+    self.registration.showNotification(data.title || 'Budget Tracker', {
+      body: data.body || 'You have a new notification',
+      icon: '/logo.svg',
+      data: data.url || '/',
     })
   );
 });
 
-// Background sync for offline transactions
-self.addEventListener('sync', (event) => {
-  if (event.tag === 'sync-transactions') {
-    event.waitUntil(syncTransactions());
-  }
-});
-
-async function syncTransactions() {
-  try {
-    // Get pending transactions from IndexedDB
-    const db = await openDB();
-    const tx = db.transaction('pendingTransactions', 'readonly');
-    const pending = await tx.objectStore('pendingTransactions').getAll();
-
-    // Sync each transaction
-    for (const transaction of pending) {
-      try {
-        const response = await fetch('/api/transactions', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${transaction.token}`,
-          },
-          body: JSON.stringify(transaction.data),
-        });
-
-        if (response.ok) {
-          // Remove from pending
-          const deleteTx = db.transaction('pendingTransactions', 'readwrite');
-          await deleteTx.objectStore('pendingTransactions').delete(transaction.id);
-        }
-      } catch (error) {
-        console.error('Failed to sync transaction:', error);
-      }
-    }
-  } catch (error) {
-    console.error('Background sync failed:', error);
-  }
-}
-
-function openDB() {
-  return new Promise((resolve, reject) => {
-    const request = indexedDB.open('BudgetTrackerDB', 1);
-
-    request.onerror = () => reject(request.error);
-    request.onsuccess = () => resolve(request.result);
-
-    request.onupgradeneeded = (event) => {
-      const db = event.target.result;
-      if (!db.objectStoreNames.contains('pendingTransactions')) {
-        db.createObjectStore('pendingTransactions', { keyPath: 'id', autoIncrement: true });
-      }
-    };
-  });
-}
-
-// Push notifications
-self.addEventListener('push', (event) => {
-  const data = event.data ? event.data.json() : {};
-  const title = data.title || 'Budget Tracker';
-  const options = {
-    body: data.body || 'You have a new notification',
-    icon: '/icons/icon-192x192.png',
-    badge: '/icons/badge-72x72.png',
-    data: data.url || '/',
-    actions: [
-      { action: 'view', title: 'View' },
-      { action: 'close', title: 'Close' },
-    ],
-  };
-
-  event.waitUntil(
-    self.registration.showNotification(title, options)
-  );
-});
-
-// Notification click
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
-
-  if (event.action === 'view') {
-    event.waitUntil(
-      clients.openWindow(event.notification.data)
-    );
-  }
+  event.waitUntil(self.clients.openWindow(event.notification.data || '/'));
 });
