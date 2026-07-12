@@ -13,7 +13,8 @@
     "dist:mac": "npm run prepare-dist && electron-builder --mac --arm64"
   },
   "dependencies": {
-    "embedded-postgres": "^17.10.0-beta.17"
+    "embedded-postgres": "^17.10.0-beta.17",
+    "selfsigned": "^2.4.1"
   },
   "devDependencies": {
     "electron": "^33.2.0",
@@ -35,9 +36,18 @@
       "node_modules/**"
     ],
     "extraResources": [
-      { "from": "backend-dist", "to": "backend-dist" },
-      { "from": "frontend-dist", "to": "frontend-dist" },
-      { "from": "db", "to": "db" }
+      {
+        "from": "backend-dist",
+        "to": "backend-dist"
+      },
+      {
+        "from": "frontend-dist",
+        "to": "frontend-dist"
+      },
+      {
+        "from": "db",
+        "to": "db"
+      }
     ],
     "mac": {
       "category": "public.app-category.finance",
@@ -46,7 +56,9 @@
       "target": [
         {
           "target": "dmg",
-          "arch": ["arm64"]
+          "arch": [
+            "arm64"
+          ]
         }
       ]
     },
@@ -55,7 +67,9 @@
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ]
     },

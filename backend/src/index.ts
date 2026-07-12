@@ -129,6 +129,10 @@ const PORT = process.env.PORT || 5000;
 // The desktop app sets HOST=127.0.0.1 for standalone (loopback-only) and
 // HOST=0.0.0.0 for server mode (reachable by LAN clients).
 const HOST = process.env.HOST || '0.0.0.0';
+// When both are set, the server listens over HTTPS with this cert/key (desktop
+// server mode supplies a self-signed pair; clients pin it).
+const TLS_CERT_FILE = process.env.TLS_CERT_FILE;
+const TLS_KEY_FILE = process.env.TLS_KEY_FILE;
 
 // Security middleware (order matters!)
 // In desktop (Electron) mode the frontend is served from this same origin and
@@ -333,16 +337,31 @@ async function start() {
     process.exit(1);
   }
 
-  const server = app.listen(Number(PORT), HOST, () => {
+  const onListening = () => {
     logger.info(`Server started successfully`, {
       port: PORT,
       host: HOST,
+      tls: Boolean(TLS_CERT_FILE && TLS_KEY_FILE),
       environment: process.env.NODE_ENV,
       nodeVersion: process.version,
     });
     // Start periodic maintenance (token/login-attempt/notification cleanup).
     startScheduler();
-  });
+  };
+
+  // Serve over HTTPS when a cert/key are provided (desktop "server" mode gives
+  // clients an encrypted, MITM-resistant connection). Otherwise plain HTTP —
+  // Docker/production sit behind a TLS-terminating proxy, and standalone desktop
+  // only ever talks to itself over loopback.
+  let server: import('http').Server | import('https').Server;
+  if (TLS_CERT_FILE && TLS_KEY_FILE) {
+    const fs = require('fs');
+    const https = require('https');
+    const credentials = { key: fs.readFileSync(TLS_KEY_FILE), cert: fs.readFileSync(TLS_CERT_FILE) };
+    server = https.createServer(credentials, app).listen(Number(PORT), HOST, onListening);
+  } else {
+    server = app.listen(Number(PORT), HOST, onListening);
+  }
 
   // Graceful shutdown: stop accepting new connections, let in-flight requests
   // finish, close the DB pool, then exit. A hard timeout guards against hangs.

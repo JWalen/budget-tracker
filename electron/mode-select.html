@@ -109,19 +109,19 @@
       const lan = await window.setup.getLanAddresses();
       const ip = lan[0] || 'your-computer-ip';
       const portInput = el('input', { id: 'port', type: 'number', value: String(serverPort), min: '1', max: '65535' });
-      const addr = el('code', { textContent: 'http://' + ip + ':' + serverPort });
+      const addr = el('code', { textContent: 'https://' + ip + ':' + serverPort });
       const hint = el('div', { className: 'hint' },
         'Other devices connect to ', addr,
         el('br'),
-        'Keep this app running to serve them. Traffic is unencrypted — use only on a network you trust.');
+        'The connection is encrypted (HTTPS). Keep this app running to serve them.');
       portInput.addEventListener('input', () => {
         serverPort = parseInt(portInput.value, 10) || 5000;
-        addr.textContent = 'http://' + ip + ':' + serverPort;
+        addr.textContent = 'https://' + ip + ':' + serverPort;
       });
       detail.append(el('label', { textContent: 'Port to listen on' }), portInput, hint);
       goBtn.disabled = false;
     } else if (selected === 'client') {
-      const urlInput = el('input', { id: 'url', type: 'text', placeholder: 'http://192.168.1.50:5000' });
+      const urlInput = el('input', { id: 'url', type: 'text', placeholder: 'https://192.168.1.50:5000' });
       urlInput.addEventListener('input', () => { goBtn.disabled = !urlInput.value.trim(); });
       const hint = el('div', { className: 'hint' },
         'Enter the address shown on the computer running Budget Tracker in ',
@@ -143,7 +143,8 @@
 
   function normalizeUrl(raw) {
     let u = raw.trim();
-    if (!/^https?:\/\//i.test(u)) u = 'http://' + u;
+    // Servers run over HTTPS, so assume https:// when no scheme is given.
+    if (!/^https?:\/\//i.test(u)) u = 'https://' + u;
     return u.replace(/\/+$/, '');
   }
 
