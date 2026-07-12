@@ -2,6 +2,16 @@ import { query } from '../config/database';
 import Anthropic from '@anthropic-ai/sdk';
 import OpenAI from 'openai';
 import { EncryptionService } from './encryption';
+import { AI_TOOLS, AI_TOOLS_BY_NAME } from './aiTools';
+
+// What Penny did during a tool-enabled chat turn (surfaced to the UI so it can
+// refresh and show a summary).
+export interface ToolAction {
+  tool: string;
+  input?: any;
+  result?: any;
+  error?: string;
+}
 
 // The assistant calls out to a hosted LLM API (Anthropic Claude or OpenAI)
 // instead of a local model. Provider selection, model, and encrypted API keys
@@ -190,6 +200,120 @@ export class AIAssistant {
       ],
     });
     return (completion.choices[0]?.message?.content || '').trim();
+  }
+
+  // System prompt for the tool-enabled assistant.
+  private static readonly TOOL_SYSTEM_PROMPT =
+    `You are Penny, a helpful, witty budget assistant for a personal finance app. ` +
+    `You can take real actions on the user's finances with the provided tools: recording transactions, ` +
+    `creating categories, setting budgets, categorizing transactions, and creating bills — as well as ` +
+    `looking up categories, transactions, and summaries.\n\n` +
+    `Guidelines:\n` +
+    `- When the user asks you to do something (e.g. "add a $12 coffee expense", "budget $400 for groceries", ` +
+    `"categorize my Amazon purchases as Shopping"), USE THE TOOLS to actually do it, then confirm what you did ` +
+    `in plain language with dollar amounts.\n` +
+    `- Look things up first (list_categories, search_transactions) to resolve names and ids before acting.\n` +
+    `- If a needed category doesn't exist, create it (create_category) before using it.\n` +
+    `- Only take actions the user clearly asked for. Never invent transactions or amounts. If a request is ` +
+    `ambiguous, ask a brief clarifying question instead of guessing.\n` +
+    `- Amounts are always positive; use the transaction "type" to indicate income vs expense.\n` +
+    `- Be concise and friendly.`;
+
+  // Tool-enabled chat: Penny can call actions (create transactions, budgets, etc.)
+  // in an agentic loop, then reply. Returns the reply text plus the actions taken.
+  static async chatWithTools(
+    userId: number,
+    message: string,
+    history?: ChatMessage[]
+  ): Promise<{ response: string; actions: ToolAction[] }> {
+    const config = await this.getConfig();
+    if (!config.enabled) throw new Error('AI features are disabled');
+    if (!config.apiKey) throw new Error(`No API key configured for provider "${config.provider}"`);
+    const sanitized = this.sanitizeHistory(history);
+    return config.provider === 'openai'
+      ? this.toolLoopOpenAI(config, sanitized, message, userId)
+      : this.toolLoopClaude(config, sanitized, message, userId);
+  }
+
+  private static readonly TOOL_LOOP_MAX_STEPS = 6;
+
+  private static async toolLoopClaude(config: AIConfig, history: ChatMessage[], message: string, userId: number): Promise<{ response: string; actions: ToolAction[] }> {
+    const client = new Anthropic({ apiKey: config.apiKey! });
+    const tools = AI_TOOLS.map((t) => ({ name: t.name, description: t.description, input_schema: t.inputSchema as any }));
+    const messages: Anthropic.MessageParam[] = [
+      ...history.map((m) => ({ role: m.role, content: m.content })),
+      { role: 'user', content: message },
+    ];
+    const actions: ToolAction[] = [];
+
+    for (let step = 0; step < this.TOOL_LOOP_MAX_STEPS; step++) {
+      const resp = await client.messages.create({
+        model: config.model,
+        max_tokens: 2048,
+        system: this.TOOL_SYSTEM_PROMPT,
+        tools,
+        messages,
+      });
+      const toolUses = resp.content.filter((b: any) => b.type === 'tool_use') as any[];
+      if (toolUses.length === 0) {
+        const text = resp.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('').trim();
+        return { response: text, actions };
+      }
+      messages.push({ role: 'assistant', content: resp.content });
+      const toolResults: any[] = [];
+      for (const tu of toolUses) {
+        const result = await this.runTool(tu.name, userId, tu.input, actions);
+        toolResults.push({ type: 'tool_result', tool_use_id: tu.id, content: JSON.stringify(result) });
+      }
+      messages.push({ role: 'user', content: toolResults });
+    }
+    return { response: 'I took several steps but had to stop — please double-check the result.', actions };
+  }
+
+  private static async toolLoopOpenAI(config: AIConfig, history: ChatMessage[], message: string, userId: number): Promise<{ response: string; actions: ToolAction[] }> {
+    const client = new OpenAI({ apiKey: config.apiKey! });
+    const tools = AI_TOOLS.map((t) => ({ type: 'function' as const, function: { name: t.name, description: t.description, parameters: t.inputSchema } }));
+    const messages: any[] = [
+      { role: 'system', content: this.TOOL_SYSTEM_PROMPT },
+      ...history.map((m) => ({ role: m.role, content: m.content })),
+      { role: 'user', content: message },
+    ];
+    const actions: ToolAction[] = [];
+
+    for (let step = 0; step < this.TOOL_LOOP_MAX_STEPS; step++) {
+      const completion = await client.chat.completions.create({ model: config.model, max_tokens: 2048, messages, tools });
+      const msg = completion.choices[0].message;
+      if (!msg.tool_calls || msg.tool_calls.length === 0) {
+        return { response: (msg.content || '').trim(), actions };
+      }
+      messages.push(msg);
+      for (const tc of msg.tool_calls) {
+        let args: any = {};
+        try { args = JSON.parse(tc.function.arguments || '{}'); } catch { /* leave empty */ }
+        const result = await this.runTool(tc.function.name, userId, args, actions);
+        messages.push({ role: 'tool', tool_call_id: tc.id, content: JSON.stringify(result) });
+      }
+    }
+    return { response: 'I took several steps but had to stop — please double-check the result.', actions };
+  }
+
+  // Execute a single tool call, recording it (and any error) in `actions`.
+  private static async runTool(name: string, userId: number, input: any, actions: ToolAction[]): Promise<any> {
+    const tool = AI_TOOLS_BY_NAME[name];
+    if (!tool) {
+      const err = `Unknown tool: ${name}`;
+      actions.push({ tool: name, error: err });
+      return { error: err };
+    }
+    try {
+      const result = await tool.handler(userId, input);
+      actions.push({ tool: name, input, result });
+      return result;
+    } catch (e: any) {
+      const error = e?.message || 'tool failed';
+      actions.push({ tool: name, input, error });
+      return { error };
+    }
   }
 
   // Natural language query processor
