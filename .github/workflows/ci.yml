@@ -134,7 +134,10 @@ jobs:
     name: Deploy to Staging
     runs-on: ubuntu-latest
     needs: [test-backend, test-frontend, lint]
-    if: github.ref == 'refs/heads/develop' && github.event_name == 'push'
+    # Only runs when an SSH deploy target is configured (repo variable
+    # DEPLOY_ENABLED = 'true'). The app is distributed as a desktop installer, so
+    # by default there is no server to deploy to and this job is skipped.
+    if: vars.DEPLOY_ENABLED == 'true' && github.ref == 'refs/heads/develop' && github.event_name == 'push'
 
     steps:
       - name: Deploy to server via SSH
@@ -172,7 +175,10 @@ jobs:
     name: Deploy to Production
     runs-on: ubuntu-latest
     needs: [test-backend, test-frontend, lint, security]
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    # Only runs when an SSH deploy target is configured (repo variable
+    # DEPLOY_ENABLED = 'true'). Skipped by default — the app ships as a desktop
+    # installer, so there is no production server to deploy to.
+    if: vars.DEPLOY_ENABLED == 'true' && github.ref == 'refs/heads/main' && github.event_name == 'push'
     environment:
       name: production
 
@@ -269,7 +275,7 @@ jobs:
           echo "A pre-deploy database backup was created."
 
   release:
-    name: Create Release & Push Docker Images
+    name: Push Docker Images
     runs-on: ubuntu-latest
     needs: [test-backend, test-frontend, lint, security]
     if: startsWith(github.ref, 'refs/tags/v')
@@ -312,9 +318,6 @@ jobs:
             ghcr.io/jwalen/budget-tracker-frontend:latest
             ghcr.io/jwalen/budget-tracker-frontend:${{ github.ref_name }}
 
-      - name: Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          generate_release_notes: true
-          draft: false
-          prerelease: false
+      # The GitHub Release itself (with the downloadable .dmg/.exe installers) is
+      # created by the "Build Desktop Apps" workflow's release job — keeping a
+      # single source of truth avoids two workflows racing on the same release.
