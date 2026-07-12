@@ -203,6 +203,13 @@ ALTER TABLE transactions ADD COLUMN IF NOT EXISTS original_amount DECIMAL(10,2);
 ALTER TABLE budgets ADD COLUMN IF NOT EXISTS currency VARCHAR(3) DEFAULT 'USD';
 ALTER TABLE match_rules ADD COLUMN IF NOT EXISTS category_id INTEGER REFERENCES categories(id) ON DELETE CASCADE;
 
+-- Transfers: an account-to-account move (e.g. checking → savings). The
+-- destination account lives in transfer_account_id, and 'transfer' is allowed as
+-- a transaction type. Transfers are excluded from income/expense totals.
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS transfer_account_id INTEGER REFERENCES bank_accounts(id) ON DELETE SET NULL;
+ALTER TABLE transactions DROP CONSTRAINT IF EXISTS transactions_type_check;
+ALTER TABLE transactions ADD CONSTRAINT transactions_type_check CHECK (type IN ('income', 'expense', 'transfer'));
+
 -- --- Missing unique constraints required by ON CONFLICT upserts -------------
 -- backup_config and allowance_transactions upsert on these columns; without a
 -- matching UNIQUE constraint Postgres rejects the ON CONFLICT clause (every

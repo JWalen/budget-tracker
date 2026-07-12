@@ -173,9 +173,9 @@ router.get('/cash-flow', async (req: AuthRequest, res: Response) => {
         DATE(date) as day,
         SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
         SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expenses,
-        SUM(CASE WHEN type = 'income' THEN amount ELSE -amount END) as net
+        SUM(CASE WHEN type = 'income' THEN amount WHEN type = 'expense' THEN -amount ELSE 0 END) as net
        FROM transactions
-       WHERE user_id = $1 
+       WHERE user_id = $1
          AND EXTRACT(MONTH FROM date) = $2
          AND EXTRACT(YEAR FROM date) = $3
        GROUP BY DATE(date)
@@ -328,7 +328,7 @@ router.get('/income-vs-expenses', async (req: AuthRequest, res: Response) => {
         TO_CHAR(DATE_TRUNC('month', date), 'Mon YYYY') as month,
         SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END) as expenses,
         SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END) as income,
-        SUM(CASE WHEN type = 'income' THEN amount ELSE -amount END) as savings
+        SUM(CASE WHEN type = 'income' THEN amount WHEN type = 'expense' THEN -amount ELSE 0 END) as savings
        FROM transactions
        WHERE user_id = $1
          AND date >= CURRENT_DATE - INTERVAL '${m} months'

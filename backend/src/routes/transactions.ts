@@ -23,10 +23,13 @@ router.get('/', async (req: AuthRequest, res: Response) => {
         c.color as category_color,
         a.name as account_name,
         a.color as account_color,
-        a.account_type
+        a.account_type,
+        ta.name as transfer_account_name,
+        ta.color as transfer_account_color
       FROM transactions t
       LEFT JOIN categories c ON t.category_id = c.id
       LEFT JOIN bank_accounts a ON t.account_id = a.id
+      LEFT JOIN bank_accounts ta ON t.transfer_account_id = ta.id
       WHERE t.user_id = $1
     `;
     const params: any[] = [budgetUserId];
@@ -98,7 +101,7 @@ router.get('/', async (req: AuthRequest, res: Response) => {
 // Create transaction
 router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
   try {
-    const { category_id, account_id, amount, description, date, type } = req.body;
+    const { category_id, account_id, amount, description, date, type, transfer_account_id } = req.body;
     const budgetUserId = (req as any).budgetUserId;
 
     const numericAmount = Number(amount);
@@ -106,7 +109,7 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'Amount must be a positive number' });
     }
 
-    if (type !== 'income' && type !== 'expense') {
+    if (type !== 'income' && type !== 'expense' && type !== 'transfer') {
       return res.status(400).json({ error: 'Invalid type' });
     }
 
@@ -135,10 +138,30 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
       }
     }
 
+    // A transfer moves money between two of the user's own accounts: it needs a
+    // distinct, owned source and destination, and never counts as income/expense.
+    let transferAccountId: number | null = null;
+    if (type === 'transfer') {
+      if (!account_id || !transfer_account_id) {
+        return res.status(400).json({ error: 'A transfer needs both a "from" and a "to" account' });
+      }
+      if (Number(account_id) === Number(transfer_account_id)) {
+        return res.status(400).json({ error: 'The "from" and "to" accounts must be different' });
+      }
+      const toCheck = await query(
+        'SELECT id FROM bank_accounts WHERE id = $1 AND user_id = $2',
+        [transfer_account_id, budgetUserId]
+      );
+      if (toCheck.rows.length === 0) {
+        return res.status(400).json({ error: 'Invalid destination account' });
+      }
+      transferAccountId = Number(transfer_account_id);
+    }
+
     const result = await query(
-      `INSERT INTO transactions (user_id, category_id, account_id, amount, description, date, type)
-       VALUES ($1, $2, $3, $4, $5, $6, $7) RETURNING *`,
-      [budgetUserId, category_id, account_id, amount, description, date, type]
+      `INSERT INTO transactions (user_id, category_id, account_id, amount, description, date, type, transfer_account_id)
+       VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING *`,
+      [budgetUserId, category_id, account_id, amount, description, date, type, transferAccountId]
     );
 
     // Fetch with category and account info
@@ -148,10 +171,13 @@ router.post('/', requireEditAccess, async (req: AuthRequest, res: Response) => {
         c.color as category_color,
         a.name as account_name,
         a.color as account_color,
-        a.account_type
+        a.account_type,
+        ta.name as transfer_account_name,
+        ta.color as transfer_account_color
        FROM transactions t
        LEFT JOIN categories c ON t.category_id = c.id
        LEFT JOIN bank_accounts a ON t.account_id = a.id
+       LEFT JOIN bank_accounts ta ON t.transfer_account_id = ta.id
        WHERE t.id = $1`,
       [result.rows[0].id]
     );
@@ -180,7 +206,7 @@ router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) =>
       }
     }
 
-    if (updates.type !== undefined && updates.type !== 'income' && updates.type !== 'expense') {
+    if (updates.type !== undefined && updates.type !== 'income' && updates.type !== 'expense' && updates.type !== 'transfer') {
       return res.status(400).json({ error: 'Invalid type' });
     }
 
@@ -209,13 +235,28 @@ router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) =>
       }
     }
 
+    // Destination account (transfers): verify ownership and that it differs from
+    // the source when both are known on this update.
+    if (updates.transfer_account_id !== undefined && updates.transfer_account_id !== null) {
+      const toCheck = await query(
+        'SELECT id FROM bank_accounts WHERE id = $1 AND user_id = $2',
+        [updates.transfer_account_id, budgetUserId]
+      );
+      if (toCheck.rows.length === 0) {
+        return res.status(400).json({ error: 'Invalid destination account' });
+      }
+      if (updates.account_id !== undefined && Number(updates.account_id) === Number(updates.transfer_account_id)) {
+        return res.status(400).json({ error: 'The "from" and "to" accounts must be different' });
+      }
+    }
+
     // Dynamic update query
     const fields: string[] = [];
     const params: any[] = [];
     let paramIndex = 1;
 
     // Allowed fields to update
-    const allowedFields = ['category_id', 'account_id', 'amount', 'description', 'date', 'type'];
+    const allowedFields = ['category_id', 'account_id', 'amount', 'description', 'date', 'type', 'transfer_account_id'];
 
     for (const field of allowedFields) {
       if (updates[field] !== undefined) {
@@ -249,10 +290,13 @@ router.put('/:id', requireEditAccess, async (req: AuthRequest, res: Response) =>
         c.color as category_color,
         a.name as account_name,
         a.color as account_color,
-        a.account_type
+        a.account_type,
+        ta.name as transfer_account_name,
+        ta.color as transfer_account_color
        FROM transactions t
        LEFT JOIN categories c ON t.category_id = c.id
        LEFT JOIN bank_accounts a ON t.account_id = a.id
+       LEFT JOIN bank_accounts ta ON t.transfer_account_id = ta.id
        WHERE t.id = $1`,
       [id]
     );

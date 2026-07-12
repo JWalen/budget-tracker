@@ -29,6 +29,7 @@ router.get('/summary', async (req: AuthRequest, res: Response) => {
       WHERE t.user_id = $1
         AND EXTRACT(MONTH FROM t.date) = $2
         AND EXTRACT(YEAR FROM t.date) = $3
+        AND t.type <> 'transfer'
         AND NOT (t.type = 'income' AND c.exclude_from_income = true)
       GROUP BY t.type`,
       [budgetUserId, m, y]
@@ -150,9 +151,9 @@ router.get('/trend', async (req: AuthRequest, res: Response) => {
       }
       if (row.type === 'income') {
         trendData[key].income = parseFloat(row.total);
-      } else {
+      } else if (row.type === 'expense') {
         trendData[key].expenses = parseFloat(row.total);
-      }
+      } // transfers are neither income nor expense — excluded
     }
 
     res.json(Object.values(trendData));
