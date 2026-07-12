@@ -19,8 +19,11 @@ export interface ToolAction {
 // system_settings; keys are encrypted at rest with EncryptionService.
 type AIProvider = 'claude' | 'openai';
 
+// Default to a balanced, high-throughput model rather than Opus — Opus has the
+// lowest per-minute rate limits and is overkill for categorization/insights/chat,
+// so it made even light use hit provider rate limits. Users can still pick Opus.
 const DEFAULT_MODELS: Record<AIProvider, string> = {
-  claude: 'claude-opus-4-8',
+  claude: 'claude-sonnet-4-6',
   openai: 'gpt-4o',
 };
 
@@ -161,13 +164,50 @@ export class AIAssistant {
     const maxTokens = options?.maxTokens ?? this.DEFAULT_MAX_TOKENS;
     const history = this.sanitizeHistory(options?.history);
     try {
-      return config.provider === 'openai'
-        ? await this.generateOpenAI(config, prompt, context, maxTokens, history)
-        : await this.generateClaude(config, prompt, context, maxTokens, history);
+      return await this.withRateLimitRetry(config.provider, () =>
+        config.provider === 'openai'
+          ? this.generateOpenAI(config, prompt, context, maxTokens, history)
+          : this.generateClaude(config, prompt, context, maxTokens, history)
+      );
     } catch (error) {
       console.error(`AI generation error (${config.provider}):`, error);
       throw error;
     }
+  }
+
+  // Whether a provider error is a rate limit / overload (retryable).
+  static isRateLimitError(e: any): boolean {
+    const status = e?.status ?? e?.response?.status ?? e?.statusCode;
+    return status === 429 || status === 529 || /rate.?limit|overloaded|too many requests/i.test(e?.message || '');
+  }
+
+  // Retry a provider call a few times with exponential backoff on 429/overload,
+  // then convert a persistent rate limit into a clear, actionable 429 error.
+  static async withRateLimitRetry<T>(provider: AIProvider, fn: () => Promise<T>): Promise<T> {
+    let lastErr: any;
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        return await fn();
+      } catch (error) {
+        lastErr = error;
+        if (this.isRateLimitError(error) && attempt < 2) {
+          await new Promise((r) => setTimeout(r, 1500 * Math.pow(2, attempt))); // 1.5s, 3s
+          continue;
+        }
+        break;
+      }
+    }
+    if (this.isRateLimitError(lastErr)) {
+      const err: any = new Error(
+        `Your AI provider (${provider === 'claude' ? 'Claude' : 'OpenAI'}) rate-limited this request. ` +
+        `This is common on the Claude Opus model, which has low per-minute limits. Wait ~30 seconds and try again, ` +
+        `or switch to a faster model (Claude Haiku or Sonnet) in Admin → AI Configuration — they have much higher throughput.`
+      );
+      err.status = 429;
+      err.isRateLimit = true;
+      throw err;
+    }
+    throw lastErr;
   }
 
   private static async generateClaude(config: AIConfig, prompt: string, context: string | undefined, maxTokens: number, history: ChatMessage[]): Promise<string> {
@@ -247,13 +287,13 @@ export class AIAssistant {
     const actions: ToolAction[] = [];
 
     for (let step = 0; step < this.TOOL_LOOP_MAX_STEPS; step++) {
-      const resp = await client.messages.create({
+      const resp = await this.withRateLimitRetry(config.provider, () => client.messages.create({
         model: config.model,
         max_tokens: 2048,
         system: this.TOOL_SYSTEM_PROMPT,
         tools,
         messages,
-      });
+      }));
       const toolUses = resp.content.filter((b: any) => b.type === 'tool_use') as any[];
       if (toolUses.length === 0) {
         const text = resp.content.filter((b: any) => b.type === 'text').map((b: any) => b.text).join('').trim();
@@ -281,7 +321,7 @@ export class AIAssistant {
     const actions: ToolAction[] = [];
 
     for (let step = 0; step < this.TOOL_LOOP_MAX_STEPS; step++) {
-      const completion = await client.chat.completions.create({ model: config.model, max_tokens: 2048, messages, tools });
+      const completion = await this.withRateLimitRetry(config.provider, () => client.chat.completions.create({ model: config.model, max_tokens: 2048, messages, tools }));
       const msg = completion.choices[0].message;
       if (!msg.tool_calls || msg.tool_calls.length === 0) {
         return { response: (msg.content || '').trim(), actions };
