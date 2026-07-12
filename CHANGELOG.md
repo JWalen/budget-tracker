@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.12.1] - 2026-07-12
+
+### Fixed
+- **Desktop "too many requests" on normal use** — several per-route limiters (`transactionLimiter` at 50/hour on all of `/api/transactions`, `authLimiter`, `uploadLimiter`, `exportLimiter`) and the DB-backed login lockout were not gated for desktop mode, so ordinary browsing/editing tripped a 429. Every rate limiter now skips when `SERVE_FRONTEND_DIR` is set (single local user); hosted deployments keep full protection.
+
 ## [2.12.0] - 2026-07-12
 
 ### Added

@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.12.1',
+    date: '2026-07-12',
+    changes: [
+      'Fixed “too many requests” errors during normal use of the desktop app — all rate limits (including the transaction and login limits) are now disabled in the desktop app, since it’s just you running your own copy.',
+    ],
+  },
+  {
     version: '2.12.0',
     date: '2026-07-12',
     changes: [
