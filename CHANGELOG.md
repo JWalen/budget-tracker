@@ -5,6 +5,7 @@
 Diagnosability + AI configuration pass, plus downloadable desktop installers.
 
 ### Added
+- **Desktop deployment modes** — first-run setup screen (and File → Setup) lets an install run as **Standalone** (embedded Postgres + backend on loopback), **Server** (backend bound to `0.0.0.0` on a chosen port, shows its LAN address for clients), or **Client** (no local DB/backend — a thin window pointed at a server's URL, validated via `/api/health`). Backend now honors a `HOST` bind env var.
 - **Dynamic AI model list** — `POST /api/admin/ai/models` fetches the models the configured (or just-entered) key can access from Anthropic (`GET /v1/models`) / OpenAI (`GET /v1/models`); Admin → AI Configuration gains a "Fetch available" button that merges the live list into the model dropdown.
 - **DB-backed error log** — new `error_logs` table + `errorLog.ts` (best-effort insert, self-pruning to 2000 rows). The global HTTP error handler and AI routes record full detail (provider status/body/retry-after, stack). Admin → Error Log reads from the DB (works in the desktop app where file logging can't), with search, level filter, per-page export, and clear.
 - **Downloadable installers** — the desktop CI workflow now publishes the built `.dmg` / `.exe` to a GitHub Release on `v*` tags.
