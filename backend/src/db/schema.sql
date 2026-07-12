@@ -223,6 +223,24 @@ DO $$ BEGIN
   END IF;
 END $$;
 
+-- --- Error log (DB-backed, so it works in the desktop app where file logging
+-- --- is off) — surfaced in the admin panel for troubleshooting. -------------
+CREATE TABLE IF NOT EXISTS error_logs (
+  id          SERIAL PRIMARY KEY,
+  level       VARCHAR(10) NOT NULL DEFAULT 'error',
+  context     VARCHAR(60),
+  message     TEXT NOT NULL,
+  detail      TEXT,
+  status_code INTEGER,
+  method      VARCHAR(10),
+  path        VARCHAR(500),
+  user_id     INTEGER,
+  request_id  VARCHAR(64),
+  created_at  TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS idx_error_logs_created ON error_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_error_logs_level ON error_logs(level, created_at DESC);
+
 -- --- Remove legacy sharing model (replaced by Households) --------------------
 DROP TABLE IF EXISTS budget_shares CASCADE;
 

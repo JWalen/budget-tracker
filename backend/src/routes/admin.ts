@@ -358,94 +358,65 @@ router.post('/users/:id/toggle-mfa', async (req: AuthRequest, res: Response) => 
   }
 });
 
-// GET /api/admin/logs — View system logs
+// GET /api/admin/logs — View the DB-backed error log. Reads from the error_logs
+// table (not files) so it works in the packaged desktop app too, and is the place
+// to look when something like an AI request fails.
 router.get('/logs', async (req: AuthRequest, res: Response) => {
   try {
-    const page = parseInt(req.query.page as string) || 1;
-    const limit = parseInt(req.query.limit as string) || 50;
+    const page = Math.max(1, parseInt(req.query.page as string) || 1);
+    const limit = Math.min(200, Math.max(1, parseInt(req.query.limit as string) || 50));
     const level = req.query.level as string;
     const search = req.query.search as string;
-    const date = req.query.date as string;
 
-    // Read log files
-    const logDir = path.join(process.cwd(), 'logs');
-
-    // Check if logs directory exists
-    try {
-      await fs.access(logDir);
-    } catch {
-      return res.json({ logs: [], pagination: { page: 1, limit, total: 0, pages: 0 } });
-    }
-
-    const files = await fs.readdir(logDir);
-
-    // Find the appropriate log file
-    let targetFile = `application-${date || new Date().toISOString().split('T')[0]}.log`;
-
-    if (!files.includes(targetFile)) {
-      // Fall back to the most recent log file
-      const logFiles = files
-        .filter(f => f.startsWith('application-') && f.endsWith('.log'))
-        .sort()
-        .reverse();
-
-      if (logFiles.length === 0) {
-        return res.json({ logs: [], pagination: { page: 1, limit, total: 0, pages: 0 } });
-      }
-
-      targetFile = logFiles[0];
-    }
-
-    // Read the log file
-    const logContent = await fs.readFile(path.join(logDir, targetFile), 'utf-8');
-    const logLines = logContent.split('\n').filter(line => line.trim());
-
-    // Parse logs
-    let logs = logLines
-      .map(line => {
-        try {
-          return JSON.parse(line);
-        } catch {
-          return null;
-        }
-      })
-      .filter(log => log !== null);
-
-    // Apply filters
-    if (level) {
-      logs = logs.filter(log => log.level === level);
-    }
+    const conds: string[] = [];
+    const params: any[] = [];
+    if (level && level !== 'all') { params.push(level); conds.push(`level = $${params.length}`); }
     if (search) {
-      logs = logs.filter(log =>
-        JSON.stringify(log).toLowerCase().includes(search.toLowerCase())
-      );
+      params.push(`%${search.toLowerCase()}%`);
+      conds.push(`(LOWER(message) LIKE $${params.length} OR LOWER(COALESCE(context,'')) LIKE $${params.length} OR LOWER(COALESCE(path,'')) LIKE $${params.length})`);
     }
+    const where = conds.length ? `WHERE ${conds.join(' AND ')}` : '';
 
-    // Sort by timestamp (newest first)
-    logs.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+    const totalRes = await query(`SELECT COUNT(*)::int AS n FROM error_logs ${where}`, params);
+    const total = totalRes.rows[0].n;
 
-    // Paginate
-    const total = logs.length;
-    const start = (page - 1) * limit;
-    const paginatedLogs = logs.slice(start, start + limit);
+    params.push(limit, (page - 1) * limit);
+    const rows = await query(
+      `SELECT id, level, context, message, detail, status_code, method, path, user_id, request_id, created_at
+       FROM error_logs ${where}
+       ORDER BY id DESC LIMIT $${params.length - 1} OFFSET $${params.length}`,
+      params
+    );
 
-    res.json({
-      logs: paginatedLogs,
-      pagination: {
-        page,
-        limit,
-        total,
-        pages: Math.ceil(total / limit)
-      },
-      availableDates: files
-        .filter(f => f.startsWith('application-') && f.endsWith('.log'))
-        .map(f => f.replace('application-', '').replace('.log', ''))
-        .sort()
-        .reverse()
-    });
+    // Shape rows for the admin log viewer (it expects timestamp/level/message).
+    const logs = rows.rows.map((r: any) => ({
+      timestamp: r.created_at,
+      level: r.level,
+      context: r.context,
+      message: r.message,
+      detail: r.detail,
+      statusCode: r.status_code,
+      method: r.method,
+      path: r.path,
+      userId: r.user_id,
+      requestId: r.request_id,
+    }));
+
+    res.json({ logs, pagination: { page, limit, total, pages: Math.ceil(total / limit) } });
   } catch (error) {
     logger.error('Admin logs error:', error);
     res.status(500).json({ error: 'Failed to get logs' });
+  }
+});
+
+// DELETE /api/admin/logs — Clear the error log.
+router.delete('/logs', async (_req: AuthRequest, res: Response) => {
+  try {
+    await query('DELETE FROM error_logs');
+    res.json({ message: 'Logs cleared' });
+  } catch (error) {
+    logger.error('Clear logs error:', error);
+    res.status(500).json({ error: 'Failed to clear logs' });
   }
 });
 
@@ -952,6 +923,53 @@ router.post('/ai/settings', async (req: AuthRequest, res: Response) => {
     await query('ROLLBACK');
     logger.error('Update AI settings error', error as Error);
     res.status(500).json({ error: 'Server error' });
+  }
+});
+
+// POST /api/admin/ai/models — List the models actually available to the key.
+// Accepts an apiKey being entered in the form, or falls back to the stored key.
+router.post('/ai/models', async (req: AuthRequest, res: Response) => {
+  try {
+    const provider = req.body.provider === 'openai' ? 'openai' : 'claude';
+    let apiKey: string | null =
+      typeof req.body.apiKey === 'string' && req.body.apiKey.trim() ? req.body.apiKey.trim() : null;
+    if (!apiKey) {
+      const row = await query('SELECT value FROM system_settings WHERE key = $1', [AI_KEY_SETTINGS[provider]]);
+      if (row.rows[0]?.value) {
+        try { apiKey = EncryptionService.decryptAPIKey(row.rows[0].value); } catch { apiKey = null; }
+      }
+    }
+    if (!apiKey) return res.status(400).json({ error: 'Enter an API key first, then fetch models.' });
+
+    let models: Array<{ value: string; label: string }> = [];
+    if (provider === 'claude') {
+      const r = await fetch('https://api.anthropic.com/v1/models?limit=100', {
+        headers: { 'x-api-key': apiKey, 'anthropic-version': '2023-06-01' },
+      });
+      if (!r.ok) {
+        return res.status(r.status === 401 ? 401 : 502).json({
+          error: r.status === 401 ? 'Anthropic rejected that API key.' : 'Could not fetch models from Anthropic.',
+        });
+      }
+      const data: any = await r.json();
+      models = (data.data || []).map((m: any) => ({ value: m.id, label: m.display_name || m.id }));
+    } else {
+      const r = await fetch('https://api.openai.com/v1/models', { headers: { Authorization: `Bearer ${apiKey}` } });
+      if (!r.ok) {
+        return res.status(r.status === 401 ? 401 : 502).json({
+          error: r.status === 401 ? 'OpenAI rejected that API key.' : 'Could not fetch models from OpenAI.',
+        });
+      }
+      const data: any = await r.json();
+      models = (data.data || [])
+        .filter((m: any) => /^(gpt|o[0-9]|chatgpt)/i.test(m.id))
+        .map((m: any) => ({ value: m.id, label: m.id }))
+        .sort((a: any, b: any) => a.value.localeCompare(b.value));
+    }
+    res.json({ models });
+  } catch (error) {
+    logger.error('Fetch AI models error', error as Error);
+    res.status(502).json({ error: 'Could not reach the AI provider to list models. Check your connection and key.' });
   }
 });
 

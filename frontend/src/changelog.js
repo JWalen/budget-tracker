@@ -1,5 +1,15 @@
 export const changelog = [
   {
+    version: '2.11.0',
+    date: '2026-07-12',
+    changes: [
+      'AI: pick from the models your API key can actually use — “Fetch available” in Admin → AI Configuration loads the live list from Claude or OpenAI',
+      'AI errors are now clear and actionable (e.g. rate limits explain the cause and suggest a faster model) instead of a generic failure',
+      'New admin Error Log — application and AI errors are recorded to the database with full detail, searchable and exportable, so failures can actually be diagnosed',
+      'Desktop app: downloadable Mac (.dmg) and Windows (.exe) installers are now published to GitHub Releases',
+    ],
+  },
+  {
     version: '2.10.0',
     date: '2026-07-11',
     changes: [

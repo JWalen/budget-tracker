@@ -38,6 +38,7 @@ import familyRoutes from './routes/family';
 import aiRoutes from './routes/ai';
 import AIAssistant from './services/aiAssistant';
 import { mapPgError } from './utils/apiError';
+import { logErrorToDb } from './services/errorLog';
 import organizationRoutes from './routes/organizations';
 import analyticsRoutes from './routes/analytics';
 import receiptsRoutes from './routes/receipts';
@@ -283,6 +284,19 @@ app.use((err: any, req: any, res: any, next: any) => {
     url: req.url,
     method: req.method,
     ip: req.ip,
+  });
+
+  // Persist to the DB-backed error log so it's visible in the admin panel
+  // (esp. in the desktop app where file logs aren't written).
+  logErrorToDb({
+    context: 'HTTP',
+    message: err?.message || 'Unhandled error',
+    detail: err?.stack || (typeof err === 'object' ? JSON.stringify(err) : String(err)),
+    statusCode: err?.status || 500,
+    method: req.method,
+    path: req.originalUrl,
+    userId: req.userId ?? null,
+    requestId: req.requestId,
   });
 
   // Multer (file upload) errors have friendly, specific messages worth surfacing.

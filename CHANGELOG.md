@@ -1,5 +1,17 @@
 # Changelog
 
+## [2.11.0] - 2026-07-12
+
+Diagnosability + AI configuration pass, plus downloadable desktop installers.
+
+### Added
+- **Dynamic AI model list** — `POST /api/admin/ai/models` fetches the models the configured (or just-entered) key can access from Anthropic (`GET /v1/models`) / OpenAI (`GET /v1/models`); Admin → AI Configuration gains a "Fetch available" button that merges the live list into the model dropdown.
+- **DB-backed error log** — new `error_logs` table + `errorLog.ts` (best-effort insert, self-pruning to 2000 rows). The global HTTP error handler and AI routes record full detail (provider status/body/retry-after, stack). Admin → Error Log reads from the DB (works in the desktop app where file logging can't), with search, level filter, per-page export, and clear.
+- **Downloadable installers** — the desktop CI workflow now publishes the built `.dmg` / `.exe` to a GitHub Release on `v*` tags.
+
+### Changed / Fixed
+- **AI error messages clarified** — provider rate limits (429/529) now return an actionable message (wait ~30s or switch to Haiku/Sonnet) after an automatic backoff-retry, instead of a generic 500; the default model is Sonnet (Opus's low per-minute limits caused "too many requests" under light use).
+
 ## [2.10.0] - 2026-07-11
 
 Installable-app milestone plus a security, testing, and reliability hardening pass.
