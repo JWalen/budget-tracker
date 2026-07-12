@@ -130,6 +130,38 @@ describe('Transactions API', () => {
       expect(response.body.every((t: any) => t.category_id === categoryId)).toBe(true);
     });
 
+    it('should search transactions by description (case-insensitive)', async () => {
+      const { query } = require('../../../src/config/database');
+      await query(
+        'INSERT INTO transactions (user_id, category_id, amount, description, date, type) VALUES ($1, $2, $3, $4, $5, $6)',
+        [userId, categoryId, 12.5, 'BLUE BOTTLE COFFEE', '2025-11-20', 'expense']
+      );
+
+      const response = await request(app)
+        .get('/api/transactions?search=blue%20bottle')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.length).toBe(1);
+      expect(response.body[0].description).toBe('BLUE BOTTLE COFFEE');
+    });
+
+    it('search spans all dates (ignores the month view)', async () => {
+      const { query } = require('../../../src/config/database');
+      await query(
+        'INSERT INTO transactions (user_id, category_id, amount, description, date, type) VALUES ($1, $2, $3, $4, $5, $6)',
+        [userId, categoryId, 9.99, 'Netflix subscription', '2024-01-15', 'expense']
+      );
+
+      // Even with a month/year that doesn't contain it, search still finds it.
+      const response = await request(app)
+        .get('/api/transactions?search=netflix&month=2&year=2026')
+        .set('Authorization', `Bearer ${token}`);
+
+      expect(response.status).toBe(200);
+      expect(response.body.some((t: any) => t.description === 'Netflix subscription')).toBe(true);
+    });
+
     it('should not return other users transactions', async () => {
       // Create another user with transactions
       const otherUser = await createTestUser({ email: 'other@example.com' });

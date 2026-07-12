@@ -32,7 +32,12 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     const params: any[] = [budgetUserId];
     let paramIndex = 2;
 
-    if (month && year) {
+    // Free-text search over description and category name (case-insensitive).
+    // When searching, results span ALL dates — the month scoping below is skipped
+    // so a match from another month isn't hidden.
+    const search = typeof req.query.search === 'string' ? req.query.search.trim() : '';
+
+    if (month && year && !search) {
       sql += ` AND EXTRACT(MONTH FROM t.date) = $${paramIndex} AND EXTRACT(YEAR FROM t.date) = $${paramIndex + 1}`;
       params.push(month, year);
       paramIndex += 2;
@@ -59,6 +64,12 @@ router.get('/', async (req: AuthRequest, res: Response) => {
     if (account_id) {
       sql += ` AND t.account_id = $${paramIndex}`;
       params.push(account_id);
+      paramIndex++;
+    }
+
+    if (search) {
+      sql += ` AND (t.description ILIKE $${paramIndex} OR c.name ILIKE $${paramIndex})`;
+      params.push(`%${search.slice(0, 100)}%`);
       paramIndex++;
     }
 
