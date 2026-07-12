@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.15.0] - 2026-07-12
+
+### Added
+- **Create a category from the transaction form** — the category `<select>` on Add/Edit Transaction gains a "+ Create new category…" option that reveals an inline name field; it posts to `/api/categories` with the form's current type, refreshes the list, and selects the new category.
+
+### Fixed
+- **Backups failed to create ("Failed to create backup")** — `createFullBackup` selected `users.currency` and `users.updated_at`, columns that don't exist on the shipped schema, so admin/full backups 500'd. The users projection is now intersected with the columns that actually exist (still excludes `password_hash`/`mfa_secret`), and every table read goes through a resilient helper that skips a missing/broken table instead of failing the whole backup. Backup endpoints now record failures to the admin Error Log. Verified with integration tests.
+
 ## [2.14.0] - 2026-07-12
 
 ### Added

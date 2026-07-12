@@ -1,5 +1,13 @@
 export const changelog = [
   {
+    version: '2.15.0',
+    date: '2026-07-12',
+    changes: [
+      'Create a category on the fly — the category dropdown on the Add/Edit Transaction screen now has a “+ Create new category…” option, so you don’t have to leave to add one.',
+      'Fixed backups failing with “failed to create backup” — the full/admin backup referenced user columns that don’t exist on the current schema; backups now build reliably, skip any unexpected missing table instead of failing outright, and the reason is logged to the admin Error Log if anything does go wrong.',
+    ],
+  },
+  {
     version: '2.14.0',
     date: '2026-07-12',
     changes: [

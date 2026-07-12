@@ -46,6 +46,10 @@ export default function Transactions() {
   // Save accepted AI categorizations as reusable auto-rules (on by default) so the
   // same merchant is categorized on future imports without calling the AI.
   const [saveAsRules, setSaveAsRules] = useState(true);
+  // Inline "create category" from the transaction form.
+  const [showNewCategory, setShowNewCategory] = useState(false);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [creatingCategory, setCreatingCategory] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [bulkMoving, setBulkMoving] = useState(false);
   const { activeBudgetOwner, isReadOnly } = useBudget();
@@ -166,12 +170,16 @@ export default function Transactions() {
         date: new Date().toISOString().split('T')[0],
       });
     }
+    setShowNewCategory(false);
+    setNewCategoryName('');
     setShowModal(true);
   };
 
   const closeModal = () => {
     setShowModal(false);
     setEditingTx(null);
+    setShowNewCategory(false);
+    setNewCategoryName('');
   };
 
   const handleSubmit = async (e) => {
@@ -214,6 +222,36 @@ export default function Transactions() {
   };
 
   const filteredCategories = categories.filter((c) => c.type === form.type);
+
+  // Category <select> also offers "+ Create new category…"; picking it reveals an
+  // inline name field instead of changing the selection.
+  const handleCategorySelect = (e) => {
+    if (e.target.value === '__new__') {
+      setShowNewCategory(true);
+    } else {
+      setShowNewCategory(false);
+      setForm({ ...form, category_id: e.target.value });
+    }
+  };
+
+  const handleCreateCategory = async () => {
+    const name = newCategoryName.trim();
+    if (!name || creatingCategory) return;
+    setCreatingCategory(true);
+    try {
+      const created = await api.createCategory({ name, type: form.type });
+      const cats = await api.getCategories();
+      setCategories(cats);
+      setForm((f) => ({ ...f, category_id: String(created.id) }));
+      setNewCategoryName('');
+      setShowNewCategory(false);
+      toast.success(`Category “${name}” created`);
+    } catch (error) {
+      toast.error(error.message || 'Could not create category');
+    } finally {
+      setCreatingCategory(false);
+    }
+  };
 
   // Handle bulk move to account
   const handleBulkMoveToAccount = async () => {
@@ -776,8 +814,8 @@ export default function Transactions() {
               <div>
                 <label className="label">Category</label>
                 <select
-                  value={form.category_id}
-                  onChange={(e) => setForm({ ...form, category_id: e.target.value })}
+                  value={showNewCategory ? '__new__' : form.category_id}
+                  onChange={handleCategorySelect}
                   className="input"
                 >
                   <option value="">Select category</option>
@@ -786,7 +824,37 @@ export default function Transactions() {
                       {cat.name}
                     </option>
                   ))}
+                  <option value="__new__">+ Create new category…</option>
                 </select>
+                {showNewCategory && (
+                  <div className="flex gap-2 mt-2">
+                    <input
+                      type="text"
+                      autoFocus
+                      value={newCategoryName}
+                      onChange={(e) => setNewCategoryName(e.target.value)}
+                      onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleCreateCategory(); } }}
+                      placeholder={`New ${form.type} category name`}
+                      className="input flex-1"
+                    />
+                    <button
+                      type="button"
+                      onClick={handleCreateCategory}
+                      disabled={!newCategoryName.trim() || creatingCategory}
+                      className="btn-primary px-3 flex items-center gap-1 disabled:opacity-50"
+                    >
+                      {creatingCategory ? <Loader2 size={16} className="animate-spin" /> : <Plus size={16} />}
+                      Add
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => { setShowNewCategory(false); setNewCategoryName(''); }}
+                      className="btn-secondary px-3"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
               </div>
 
               <div>
