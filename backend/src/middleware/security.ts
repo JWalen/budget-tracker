@@ -56,7 +56,10 @@ export const helmetConfig = helmet({
   },
 });
 
-// Rate limiting configurations
+// Rate limiting configurations. In the desktop app (single local user hitting
+// their own backend) IP rate limiting only causes false "too many requests", so
+// every limiter built here is skipped when serving the desktop frontend. Hosted
+// deployments keep full protection.
 export const createRateLimiter = (windowMs: number = 15 * 60 * 1000, max: number = 100) => {
   return rateLimit({
     windowMs,
@@ -64,6 +67,7 @@ export const createRateLimiter = (windowMs: number = 15 * 60 * 1000, max: number
     message: 'Too many requests from this IP, please try again later.',
     standardHeaders: true,
     legacyHeaders: false,
+    skip: () => Boolean(process.env.SERVE_FRONTEND_DIR),
   });
 };
 

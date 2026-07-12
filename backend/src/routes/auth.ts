@@ -42,6 +42,8 @@ const DUMMY_BCRYPT_HASH = '$2a$12$C6UzMDM.H6dfI/f/IKcEeO3g7q5x2mZ8x0j1wZ7fJc3z0x
 // one source) and per-email-from-the-same-IP (targeted), never on failures for
 // an email coming from other IPs.
 const checkRateLimit = async (email: string, ip: string): Promise<boolean> => {
+  // Desktop app: single local user, no brute-force surface — never lock them out.
+  if (process.env.SERVE_FRONTEND_DIR) return true;
   const result = await query(
     `SELECT
        COUNT(*) FILTER (WHERE ip_address = $2) AS ip_count,
