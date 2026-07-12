@@ -13,6 +13,8 @@ const fs = require('fs');
 const net = require('net');
 const crypto = require('crypto');
 const http = require('http');
+const https = require('https');
+const tls = require('tls');
 const os = require('os');
 const { fork } = require('child_process');
 
@@ -114,18 +116,83 @@ function lanAddresses() {
 }
 
 // Is a Budget Tracker server answering at this base URL? Used to validate a
-// client's target before committing to it.
+// client's target before committing to it. rejectUnauthorized:false because the
+// server uses a self-signed cert — this is only a liveness check; the cert is
+// verified separately by pinning (see certificate-error handler).
 function probeServer(baseUrl, timeoutMs = 4000) {
   return new Promise((resolve) => {
     let u;
     try { u = new URL('/api/health', baseUrl); } catch { return resolve(false); }
-    const lib = u.protocol === 'https:' ? require('https') : http;
-    const req = lib.get(u, { timeout: timeoutMs }, (res) => {
+    const lib = u.protocol === 'https:' ? https : http;
+    const req = lib.get(u, { timeout: timeoutMs, rejectUnauthorized: false }, (res) => {
       res.resume();
       resolve(res.statusCode === 200);
     });
     req.on('error', () => resolve(false));
     req.on('timeout', () => { req.destroy(); resolve(false); });
+  });
+}
+
+// --- TLS: self-signed cert for server mode, pinned by clients ----------------
+function tlsDir() { return path.join(app.getPath('userData'), 'tls'); }
+function tlsPaths() {
+  const d = tlsDir();
+  return { certFile: path.join(d, 'cert.pem'), keyFile: path.join(d, 'key.pem') };
+}
+
+// Generate a self-signed cert once (server mode) and cache it on disk. SANs
+// include localhost and current LAN IPs, but identity is enforced by pinning the
+// exact cert (below), not by hostname/CA validation — so a later IP change is
+// harmless. Returns the cert PEM.
+function ensureServerCert() {
+  const { certFile, keyFile } = tlsPaths();
+  if (fs.existsSync(certFile) && fs.existsSync(keyFile)) {
+    return fs.readFileSync(certFile, 'utf-8');
+  }
+  const selfsigned = require('selfsigned');
+  const ips = ['127.0.0.1', ...lanAddresses()];
+  const altNames = [{ type: 2, value: 'localhost' }, ...ips.map((ip) => ({ type: 7, ip }))];
+  const pems = selfsigned.generate(
+    [{ name: 'commonName', value: 'Budget Tracker Server' }],
+    { days: 3650, keySize: 2048, algorithm: 'sha256', extensions: [{ name: 'subjectAltName', altNames }] }
+  );
+  fs.mkdirSync(tlsDir(), { recursive: true });
+  fs.writeFileSync(keyFile, pems.private, { mode: 0o600 });
+  fs.writeFileSync(certFile, pems.cert, { mode: 0o600 });
+  return pems.cert;
+}
+
+// Normalize a PEM to its base64 DER body so two encodings of the same cert
+// compare equal regardless of whitespace/line-wrapping.
+function pemBody(pem) {
+  return String(pem || '').replace(/-----(BEGIN|END) CERTIFICATE-----/g, '').replace(/\s+/g, '');
+}
+function certMatches(certificate, expectedPem) {
+  if (!expectedPem || !certificate || !certificate.data) return false;
+  const got = pemBody(certificate.data);
+  return got.length > 0 && got === pemBody(expectedPem);
+}
+
+// Fetch the leaf certificate a server currently presents, as PEM. Used by a
+// client to pin the cert on first connect and to detect changes thereafter.
+function fetchServerCertPem(baseUrl, timeoutMs = 4000) {
+  return new Promise((resolve) => {
+    let u;
+    try { u = new URL(baseUrl); } catch { return resolve(null); }
+    const port = Number(u.port) || (u.protocol === 'https:' ? 443 : 80);
+    const socket = tls.connect(
+      { host: u.hostname, port, servername: u.hostname, rejectUnauthorized: false, timeout: timeoutMs },
+      () => {
+        const cert = socket.getPeerCertificate(false);
+        socket.end();
+        if (cert && cert.raw) {
+          const b64 = cert.raw.toString('base64').match(/.{1,64}/g).join('\n');
+          resolve(`-----BEGIN CERTIFICATE-----\n${b64}\n-----END CERTIFICATE-----\n`);
+        } else resolve(null);
+      }
+    );
+    socket.on('error', () => resolve(null));
+    socket.on('timeout', () => { socket.destroy(); resolve(null); });
   });
 }
 
@@ -235,7 +302,7 @@ async function applyInitSql(cfg, port) {
   }
 }
 
-function startBackend(cfg, pgPort, apiPort, bindHost) {
+function startBackend(cfg, pgPort, apiPort, bindHost, tlsFiles) {
   const { backendEntry, frontendDir } = resolvePaths();
   const env = {
     ...process.env,
@@ -255,6 +322,13 @@ function startBackend(cfg, pgPort, apiPort, bindHost) {
     LOG_TO_FILE: 'false',
     LOG_TO_CONSOLE: 'true',
   };
+  // Server mode: serve HTTPS with the self-signed cert, and mark the session
+  // cookie Secure (now that the transport is encrypted).
+  if (tlsFiles) {
+    env.TLS_CERT_FILE = tlsFiles.certFile;
+    env.TLS_KEY_FILE = tlsFiles.keyFile;
+    env.COOKIE_SECURE = 'true';
+  }
   // Run the backend with a writable working directory. Launched from Finder the
   // inherited cwd is "/" (read-only), which breaks any cwd-relative file access.
   backendProc = fork(backendEntry, [], {
@@ -285,11 +359,14 @@ function startBackend(cfg, pgPort, apiPort, bindHost) {
   });
 }
 
-function waitForHealth(apiPort, timeoutMs = 30000) {
+function waitForHealth(apiPort, secure, timeoutMs = 30000) {
   const start = Date.now();
+  const lib = secure ? https : http;
   return new Promise((resolve, reject) => {
     const tryOnce = () => {
-      const req = http.get({ host: '127.0.0.1', port: apiPort, path: '/api/health', timeout: 2000 }, (res) => {
+      const opts = { host: '127.0.0.1', port: apiPort, path: '/api/health', timeout: 2000 };
+      if (secure) opts.rejectUnauthorized = false; // our own self-signed cert on loopback
+      const req = lib.get(opts, (res) => {
         res.resume();
         if (res.statusCode === 200) return resolve();
         retry();
@@ -328,6 +405,9 @@ function createWindow(url) {
 let currentConfig = null;
 let setupWin = null;
 let pendingSetupResolve = null;
+// The one certificate we trust for the current session: our own cert (server
+// mode) or the pinned server cert (client mode). Everything else is rejected.
+let expectedCertPem = null;
 
 // Registered once at startup; the setup window talks to these over IPC.
 function registerSetupIpc() {
@@ -411,20 +491,28 @@ async function launchLocal(cfg, serverMode) {
     log('postgres started on', pgPort);
     const apiPort = serverMode ? Number(cfg.serverPort) || 5000 : await freePort();
     const bindHost = serverMode ? '0.0.0.0' : '127.0.0.1';
-    startBackend(cfg, pgPort, apiPort, bindHost);
-    log('backend forked on', apiPort, 'host', bindHost);
-    await waitForHealth(apiPort);
+    // Server mode serves HTTPS with a self-signed cert; the local window trusts
+    // it via the pinning handler (expectedCertPem).
+    let tlsFiles = null;
+    if (serverMode) {
+      expectedCertPem = ensureServerCert();
+      tlsFiles = tlsPaths();
+    }
+    startBackend(cfg, pgPort, apiPort, bindHost, tlsFiles);
+    log('backend forked on', apiPort, 'host', bindHost, 'tls', Boolean(tlsFiles));
+    await waitForHealth(apiPort, serverMode);
     log('backend healthy; loading window');
-    createWindow(`http://127.0.0.1:${apiPort}`);
+    const scheme = serverMode ? 'https' : 'http';
+    createWindow(`${scheme}://127.0.0.1:${apiPort}`);
     loading.close();
     if (serverMode) {
       const addrs = lanAddresses();
-      const list = addrs.length ? addrs.map((a) => `http://${a}:${apiPort}`).join('\n') : `http://<this-computer-ip>:${apiPort}`;
+      const list = addrs.length ? addrs.map((a) => `https://${a}:${apiPort}`).join('\n') : `https://<this-computer-ip>:${apiPort}`;
       dialog.showMessageBox(mainWindow, {
         type: 'info',
         title: 'Server mode',
         message: 'Budget Tracker is serving other devices',
-        detail: `On another device, install Budget Tracker, choose Client, and enter:\n\n${list}\n\nKeep this app running. Traffic is unencrypted — use only on a network you trust.`,
+        detail: `On another device, install Budget Tracker, choose Client, and enter:\n\n${list}\n\nThe connection is encrypted (HTTPS); each client confirms this server's certificate the first time it connects. Keep this app running.`,
       });
     }
   } catch (err) {
@@ -451,6 +539,32 @@ async function launchClient(cfg) {
     app.quit();
     return;
   }
+
+  // Over HTTPS, pin the server's certificate. First connect records it; later
+  // connects require the same cert (a change is flagged as possible tampering).
+  if (/^https:/i.test(cfg.serverUrl)) {
+    const current = await fetchServerCertPem(cfg.serverUrl);
+    if (current) {
+      if (!cfg.serverCertPem) {
+        cfg.serverCertPem = current;
+        saveConfig(cfg);
+      } else if (pemBody(current) !== pemBody(cfg.serverCertPem)) {
+        const choice = dialog.showMessageBoxSync({
+          type: 'warning',
+          title: 'Budget Tracker — certificate changed',
+          message: 'This server’s security certificate has changed',
+          detail: 'This is expected if the server app was reinstalled or reset — but it could also mean someone is intercepting the connection. Only trust the new certificate if you know the server changed.',
+          buttons: ['Trust new certificate', 'Quit'],
+          defaultId: 1, cancelId: 1,
+        });
+        if (choice !== 0) { app.quit(); return; }
+        cfg.serverCertPem = current;
+        saveConfig(cfg);
+      }
+    }
+    expectedCertPem = cfg.serverCertPem || null;
+  }
+
   log('client connecting to', cfg.serverUrl);
   createWindow(cfg.serverUrl);
 }
@@ -492,6 +606,19 @@ async function shutdown() {
   try { backendProc?.kill('SIGTERM'); } catch {}
   try { if (pg) await pg.stop(); } catch (e) { console.error('pg stop error', e); }
 }
+
+// Certificate pinning. The self-signed server cert isn't chained to a public CA,
+// so Electron would normally reject it. Trust it ONLY when it exactly matches the
+// cert we expect (our own in server mode, the pinned one in client mode) — any
+// other cert (e.g. a man-in-the-middle) still fails.
+app.on('certificate-error', (event, _webContents, _url, _error, certificate, callback) => {
+  if (certMatches(certificate, expectedCertPem)) {
+    event.preventDefault();
+    callback(true);
+  } else {
+    callback(false);
+  }
+});
 
 // Single-instance lock: a second launch would start another embedded Postgres
 // against the same data directory and conflict/corrupt it. Refuse the second

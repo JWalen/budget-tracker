@@ -4,6 +4,7 @@ export const changelog = [
     date: '2026-07-12',
     changes: [
       'Desktop app: on first launch, choose how it runs — Standalone (all on this computer), Server (host the data for other devices on your network), or Client (connect to a server on another computer). Change it anytime from File → Setup.',
+      'Server ↔ Client traffic is now encrypted (HTTPS): a Server generates its own certificate, and each Client confirms it on first connect and warns if it ever changes — protecting your data on the network.',
       'AI: pick from the models your API key can actually use — “Fetch available” in Admin → AI Configuration loads the live list from Claude or OpenAI',
       'AI errors are now clear and actionable (e.g. rate limits explain the cause and suggest a faster model) instead of a generic failure',
       'New admin Error Log — application and AI errors are recorded to the database with full detail, searchable and exportable, so failures can actually be diagnosed',

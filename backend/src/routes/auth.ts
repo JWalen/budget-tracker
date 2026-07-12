@@ -12,6 +12,16 @@ import TokenService from '../services/tokenService';
 const router = Router();
 const logger = new LoggerClass('Auth');
 
+// Options for the refresh-token cookie. `Secure` requires HTTPS: it's on in
+// production and whenever the desktop app serves over TLS (server mode), but off
+// for plain-HTTP loopback (standalone) where a Secure cookie would never be sent.
+const refreshCookieOptions = {
+  httpOnly: true,
+  secure: process.env.NODE_ENV === 'production' || process.env.COOKIE_SECURE === 'true',
+  sameSite: 'strict' as const,
+  maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+};
+
 // Password requirements: min 12 chars, 1 uppercase, 1 lowercase, 1 number
 export const PASSWORD_POLICY_MESSAGE =
   'Password must be at least 12 characters and include uppercase, lowercase, and a number';
@@ -158,12 +168,7 @@ router.post('/register', async (req: Request, res: Response) => {
     );
 
     // Set refresh token in httpOnly cookie
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
+    res.cookie('refreshToken', refreshToken, refreshCookieOptions);
 
     // Log registration event
     logger.auth('register', user.id, true, { email: user.email });
@@ -248,12 +253,7 @@ router.post('/login', async (req: Request, res: Response) => {
     );
 
     // Set refresh token in httpOnly cookie
-    res.cookie('refreshToken', refreshToken, {
-      httpOnly: true,
-      secure: process.env.NODE_ENV === 'production',
-      sameSite: 'strict',
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
-    });
+    res.cookie('refreshToken', refreshToken, refreshCookieOptions);
 
     // Log login event
     logger.auth('login', user.id, true, { email: user.email });
@@ -441,7 +441,11 @@ router.post('/refresh', async (req: Request, res: Response) => {
 
     if (!result) {
       // Clear invalid cookie
-      res.clearCookie('refreshToken');
+      res.clearCookie('refreshToken', {
+      httpOnly: refreshCookieOptions.httpOnly,
+      secure: refreshCookieOptions.secure,
+      sameSite: refreshCookieOptions.sameSite,
+    });
       return res.status(401).json({ error: 'Invalid or expired refresh token' });
     }
 
@@ -466,7 +470,11 @@ router.post('/logout', authMiddleware, async (req: AuthRequest, res: Response) =
     }
 
     // Clear the cookie
-    res.clearCookie('refreshToken');
+    res.clearCookie('refreshToken', {
+      httpOnly: refreshCookieOptions.httpOnly,
+      secure: refreshCookieOptions.secure,
+      sameSite: refreshCookieOptions.sameSite,
+    });
 
     // Log logout event
     logger.auth('logout', req.userId!, true);
@@ -485,7 +493,11 @@ router.post('/logout-all', authMiddleware, async (req: AuthRequest, res: Respons
     await TokenService.revokeAllUserTokens(req.userId!);
 
     // Clear the current cookie
-    res.clearCookie('refreshToken');
+    res.clearCookie('refreshToken', {
+      httpOnly: refreshCookieOptions.httpOnly,
+      secure: refreshCookieOptions.secure,
+      sameSite: refreshCookieOptions.sameSite,
+    });
 
     // Log logout event
     logger.auth('logout', req.userId!, true, { allDevices: true });
