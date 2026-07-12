@@ -6,6 +6,7 @@ import { LoggerClass } from '../services/logger';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
+import { logErrorToDb } from '../services/errorLog';
 
 const router = Router();
 const logger = new LoggerClass('BackupSchedule');
@@ -246,6 +247,7 @@ router.post('/download-now', async (req: AuthRequest, res: Response) => {
     });
   } catch (error) {
     logger.error('Download backup error:', error as Error);
+    logErrorToDb({ context: 'Backup', message: `Download-now failed: ${(error as Error).message}`, detail: (error as Error).stack, statusCode: 500, method: req.method, path: req.originalUrl, userId: req.userId ?? null });
     res.status(500).json({ error: 'Failed to create backup' });
   }
 });
@@ -318,6 +320,7 @@ router.post('/create', requireEditAccess, async (req: AuthRequest, res: Response
     }
   } catch (error) {
     logger.error('Create backup error:', error as Error);
+    logErrorToDb({ context: 'Backup', message: `Create backup failed: ${(error as Error).message}`, detail: (error as Error).stack, statusCode: 500, method: req.method, path: req.originalUrl, userId: req.userId ?? null });
     res.status(500).json({ error: 'Backup failed' });
   }
 });
@@ -390,81 +393,78 @@ export async function createUserBackup(userId: number): Promise<any> {
   ];
 
   for (const table of directTables) {
-    const result = await query(
-      `SELECT * FROM ${table} WHERE user_id = $1`,
-      [userId]
-    );
-    backup.data[table] = result.rows;
+    backup.data[table] = await dumpTable(table, 'WHERE user_id = $1', [userId]);
   }
 
-  // Bill payments - need to join through bills table
-  const billPaymentsResult = await query(
-    `SELECT bp.* FROM bill_payments bp
-     JOIN bills b ON bp.bill_id = b.id
-     WHERE b.user_id = $1`,
-    [userId]
-  );
-  backup.data.bill_payments = billPaymentsResult.rows;
-
-  // Pay period bills - need to join through pay_periods table
-  const payPeriodBillsResult = await query(
-    `SELECT ppb.* FROM pay_period_bills ppb
-     JOIN pay_periods pp ON ppb.pay_period_id = pp.id
-     WHERE pp.user_id = $1`,
-    [userId]
-  );
-  backup.data.pay_period_bills = payPeriodBillsResult.rows;
-
-  // Account balances - join through bank_accounts
-  const accountBalancesResult = await query(
-    `SELECT ab.* FROM account_balances ab
-     JOIN bank_accounts ba ON ab.account_id = ba.id
-     WHERE ba.user_id = $1`,
-    [userId]
-  );
-  backup.data.account_balances = accountBalancesResult.rows;
-
-  // Spending limits - join through family_members
-  const spendingLimitsResult = await query(
-    `SELECT sl.* FROM spending_limits sl
-     JOIN family_members fm ON sl.member_id = fm.id
-     WHERE fm.user_id = $1`,
-    [userId]
-  );
-  backup.data.spending_limits = spendingLimitsResult.rows;
-
-  // Spending alerts
-  const spendingAlertsResult = await query(
+  // Child tables reached via a join to a user-owned parent. Each is best-effort
+  // so a single missing/renamed table can't fail the whole backup.
+  backup.data.bill_payments = await safeRows(
+    `SELECT bp.* FROM bill_payments bp JOIN bills b ON bp.bill_id = b.id WHERE b.user_id = $1`,
+    [userId], 'bill_payments');
+  backup.data.pay_period_bills = await safeRows(
+    `SELECT ppb.* FROM pay_period_bills ppb JOIN pay_periods pp ON ppb.pay_period_id = pp.id WHERE pp.user_id = $1`,
+    [userId], 'pay_period_bills');
+  backup.data.account_balances = await safeRows(
+    `SELECT ab.* FROM account_balances ab JOIN bank_accounts ba ON ab.account_id = ba.id WHERE ba.user_id = $1`,
+    [userId], 'account_balances');
+  backup.data.spending_limits = await safeRows(
+    `SELECT sl.* FROM spending_limits sl JOIN family_members fm ON sl.member_id = fm.id WHERE fm.user_id = $1`,
+    [userId], 'spending_limits');
+  backup.data.spending_alerts = await safeRows(
     `SELECT * FROM spending_alerts WHERE user_id = $1`,
-    [userId]
-  );
-  backup.data.spending_alerts = spendingAlertsResult.rows;
-
-  // Approval requests - join through family_members
-  const approvalRequestsResult = await query(
-    `SELECT ar.* FROM approval_requests ar
-     JOIN family_members fm ON ar.member_id = fm.id
-     WHERE fm.user_id = $1`,
-    [userId]
-  );
-  backup.data.approval_requests = approvalRequestsResult.rows;
-
-  // Allowance transactions - join through family_members
-  const allowanceTransactionsResult = await query(
-    `SELECT at.* FROM allowance_transactions at
-     JOIN family_members fm ON at.member_id = fm.id
-     WHERE fm.user_id = $1`,
-    [userId]
-  );
-  backup.data.allowance_transactions = allowanceTransactionsResult.rows;
+    [userId], 'spending_alerts');
+  backup.data.approval_requests = await safeRows(
+    `SELECT ar.* FROM approval_requests ar JOIN family_members fm ON ar.member_id = fm.id WHERE fm.user_id = $1`,
+    [userId], 'approval_requests');
+  backup.data.allowance_transactions = await safeRows(
+    `SELECT at.* FROM allowance_transactions at JOIN family_members fm ON at.member_id = fm.id WHERE fm.user_id = $1`,
+    [userId], 'allowance_transactions');
 
   return backup;
 }
 
-// Non-secret column list for the users table. A full backup must never carry
-// password_hash, mfa_secret, or any other credential material off the database.
-const USERS_EXPORT_COLUMNS =
-  'id, email, name, is_admin, mfa_enabled, currency, created_at, updated_at';
+// Non-secret columns we're willing to export from the users table. A full backup
+// must never carry password_hash, mfa_secret, or any other credential material.
+// We intersect this allow-list with the columns that ACTUALLY exist (schemas
+// drift across versions — e.g. older DBs have no `currency`/`updated_at`), so the
+// SELECT can never reference a missing column and 500 the whole backup.
+const USER_SAFE_COLUMNS = [
+  'id', 'email', 'name', 'is_admin', 'mfa_enabled',
+  'currency', 'default_currency', 'created_at', 'updated_at',
+  'last_login', 'last_activity',
+];
+
+async function usersExportColumns(): Promise<string> {
+  try {
+    const r = await query(
+      `SELECT column_name FROM information_schema.columns
+       WHERE table_name = 'users' AND column_name = ANY($1::text[])`,
+      [USER_SAFE_COLUMNS]
+    );
+    const cols = r.rows.map((row: any) => row.column_name);
+    return cols.length ? cols.join(', ') : 'id, email, name';
+  } catch {
+    return 'id, email, name';
+  }
+}
+
+// Dump a table in full, but never let one missing/broken table fail the whole
+// backup — skip it (empty) and record why.
+async function dumpTable(table: string, where = '', params: any[] = []): Promise<any[]> {
+  return safeRows(`SELECT * FROM ${table} ${where}`, params, table);
+}
+
+// Run an arbitrary backup query, returning [] (and logging) instead of throwing
+// so one problematic table can't fail the entire backup.
+async function safeRows(sql: string, params: any[], label: string): Promise<any[]> {
+  try {
+    const result = await query(sql, params);
+    return result.rows;
+  } catch (e) {
+    logger.warn(`Backup: skipping "${label}" (${(e as Error).message})`);
+    return [];
+  }
+}
 
 export async function createFullBackup(): Promise<any> {
   // Get all data for admin backup. `users` uses an explicit non-secret column
@@ -497,12 +497,19 @@ export async function createFullBackup(): Promise<any> {
     data: {}
   };
 
-  const usersResult = await query(`SELECT ${USERS_EXPORT_COLUMNS} FROM users`);
-  backup.data.users = usersResult.rows;
+  // users: only the non-secret columns that actually exist (never password_hash
+  // / mfa_secret). Uses an explicit projection, not dumpTable's SELECT *.
+  const userCols = await usersExportColumns();
+  try {
+    const usersResult = await query(`SELECT ${userCols} FROM users`);
+    backup.data.users = usersResult.rows;
+  } catch (e) {
+    logger.warn(`Backup: users projection failed (${(e as Error).message})`);
+    backup.data.users = [];
+  }
 
   for (const table of tables) {
-    const result = await query(`SELECT * FROM ${table}`);
-    backup.data[table] = result.rows;
+    backup.data[table] = await dumpTable(table);
   }
 
   return backup;
