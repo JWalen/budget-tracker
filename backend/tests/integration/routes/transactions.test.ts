@@ -87,6 +87,62 @@ describe('Transactions API', () => {
     });
   });
 
+  describe('transfers', () => {
+    let fromId: number;
+    let toId: number;
+
+    beforeEach(async () => {
+      const { query } = require('../../../src/config/database');
+      const a = await query(
+        `INSERT INTO bank_accounts (user_id, name, account_type) VALUES ($1,'Checking','checking') RETURNING id`, [userId]);
+      const b = await query(
+        `INSERT INTO bank_accounts (user_id, name, account_type) VALUES ($1,'Savings','savings') RETURNING id`, [userId]);
+      fromId = a.rows[0].id;
+      toId = b.rows[0].id;
+    });
+
+    it('creates a transfer between two accounts (no category)', async () => {
+      const res = await request(app)
+        .post('/api/transactions')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ amount: 500, date: '2026-02-10', type: 'transfer', account_id: fromId, transfer_account_id: toId });
+
+      expect(res.status).toBe(201);
+      expect(res.body.type).toBe('transfer');
+      expect(res.body.transfer_account_id).toBe(toId);
+      expect(res.body.category_id).toBeNull();
+      expect(res.body.transfer_account_name).toBe('Savings');
+    });
+
+    it('rejects a transfer missing the destination account', async () => {
+      const res = await request(app)
+        .post('/api/transactions')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ amount: 500, date: '2026-02-10', type: 'transfer', account_id: fromId });
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects a transfer to the same account', async () => {
+      const res = await request(app)
+        .post('/api/transactions')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ amount: 500, date: '2026-02-10', type: 'transfer', account_id: fromId, transfer_account_id: fromId });
+      expect(res.status).toBe(400);
+    });
+
+    it('rejects a transfer to an account the user does not own', async () => {
+      const other = await createTestUser({ email: 'xfer-other@example.com' });
+      const { query } = require('../../../src/config/database');
+      const foreign = await query(
+        `INSERT INTO bank_accounts (user_id, name, account_type) VALUES ($1,'Theirs','checking') RETURNING id`, [other.id]);
+      const res = await request(app)
+        .post('/api/transactions')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ amount: 500, date: '2026-02-10', type: 'transfer', account_id: fromId, transfer_account_id: foreign.rows[0].id });
+      expect(res.status).toBe(400);
+    });
+  });
+
   describe('GET /api/transactions', () => {
     beforeEach(async () => {
       // Create test transactions

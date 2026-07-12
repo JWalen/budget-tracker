@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.16.0] - 2026-07-12
+
+### Added
+- **Transfers (account-to-account)** — a third transaction type alongside income/expense for moving money between your own accounts (e.g. checking → savings). Schema: `type` CHECK now allows `'transfer'` and a `transfer_account_id` column (idempotent bootstrap). Backend validates a distinct, owned source and destination; the list query joins the destination account. The transaction form gains a Transfer toggle with a **To account** picker (category hidden, since transfers aren't categorized); the list shows `From → To` with a transfer icon and neutral amount.
+- **Transfers are excluded from income/expense everywhere** — audited all aggregations: fixed `net`/`savings` (`ELSE -amount` → explicit `WHEN type = 'expense' THEN -amount ELSE 0`) in analytics, and the type-split trend/monthly/weekly loops in dashboard/reports (`else` → `else if (type === 'expense')`); most sums already used explicit `WHEN type = …` and needed no change. Integration tests cover transfer create + validation (110 tests green).
+
 ## [2.15.0] - 2026-07-12
 
 ### Added

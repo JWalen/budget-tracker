@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.16.0',
+    date: '2026-07-12',
+    changes: [
+      'Transfers — record moving money between your own accounts (e.g. checking → savings) with the new “Transfer” type. Pick a From and To account; transfers are shown separately and are NOT counted as income or expense in your totals, dashboard, or reports.',
+    ],
+  },
+  {
     version: '2.15.0',
     date: '2026-07-12',
     changes: [

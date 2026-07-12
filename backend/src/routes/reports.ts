@@ -137,9 +137,9 @@ router.get('/income-expense', async (req: AuthRequest, res: Response) => {
       const month = monthlyMap.get(key);
       if (row.type === 'income') {
         month.income = parseFloat(row.total);
-      } else {
+      } else if (row.type === 'expense') {
         month.expenses = parseFloat(row.total);
-      }
+      } // transfers excluded from income/expense
     });
 
     res.json({
@@ -339,9 +339,9 @@ router.get('/cash-flow', async (req: AuthRequest, res: Response) => {
       const week = weeklyMap.get(weekStr);
       if (row.type === 'income') {
         week.income = parseFloat(row.total);
-      } else {
+      } else if (row.type === 'expense') {
         week.expenses = parseFloat(row.total);
-      }
+      } // transfers excluded from income/expense
       week.net = week.income - week.expenses;
     });
 

@@ -17,6 +17,7 @@ import {
   Check,
   Loader2,
   Search,
+  ArrowLeftRight,
 } from 'lucide-react';
 
 import { formatCurrency, formatShortDate, MONTHS } from '../utils/format';
@@ -110,6 +111,7 @@ export default function Transactions() {
     type: 'expense',
     category_id: '',
     account_id: '',
+    transfer_account_id: '',
     amount: '',
     description: '',
     date: new Date().toISOString().split('T')[0],
@@ -155,6 +157,7 @@ export default function Transactions() {
         type: tx.type,
         category_id: tx.category_id || '',
         account_id: tx.account_id || '',
+        transfer_account_id: tx.transfer_account_id || '',
         amount: tx.amount,
         description: tx.description || '',
         date: tx.date ? tx.date.split('T')[0] : '',
@@ -165,6 +168,7 @@ export default function Transactions() {
         type: 'expense',
         category_id: '',
         account_id: '',
+        transfer_account_id: '',
         amount: '',
         description: '',
         date: new Date().toISOString().split('T')[0],
@@ -187,12 +191,21 @@ export default function Transactions() {
     if (submitting) return;
     setSubmitting(true);
     try {
+      const isTransfer = form.type === 'transfer';
       const data = {
         ...form,
         amount: parseFloat(form.amount),
-        category_id: form.category_id || null,
+        // Transfers are account-to-account; they don't carry a category.
+        category_id: isTransfer ? null : (form.category_id || null),
         account_id: form.account_id || null,
+        transfer_account_id: isTransfer ? (form.transfer_account_id || null) : null,
       };
+
+      if (isTransfer && (!data.account_id || !data.transfer_account_id)) {
+        toast.error('A transfer needs both a "from" and a "to" account.');
+        setSubmitting(false);
+        return;
+      }
 
       if (editingTx) {
         await api.updateTransaction(editingTx.id, data);
@@ -657,11 +670,15 @@ export default function Transactions() {
                       <div className="flex items-center gap-2">
                         <div
                           className={`p-1 rounded ${
-                            tx.type === 'income' ? 'bg-green-100 dark:bg-green-900/30' : 'bg-red-100 dark:bg-red-900/30'
+                            tx.type === 'income' ? 'bg-green-100 dark:bg-green-900/30'
+                              : tx.type === 'transfer' ? 'bg-blue-100 dark:bg-blue-900/30'
+                              : 'bg-red-100 dark:bg-red-900/30'
                           }`}
                         >
                           {tx.type === 'income' ? (
                             <TrendingUp className="w-4 h-4 text-green-600" />
+                          ) : tx.type === 'transfer' ? (
+                            <ArrowLeftRight className="w-4 h-4 text-blue-600" />
                           ) : (
                             <TrendingDown className="w-4 h-4 text-red-600" />
                           )}
@@ -672,7 +689,13 @@ export default function Transactions() {
                       </div>
                     </td>
                     <td className="px-4 py-3 text-center">
-                      {tx.account_name ? (
+                      {tx.type === 'transfer' ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium text-gray-700 dark:text-gray-300">
+                          {tx.account_name || '—'}
+                          <ArrowLeftRight size={12} className="text-blue-500" />
+                          {tx.transfer_account_name || '—'}
+                        </span>
+                      ) : tx.account_name ? (
                         <span
                           className="px-2 py-1 rounded text-xs font-medium inline-block"
                           style={{
@@ -689,7 +712,11 @@ export default function Transactions() {
                       )}
                     </td>
                     <td className="px-4 py-3 text-center">
-                      {tx.category_name ? (
+                      {tx.type === 'transfer' ? (
+                        <span className="px-2 py-1 rounded-full text-xs font-medium inline-block bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
+                          Transfer
+                        </span>
+                      ) : tx.category_name ? (
                         <span
                           className="px-2 py-1 rounded-full text-xs font-medium inline-block"
                           style={{
@@ -708,10 +735,12 @@ export default function Transactions() {
                     <td className="px-4 py-3">
                       <span
                         className={`font-semibold ${
-                          tx.type === 'income' ? 'text-green-600' : 'text-red-600'
+                          tx.type === 'income' ? 'text-green-600'
+                            : tx.type === 'transfer' ? 'text-blue-600 dark:text-blue-400'
+                            : 'text-red-600'
                         }`}
                       >
-                        {tx.type === 'income' ? '+' : '-'}
+                        {tx.type === 'income' ? '+' : tx.type === 'transfer' ? '' : '-'}
                         {formatCurrency(tx.amount)}
                       </span>
                     </td>
@@ -779,6 +808,17 @@ export default function Transactions() {
                 >
                   Income
                 </button>
+                <button
+                  type="button"
+                  onClick={() => setForm({ ...form, type: 'transfer', category_id: '' })}
+                  className={`flex-1 py-2 rounded-lg font-medium transition-colors flex items-center justify-center gap-1 ${
+                    form.type === 'transfer'
+                      ? 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300'
+                      : 'bg-gray-100 text-gray-600 hover:bg-gray-200 dark:bg-gray-700 dark:text-gray-400 dark:hover:bg-gray-600'
+                  }`}
+                >
+                  <ArrowLeftRight size={16} /> Transfer
+                </button>
               </div>
 
               <div>
@@ -796,11 +836,12 @@ export default function Transactions() {
               </div>
 
               <div>
-                <label className="label">Account</label>
+                <label className="label">{form.type === 'transfer' ? 'From account' : 'Account'}</label>
                 <select
                   value={form.account_id}
                   onChange={(e) => setForm({ ...form, account_id: e.target.value })}
                   className="input"
+                  required={form.type === 'transfer'}
                 >
                   <option value="">Select account</option>
                   {accounts.map((acc) => (
@@ -811,6 +852,30 @@ export default function Transactions() {
                 </select>
               </div>
 
+              {/* Transfer destination */}
+              {form.type === 'transfer' && (
+                <div>
+                  <label className="label">To account</label>
+                  <select
+                    value={form.transfer_account_id}
+                    onChange={(e) => setForm({ ...form, transfer_account_id: e.target.value })}
+                    className="input"
+                    required
+                  >
+                    <option value="">Select account</option>
+                    {accounts
+                      .filter((acc) => String(acc.id) !== String(form.account_id))
+                      .map((acc) => (
+                        <option key={acc.id} value={acc.id}>
+                          {acc.name} ({acc.account_type})
+                        </option>
+                      ))}
+                  </select>
+                </div>
+              )}
+
+              {/* Category — not used for transfers (account-to-account) */}
+              {form.type !== 'transfer' && (
               <div>
                 <label className="label">Category</label>
                 <select
@@ -856,6 +921,7 @@ export default function Transactions() {
                   </div>
                 )}
               </div>
+              )}
 
               <div>
                 <label className="label">Description</label>
