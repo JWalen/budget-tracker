@@ -2,5 +2,7 @@
   "devDependencies": {
     "autocannon": "^8.0.0",
     "k6": "^0.0.0"
-  }
+  },
+  "license": "SEE LICENSE IN LICENSE",
+  "private": true
 }
