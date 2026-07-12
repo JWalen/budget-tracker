@@ -70,7 +70,10 @@ router.post('/query',
       const { query } = req.body;
       const result = await AIAssistant.processNaturalQuery(req.userId!, query);
       res.json(result);
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.status === 429 || AIAssistant.isRateLimitError(error)) {
+        return res.status(429).json({ error: error?.message || 'The AI provider rate-limited this request. Please wait a moment and try again.' });
+      }
       return handleRouteError(res, error, 'The AI request failed. This is usually an invalid API key or the provider being unreachable — check Admin → AI Configuration.', logger);
     }
   }
@@ -182,7 +185,10 @@ router.post('/chat',
         didAct: actions.some((a) => !a.error),
         timestamp: new Date().toISOString(),
       });
-    } catch (error) {
+    } catch (error: any) {
+      if (error?.status === 429 || AIAssistant.isRateLimitError(error)) {
+        return res.status(429).json({ error: error?.message || 'The AI provider rate-limited this request. Please wait a moment and try again.' });
+      }
       return handleRouteError(res, error, 'The AI request failed. This is usually an invalid API key or the provider being unreachable — check Admin → AI Configuration.', logger);
     }
   }
@@ -371,8 +377,13 @@ Example response format:
       });
 
       res.json({ suggestions: enrichedSuggestions });
-    } catch (error) {
+    } catch (error: any) {
       logger.error('AI categorization error:', error);
+      // Surface a provider rate limit clearly (and as 429) rather than a generic
+      // "failed" — so the user knows to wait or switch to a faster model.
+      if (error?.status === 429 || AIAssistant.isRateLimitError(error)) {
+        return res.status(429).json({ error: error?.message || 'The AI provider rate-limited this request. Please wait a moment and try again.' });
+      }
       res.status(500).json({ error: 'Failed to categorize transactions' });
     }
   }

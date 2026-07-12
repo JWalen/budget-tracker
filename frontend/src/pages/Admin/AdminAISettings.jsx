@@ -10,7 +10,7 @@ const PROVIDERS = [
   {
     id: 'claude',
     name: 'Claude (Anthropic)',
-    defaultModel: 'claude-opus-4-8',
+    defaultModel: 'claude-sonnet-4-6',
     keyField: 'anthropic_api_key',
     keyLabel: 'Anthropic API key',
     keyPlaceholder: 'sk-ant-...',

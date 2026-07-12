@@ -234,13 +234,15 @@ ON CONFLICT (id) DO NOTHING;
 INSERT INTO system_settings (key, value, type, description) VALUES
 ('ai_enabled', 'false', 'boolean', 'Master switch for AI features'),
 ('ai_provider', 'claude', 'string', 'AI provider: claude (Anthropic) or openai'),
-('ai_model', 'claude-opus-4-8', 'string', 'Model to use for the selected provider')
+-- Default to Sonnet, not Opus: Opus has the lowest per-minute rate limits and
+-- is overkill for this app's AI tasks, so it made light use hit provider limits.
+('ai_model', 'claude-sonnet-4-6', 'string', 'Model to use for the selected provider')
 ON CONFLICT (key) DO NOTHING;
 
--- Converge legacy Ollama-era settings to the hosted-provider model.
+-- Converge legacy Ollama-era settings to the hosted-provider default.
 -- ai_model previously held an Ollama model name (e.g. "mistral"); reset it to
--- the Claude default so an existing install doesn't send a bogus model id.
-UPDATE system_settings SET value = 'claude-opus-4-8', type = 'string',
+-- a sensible Claude default so an existing install doesn't send a bogus model id.
+UPDATE system_settings SET value = 'claude-sonnet-4-6', type = 'string',
     description = 'Model to use for the selected provider'
   WHERE key = 'ai_model' AND value NOT LIKE 'claude%' AND value NOT LIKE 'gpt%';
 -- Drop the obsolete GPU-detection setting (Ollama-only).
