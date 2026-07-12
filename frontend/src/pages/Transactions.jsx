@@ -39,6 +39,9 @@ export default function Transactions() {
   const [showAiModal, setShowAiModal] = useState(false);
   const [aiLoading, setAiLoading] = useState(false);
   const [aiError, setAiError] = useState('');
+  // Save accepted AI categorizations as reusable auto-rules (on by default) so the
+  // same merchant is categorized on future imports without calling the AI.
+  const [saveAsRules, setSaveAsRules] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [bulkMoving, setBulkMoving] = useState(false);
   const { activeBudgetOwner, isReadOnly } = useBudget();
@@ -290,23 +293,31 @@ export default function Transactions() {
     handleAiCategorize(uncategorizedIds);
   };
 
-  // Apply accepted AI suggestions
+  // Apply accepted AI suggestions in one request, optionally saving them as
+  // auto-categorization rules. A user override drops the learned merchant so we
+  // don't save a rule the AI didn't actually suggest.
   const handleApplyAiSuggestions = async () => {
     const toApply = aiSuggestions.filter(s => s.accepted);
     if (toApply.length === 0) return;
 
     setAiLoading(true);
     try {
-      const promises = toApply.map(s => {
-        const categoryId = s.overrideCategoryId || s.categoryId;
-        return api.updateTransaction(s.transactionId, { category_id: categoryId });
-      });
+      const items = toApply.map(s => ({
+        transactionId: s.transactionId,
+        categoryId: s.overrideCategoryId || s.categoryId,
+        merchant: s.overrideCategoryId ? null : (s.merchant || null),
+      }));
 
-      await Promise.all(promises);
+      const result = await api.applyAiCategories(items, saveAsRules);
       setShowAiModal(false);
       setAiSuggestions([]);
       setSelectedTransactions(new Set());
-      toast.success(`Applied ${toApply.length} categorization${toApply.length !== 1 ? 's' : ''}`);
+      const applied = result.updated ?? toApply.length;
+      const rules = result.rulesCreated || 0;
+      toast.success(
+        `Applied ${applied} categorization${applied !== 1 ? 's' : ''}` +
+        (rules > 0 ? ` · learned ${rules} auto-rule${rules !== 1 ? 's' : ''}` : '')
+      );
       loadData();
     } catch (error) {
       toast.error(error.message || 'Failed to apply some suggestions.');
@@ -836,6 +847,11 @@ export default function Transactions() {
                             <div className="text-xs text-gray-500 dark:text-gray-400">
                               {formatShortDate(tx.date)}
                             </div>
+                            {saveAsRules && suggestion.accepted && !suggestion.overrideCategoryId && suggestion.merchant && (
+                              <div className="text-xs text-primary-600 dark:text-primary-400 mt-0.5">
+                                Will auto-categorize “{suggestion.merchant}” next time
+                              </div>
+                            )}
                           </td>
                           <td className="px-3 py-2 text-right">
                             <span className={`text-sm font-medium ${tx.type === 'income' ? 'text-green-600' : 'text-red-600'}`}>
@@ -868,10 +884,21 @@ export default function Transactions() {
               )}
             </div>
 
-            <div className="flex items-center justify-between p-4 border-t border-gray-200 dark:border-gray-700">
-              <span className="text-sm text-gray-500 dark:text-gray-400">
-                {aiSuggestions.filter(s => s.accepted).length} of {aiSuggestions.length} selected
-              </span>
+            <div className="flex items-center justify-between p-4 border-t border-gray-200 dark:border-gray-700 gap-4">
+              <div className="flex flex-col gap-1">
+                <span className="text-sm text-gray-500 dark:text-gray-400">
+                  {aiSuggestions.filter(s => s.accepted).length} of {aiSuggestions.length} selected
+                </span>
+                <label className="flex items-center gap-2 text-sm text-gray-700 dark:text-gray-300 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={saveAsRules}
+                    onChange={(e) => setSaveAsRules(e.target.checked)}
+                    className="rounded border-gray-300 text-primary-600 focus:ring-primary-500"
+                  />
+                  Save as auto-categorization rules
+                </label>
+              </div>
               <div className="flex gap-3">
                 <button
                   onClick={() => { setShowAiModal(false); setAiSuggestions([]); }}

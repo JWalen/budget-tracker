@@ -1,6 +1,6 @@
 {
   "name": "budget-tracker-desktop",
-  "version": "2.11.0",
+  "version": "2.12.0",
   "description": "Budget Tracker desktop app (Electron + embedded Postgres, no Docker)",
   "main": "main.js",
   "author": "Joshua Walen",

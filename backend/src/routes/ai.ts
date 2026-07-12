@@ -353,9 +353,10 @@ Respond with ONLY a valid JSON array, no other text. Each element must have:
 - "transactionId": the transaction id
 - "categoryId": the best matching category id
 - "confidence": a number between 0 and 1 indicating confidence
+- "merchant": a SHORT substring copied VERBATIM from this transaction's description that identifies the vendor and will appear on future transactions from them (e.g. for "SQ *BLUE BOTTLE 0123 SF" use "BLUE BOTTLE"; for "AMZN Mktp US*2X4" use "AMZN Mktp"). Copy the characters exactly as they appear in the description — do not clean up, expand, or rename. Omit or use "" if no stable identifier exists (e.g. a generic "PAYMENT").
 
 Example response format:
-[{"transactionId":1,"categoryId":5,"confidence":0.9}]`;
+[{"transactionId":1,"categoryId":5,"confidence":0.9,"merchant":"BLUE BOTTLE"}]`;
 
       // Give the model enough room to return one JSON object per transaction
       // (~60 tokens each) so the array isn't truncated mid-response.
@@ -378,6 +379,17 @@ Example response format:
       // Validate category IDs exist in user's categories
       const validCategoryIds = new Set(catResult.rows.map((c: any) => c.id));
       const validTransactionIds = new Set(txResult.rows.map((t: any) => t.id));
+      const descById = new Map(txResult.rows.map((t: any) => [t.id, t.description || '']));
+
+      // Accept the model's "merchant" only when it's a real substring of the
+      // transaction description (so the substring-based rule engine will actually
+      // match future transactions) and long enough not to be dangerously broad.
+      const cleanMerchant = (raw: any, description: string): string | null => {
+        if (typeof raw !== 'string') return null;
+        const m = raw.trim();
+        if (m.length < 3 || m.length > 60) return null;
+        return description.toUpperCase().includes(m.toUpperCase()) ? m : null;
+      };
 
       const validSuggestions = suggestions
         .filter((s: any) =>
@@ -388,7 +400,8 @@ Example response format:
         .map((s: any) => ({
           transactionId: s.transactionId,
           categoryId: s.categoryId,
-          confidence: Math.min(1, Math.max(0, parseFloat(s.confidence) || 0.5))
+          confidence: Math.min(1, Math.max(0, parseFloat(s.confidence) || 0.5)),
+          merchant: cleanMerchant(s.merchant, descById.get(s.transactionId) || ''),
         }));
 
       // Enrich suggestions with names for frontend display
@@ -412,6 +425,84 @@ Example response format:
         return res.status(429).json({ error: error?.message || 'The AI provider rate-limited this request. Please wait a moment and try again.' });
       }
       res.status(500).json({ error: 'Failed to categorize transactions' });
+    }
+  }
+);
+
+// Apply accepted AI category suggestions to transactions, and (by default) learn
+// each one as a reusable auto-categorization rule (merchant substring → category)
+// so the same vendor is categorized on future imports WITHOUT calling the AI.
+router.post('/apply-categories',
+  [
+    body('items').isArray({ min: 1, max: 100 }).withMessage('Provide 1-100 items'),
+    body('items.*.transactionId').isInt({ min: 1 }).withMessage('Invalid transaction ID'),
+    body('items.*.categoryId').isInt({ min: 1 }).withMessage('Invalid category ID'),
+    body('createRules').optional().isBoolean(),
+    handleValidationErrors
+  ],
+  async (req: AuthRequest, res: Response) => {
+    try {
+      const userId = req.userId!;
+      const items = req.body.items as Array<{ transactionId: number; categoryId: number; merchant?: string | null }>;
+      const createRules = req.body.createRules !== false; // default on
+
+      // Categories owned by this user (guards against applying a foreign category).
+      const catResult = await query('SELECT id FROM categories WHERE user_id = $1', [userId]);
+      const validCat = new Set(catResult.rows.map((c: any) => c.id));
+
+      // Descriptions of the caller's own transactions (also enforces ownership).
+      const txResult = await query(
+        'SELECT id, description FROM transactions WHERE id = ANY($1::int[]) AND user_id = $2',
+        [items.map((i) => i.transactionId), userId]
+      );
+      const descById = new Map(txResult.rows.map((t: any) => [t.id, t.description || '']));
+
+      // Existing category-rule patterns (lowercased) so we never create duplicates.
+      const existingRules = await query(
+        `SELECT LOWER(pattern) AS p FROM match_rules WHERE user_id = $1 AND target_type = 'category'`,
+        [userId]
+      );
+      const seenPatterns = new Set<string>(existingRules.rows.map((r: any) => r.p));
+
+      let updated = 0;
+      let rulesCreated = 0;
+
+      for (const item of items) {
+        if (!descById.has(item.transactionId) || !validCat.has(item.categoryId)) continue;
+
+        await query(
+          'UPDATE transactions SET category_id = $1 WHERE id = $2 AND user_id = $3',
+          [item.categoryId, item.transactionId, userId]
+        );
+        updated++;
+
+        if (!createRules) continue;
+        const desc = String(descById.get(item.transactionId) || '');
+        const merchant = typeof item.merchant === 'string' ? item.merchant.trim() : '';
+        // Learn a rule only when the merchant is a real, non-trivial substring of
+        // the description (so the substring-based rule engine will match it) and we
+        // don't already have a rule for that pattern.
+        if (merchant.length < 3 || merchant.length > 60) continue;
+        if (!desc.toUpperCase().includes(merchant.toUpperCase())) continue;
+        const key = merchant.toLowerCase();
+        if (seenPatterns.has(key)) continue;
+        seenPatterns.add(key);
+
+        // Category rules set both target_id and category_id to the category id
+        // (see import matching, which reads target_id for type='category').
+        await query(
+          `INSERT INTO match_rules (user_id, name, pattern, target_type, target_id, category_id)
+           VALUES ($1, $2, $3, 'category', $4, $4)`,
+          [userId, merchant.slice(0, 255), merchant, item.categoryId]
+        );
+        rulesCreated++;
+      }
+
+      res.json({ updated, rulesCreated });
+    } catch (error: any) {
+      logger.error('AI apply-categories error:', error);
+      logAiError(req, error, 'AI apply-categories');
+      res.status(500).json({ error: 'Failed to apply categories' });
     }
   }
 );
