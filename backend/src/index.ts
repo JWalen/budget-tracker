@@ -149,8 +149,13 @@ app.use(express.urlencoded({ limit: '5mb', extended: true }));
 // Request logging
 app.use(requestLogger);
 
-// Apply rate limiting to all API routes
-app.use('/api', apiRateLimiter);
+// Apply the global API rate limit — except in desktop mode, where a single local
+// user over loopback isn't an abuse vector and the normal UI call volume (incl.
+// AI categorize/insights) would otherwise trip it. Per-endpoint limiters
+// (auth/upload/AI) still apply.
+if (!process.env.SERVE_FRONTEND_DIR) {
+  app.use('/api', apiRateLimiter);
+}
 
 // Sanitize all inputs
 app.use(sanitizeInput);
