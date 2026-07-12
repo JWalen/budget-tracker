@@ -125,6 +125,10 @@ if (process.env.TRUST_PROXY === 'true' || process.env.NODE_ENV === 'production')
   app.set('trust proxy', 1);
 }
 const PORT = process.env.PORT || 5000;
+// Bind address. Defaults to all interfaces (Docker/production behind a proxy).
+// The desktop app sets HOST=127.0.0.1 for standalone (loopback-only) and
+// HOST=0.0.0.0 for server mode (reachable by LAN clients).
+const HOST = process.env.HOST || '0.0.0.0';
 
 // Security middleware (order matters!)
 // In desktop (Electron) mode the frontend is served from this same origin and
@@ -329,9 +333,10 @@ async function start() {
     process.exit(1);
   }
 
-  const server = app.listen(PORT, () => {
+  const server = app.listen(Number(PORT), HOST, () => {
     logger.info(`Server started successfully`, {
       port: PORT,
+      host: HOST,
       environment: process.env.NODE_ENV,
       nodeVersion: process.version,
     });

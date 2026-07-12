@@ -1,0 +1,181 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8" />
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: #0f172a; color: #e2e8f0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    -webkit-user-select: none; user-select: none;
+    display: flex; flex-direction: column; min-height: 100%;
+  }
+  .wrap { max-width: 720px; margin: 0 auto; padding: 32px 28px 28px; width: 100%; box-sizing: border-box; }
+  h1 { font-size: 20px; margin: 0 0 4px; font-weight: 600; }
+  .sub { font-size: 13px; color: #94a3b8; margin: 0 0 22px; }
+  .cards { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 12px; }
+  .card {
+    background: #1e293b; border: 2px solid #334155; border-radius: 12px;
+    padding: 16px 14px; cursor: pointer; transition: border-color .12s, background .12s;
+    display: flex; flex-direction: column; gap: 8px;
+  }
+  .card:hover { border-color: #475569; }
+  .card.sel { border-color: #0ea5e9; background: #0b2233; }
+  .card .ico { width: 34px; height: 34px; border-radius: 9px; background: #0ea5e9;
+    display: flex; align-items: center; justify-content: center; }
+  .card .ico svg { width: 20px; height: 20px; }
+  .card h3 { font-size: 14px; margin: 2px 0 0; font-weight: 600; }
+  .card p { font-size: 12px; color: #94a3b8; margin: 0; line-height: 1.4; }
+  .detail { margin-top: 20px; min-height: 20px; }
+  label { display: block; font-size: 12px; color: #cbd5e1; margin: 0 0 6px; }
+  input {
+    width: 100%; box-sizing: border-box; background: #0b1220; border: 1px solid #334155;
+    color: #e2e8f0; border-radius: 8px; padding: 10px 12px; font-size: 14px; outline: none;
+  }
+  input:focus { border-color: #0ea5e9; }
+  .hint { font-size: 12px; color: #64748b; margin-top: 8px; line-height: 1.5; }
+  .hint code { color: #7dd3fc; background: #0b1220; padding: 1px 5px; border-radius: 4px; }
+  .row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 26px; }
+  .status { font-size: 12px; min-height: 16px; }
+  .status.err { color: #f87171; }
+  .status.ok { color: #34d399; }
+  button.go {
+    background: #0ea5e9; color: white; border: 0; border-radius: 9px;
+    padding: 11px 22px; font-size: 14px; font-weight: 600; cursor: pointer;
+  }
+  button.go:disabled { opacity: .5; cursor: default; }
+</style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Set up Budget Tracker</h1>
+    <p class="sub">Choose how this installation should run. You can change this later from <b>File → Setup…</b>.</p>
+
+    <div class="cards">
+      <div class="card" data-mode="standalone">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></div>
+        <h3>Standalone</h3>
+        <p>Everything runs on this computer. Your data stays here. Best for a single device.</p>
+      </div>
+      <div class="card" data-mode="server">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="7" rx="1.5"/><rect x="3" y="13" width="18" height="7" rx="1.5"/><path d="M7 7.5h.01M7 16.5h.01"/></svg></div>
+        <h3>Server (host)</h3>
+        <p>Runs the database here and lets other devices on your network connect to this one.</p>
+      </div>
+      <div class="card" data-mode="client">
+        <div class="ico"><svg viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="13" rx="2"/><path d="M8 21h8"/></svg></div>
+        <h3>Client</h3>
+        <p>Connects to a Budget Tracker server running on another computer. No local database.</p>
+      </div>
+    </div>
+
+    <div class="detail" id="detail"></div>
+
+    <div class="row">
+      <div class="status" id="status"></div>
+      <button class="go" id="go" disabled>Continue</button>
+    </div>
+  </div>
+
+<script>
+  // Build the setup UI with explicit DOM APIs (no innerHTML) so nothing —
+  // including the machine's own LAN IP — is ever interpreted as markup.
+  let selected = null;
+  let serverPort = 5000;
+  const detail = document.getElementById('detail');
+  const statusEl = document.getElementById('status');
+  const goBtn = document.getElementById('go');
+
+  const el = (tag, props = {}, ...kids) => {
+    const n = document.createElement(tag);
+    Object.assign(n, props);
+    for (const k of kids) n.append(k);
+    return n;
+  };
+  const clear = (node) => { while (node.firstChild) node.removeChild(node.firstChild); };
+  const setStatus = (msg, kind) => {
+    statusEl.textContent = msg || '';
+    statusEl.className = 'status' + (kind ? ' ' + kind : '');
+  };
+
+  async function renderDetail() {
+    setStatus('');
+    clear(detail);
+    if (selected === 'standalone') {
+      detail.append(el('div', { className: 'hint', textContent: 'Nothing else to configure — click Continue.' }));
+      goBtn.disabled = false;
+    } else if (selected === 'server') {
+      const lan = await window.setup.getLanAddresses();
+      const ip = lan[0] || 'your-computer-ip';
+      const portInput = el('input', { id: 'port', type: 'number', value: String(serverPort), min: '1', max: '65535' });
+      const addr = el('code', { textContent: 'http://' + ip + ':' + serverPort });
+      const hint = el('div', { className: 'hint' },
+        'Other devices connect to ', addr,
+        el('br'),
+        'Keep this app running to serve them. Traffic is unencrypted — use only on a network you trust.');
+      portInput.addEventListener('input', () => {
+        serverPort = parseInt(portInput.value, 10) || 5000;
+        addr.textContent = 'http://' + ip + ':' + serverPort;
+      });
+      detail.append(el('label', { textContent: 'Port to listen on' }), portInput, hint);
+      goBtn.disabled = false;
+    } else if (selected === 'client') {
+      const urlInput = el('input', { id: 'url', type: 'text', placeholder: 'http://192.168.1.50:5000' });
+      urlInput.addEventListener('input', () => { goBtn.disabled = !urlInput.value.trim(); });
+      const hint = el('div', { className: 'hint' },
+        'Enter the address shown on the computer running Budget Tracker in ',
+        el('b', { textContent: 'Server' }), ' mode.');
+      detail.append(el('label', { textContent: 'Server address' }), urlInput, hint);
+      urlInput.focus();
+      goBtn.disabled = true;
+    }
+  }
+
+  document.querySelectorAll('.card').forEach((c) => {
+    c.addEventListener('click', () => {
+      document.querySelectorAll('.card').forEach((x) => x.classList.remove('sel'));
+      c.classList.add('sel');
+      selected = c.dataset.mode;
+      renderDetail();
+    });
+  });
+
+  function normalizeUrl(raw) {
+    let u = raw.trim();
+    if (!/^https?:\/\//i.test(u)) u = 'http://' + u;
+    return u.replace(/\/+$/, '');
+  }
+
+  goBtn.addEventListener('click', async () => {
+    if (!selected) return;
+    goBtn.disabled = true;
+    if (selected === 'standalone') {
+      window.setup.choose({ mode: 'standalone' });
+    } else if (selected === 'server') {
+      window.setup.choose({ mode: 'server', serverPort });
+    } else if (selected === 'client') {
+      const url = normalizeUrl(document.getElementById('url').value);
+      setStatus('Checking connection…');
+      const ok = await window.setup.probe(url);
+      if (!ok) {
+        setStatus('Could not reach a Budget Tracker server at that address. Check it is running in Server mode and the address is right.', 'err');
+        goBtn.disabled = false;
+        return;
+      }
+      setStatus('Connected.', 'ok');
+      window.setup.choose({ mode: 'client', serverUrl: url });
+    }
+  });
+
+  // Preselect the current mode when reopened via File → Setup.
+  (async () => {
+    const cur = await window.setup.getCurrent();
+    if (cur && cur.mode) {
+      const card = document.querySelector('.card[data-mode="' + cur.mode + '"]');
+      if (card) card.click();
+    }
+  })();
+</script>
+</body>
+</html>

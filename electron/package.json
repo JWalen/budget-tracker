@@ -29,6 +29,8 @@
     "files": [
       "main.js",
       "loading.html",
+      "mode-select.html",
+      "mode-preload.js",
       "assets/**",
       "node_modules/**"
     ],

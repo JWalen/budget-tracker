@@ -7,7 +7,7 @@
 // serves the built frontend from the same origin — and (4) loads that origin in a
 // window. On quit it shuts the backend and Postgres down cleanly.
 
-const { app, BrowserWindow, shell, dialog } = require('electron');
+const { app, BrowserWindow, shell, dialog, ipcMain, Menu } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const net = require('net');
@@ -73,8 +73,15 @@ function freePort() {
   });
 }
 
+function configPath() {
+  return path.join(app.getPath('userData'), 'config.json');
+}
+
+// config.json holds both the per-install secrets (generated once) and the
+// deployment mode chosen on first run. `mode` is absent until the user picks
+// one in the setup screen, which is what triggers that screen.
 function loadConfig() {
-  const cfgPath = path.join(app.getPath('userData'), 'config.json');
+  const cfgPath = configPath();
   if (fs.existsSync(cfgPath)) {
     return JSON.parse(fs.readFileSync(cfgPath, 'utf-8'));
   }
@@ -87,6 +94,39 @@ function loadConfig() {
   };
   fs.writeFileSync(cfgPath, JSON.stringify(cfg, null, 2), { mode: 0o600 });
   return cfg;
+}
+
+function saveConfig(cfg) {
+  fs.writeFileSync(configPath(), JSON.stringify(cfg, null, 2), { mode: 0o600 });
+}
+
+// This machine's non-internal IPv4 addresses, for showing the server address
+// and suggesting a client target.
+function lanAddresses() {
+  const out = [];
+  const ifaces = os.networkInterfaces();
+  for (const name of Object.keys(ifaces)) {
+    for (const ni of ifaces[name] || []) {
+      if (ni.family === 'IPv4' && !ni.internal) out.push(ni.address);
+    }
+  }
+  return out;
+}
+
+// Is a Budget Tracker server answering at this base URL? Used to validate a
+// client's target before committing to it.
+function probeServer(baseUrl, timeoutMs = 4000) {
+  return new Promise((resolve) => {
+    let u;
+    try { u = new URL('/api/health', baseUrl); } catch { return resolve(false); }
+    const lib = u.protocol === 'https:' ? require('https') : http;
+    const req = lib.get(u, { timeout: timeoutMs }, (res) => {
+      res.resume();
+      resolve(res.statusCode === 200);
+    });
+    req.on('error', () => resolve(false));
+    req.on('timeout', () => { req.destroy(); resolve(false); });
+  });
 }
 
 // Recover from an unclean shutdown (force-quit / crash / power loss). A leftover
@@ -195,7 +235,7 @@ async function applyInitSql(cfg, port) {
   }
 }
 
-function startBackend(cfg, pgPort, apiPort) {
+function startBackend(cfg, pgPort, apiPort, bindHost) {
   const { backendEntry, frontendDir } = resolvePaths();
   const env = {
     ...process.env,
@@ -204,6 +244,9 @@ function startBackend(cfg, pgPort, apiPort) {
     // strong random values regardless of NODE_ENV.
     NODE_ENV: 'development',
     PORT: String(apiPort),
+    // Standalone binds loopback only; server mode binds all interfaces so LAN
+    // clients can reach it.
+    HOST: bindHost || '127.0.0.1',
     DATABASE_URL: `postgresql://${cfg.dbUser}:${encodeURIComponent(cfg.dbPassword)}@127.0.0.1:${pgPort}/budget`,
     JWT_SECRET: cfg.jwtSecret,
     JWT_REFRESH_SECRET: cfg.jwtRefreshSecret,
@@ -281,31 +324,163 @@ function createWindow(url) {
   mainWindow.on('closed', () => { mainWindow = null; });
 }
 
-async function bootstrap() {
-  try { LOG_FILE = path.join(app.getPath('userData'), 'desktop.log'); } catch {}
-  log('bootstrap start; isDev=', isDev, 'resourcesPath=', process.resourcesPath);
-  log('paths=', JSON.stringify(resolvePaths()));
+// --- setup (mode chooser) --------------------------------------------------
+let currentConfig = null;
+let setupWin = null;
+let pendingSetupResolve = null;
+
+// Registered once at startup; the setup window talks to these over IPC.
+function registerSetupIpc() {
+  ipcMain.handle('setup:lan', () => lanAddresses());
+  ipcMain.handle('setup:current', () => ({
+    mode: currentConfig?.mode || null,
+    serverUrl: currentConfig?.serverUrl || null,
+    serverPort: currentConfig?.serverPort || null,
+  }));
+  ipcMain.handle('setup:probe', (_e, url) => probeServer(url));
+  ipcMain.handle('setup:choose', (_e, choice) => {
+    if (pendingSetupResolve) { const r = pendingSetupResolve; pendingSetupResolve = null; r(choice || null); }
+    return true;
+  });
+}
+
+// Open the mode chooser and resolve with the user's choice (or null if they
+// closed it without choosing).
+function showSetupWindow() {
+  return new Promise((resolve) => {
+    pendingSetupResolve = resolve;
+    setupWin = new BrowserWindow({
+      width: 760, height: 580, resizable: false, title: 'Budget Tracker — Setup',
+      backgroundColor: '#0f172a',
+      webPreferences: {
+        preload: path.join(__dirname, 'mode-preload.js'),
+        contextIsolation: true, nodeIntegration: false,
+      },
+    });
+    setupWin.loadFile(path.join(__dirname, 'mode-select.html'));
+    setupWin.on('closed', () => {
+      setupWin = null;
+      if (pendingSetupResolve) { const r = pendingSetupResolve; pendingSetupResolve = null; r(null); }
+    });
+  });
+}
+
+// Reopen setup from the menu. Changing mode tears down Postgres/backend, so the
+// cleanest path is to persist the choice and relaunch the app.
+async function reconfigure() {
+  const choice = await showSetupWindow();
+  if (setupWin) setupWin.close();
+  if (!choice) return; // cancelled — keep running as-is
+  currentConfig.mode = choice.mode;
+  currentConfig.serverUrl = choice.serverUrl || null;
+  currentConfig.serverPort = choice.serverPort || null;
+  saveConfig(currentConfig);
+  await shutdown();
+  app.relaunch();
+  app.exit(0);
+}
+
+function buildMenu() {
+  const isMac = process.platform === 'darwin';
+  const template = [
+    ...(isMac ? [{ role: 'appMenu' }] : []),
+    {
+      label: 'File',
+      submenu: [
+        { label: 'Setup…', click: () => reconfigure() },
+        { type: 'separator' },
+        isMac ? { role: 'close' } : { role: 'quit' },
+      ],
+    },
+    { role: 'editMenu' },
+    { role: 'viewMenu' },
+    { role: 'windowMenu' },
+  ];
+  Menu.setApplicationMenu(Menu.buildFromTemplate(template));
+}
+
+// --- launch paths per mode -------------------------------------------------
+async function launchLocal(cfg, serverMode) {
   const loading = new BrowserWindow({
     width: 420, height: 300, resizable: false, frame: false,
     backgroundColor: '#0f172a', title: 'Budget Tracker',
   });
   loading.loadFile(path.join(__dirname, 'loading.html'));
-
   try {
-    const cfg = loadConfig();
-    log('config loaded');
     const pgPort = await startPostgres(cfg);
     log('postgres started on', pgPort);
-    const apiPort = await freePort();
-    startBackend(cfg, pgPort, apiPort);
-    log('backend forked on', apiPort);
+    const apiPort = serverMode ? Number(cfg.serverPort) || 5000 : await freePort();
+    const bindHost = serverMode ? '0.0.0.0' : '127.0.0.1';
+    startBackend(cfg, pgPort, apiPort, bindHost);
+    log('backend forked on', apiPort, 'host', bindHost);
     await waitForHealth(apiPort);
     log('backend healthy; loading window');
     createWindow(`http://127.0.0.1:${apiPort}`);
     loading.close();
+    if (serverMode) {
+      const addrs = lanAddresses();
+      const list = addrs.length ? addrs.map((a) => `http://${a}:${apiPort}`).join('\n') : `http://<this-computer-ip>:${apiPort}`;
+      dialog.showMessageBox(mainWindow, {
+        type: 'info',
+        title: 'Server mode',
+        message: 'Budget Tracker is serving other devices',
+        detail: `On another device, install Budget Tracker, choose Client, and enter:\n\n${list}\n\nKeep this app running. Traffic is unencrypted — use only on a network you trust.`,
+      });
+    }
   } catch (err) {
     log('STARTUP FAILED:', err && err.stack || err);
-    loading.close();
+    try { loading.close(); } catch {}
+    dialog.showErrorBox('Budget Tracker — startup failed', String(err && err.stack || err));
+    app.quit();
+  }
+}
+
+async function launchClient(cfg) {
+  const ok = await probeServer(cfg.serverUrl);
+  if (!ok) {
+    const choice = dialog.showMessageBoxSync({
+      type: 'warning',
+      title: 'Budget Tracker',
+      message: 'Can’t reach the Budget Tracker server',
+      detail: `${cfg.serverUrl} isn’t responding. Make sure that computer is running Budget Tracker in Server mode and is on the same network.`,
+      buttons: ['Change server…', 'Retry', 'Quit'],
+      defaultId: 1, cancelId: 2,
+    });
+    if (choice === 0) return reconfigure();
+    if (choice === 1) return launchClient(cfg);
+    app.quit();
+    return;
+  }
+  log('client connecting to', cfg.serverUrl);
+  createWindow(cfg.serverUrl);
+}
+
+async function bootstrap() {
+  try { LOG_FILE = path.join(app.getPath('userData'), 'desktop.log'); } catch {}
+  log('bootstrap start; isDev=', isDev, 'resourcesPath=', process.resourcesPath);
+  log('paths=', JSON.stringify(resolvePaths()));
+
+  try {
+    currentConfig = loadConfig();
+    // First run (or after a reset): ask how this install should run.
+    if (!currentConfig.mode) {
+      const choice = await showSetupWindow();
+      if (setupWin) setupWin.close();
+      if (!choice) { app.quit(); return; } // closed without choosing
+      currentConfig.mode = choice.mode;
+      currentConfig.serverUrl = choice.serverUrl || null;
+      currentConfig.serverPort = choice.serverPort || null;
+      saveConfig(currentConfig);
+    }
+    log('mode =', currentConfig.mode);
+
+    if (currentConfig.mode === 'client') {
+      await launchClient(currentConfig);
+    } else {
+      await launchLocal(currentConfig, currentConfig.mode === 'server');
+    }
+  } catch (err) {
+    log('STARTUP FAILED:', err && err.stack || err);
     dialog.showErrorBox('Budget Tracker — startup failed', String(err && err.stack || err));
     app.quit();
   }
@@ -325,12 +500,17 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on('second-instance', () => {
-    if (mainWindow) {
-      if (mainWindow.isMinimized()) mainWindow.restore();
-      mainWindow.focus();
+    const win = mainWindow || setupWin;
+    if (win) {
+      if (win.isMinimized()) win.restore();
+      win.focus();
     }
   });
-  app.whenReady().then(bootstrap);
+  app.whenReady().then(() => {
+    registerSetupIpc();
+    buildMenu();
+    bootstrap();
+  });
 }
 
 app.on('window-all-closed', async () => {
