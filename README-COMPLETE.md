@@ -411,26 +411,19 @@ While the application is 100% complete for the planned scope, potential future a
 
 ## 🤝 Contributing
 
-This is a complete, production-ready application. Contributions are welcome!
-
-1. Fork the repository
-2. Create a feature branch (`git checkout -b feature/amazing-feature`)
-3. Commit your changes (`git commit -m 'Add amazing feature'`)
-4. Push to the branch (`git push origin feature/amazing-feature`)
-5. Open a Pull Request
-
-### Development Guidelines
-- Follow existing code style
-- Write tests for new features
-- Update documentation
-- Keep commits atomic and descriptive
-- Use TypeScript for backend code
+This repository is **source-available for viewing only** and is **not** open
+source. Forks, modifications, redistribution, and pull requests are not permitted
+or accepted (see [License](#-license)). For any use beyond personal,
+non-commercial use, contact the author for permission.
 
 ---
 
 ## 📄 License
 
-MIT License - feel free to use this project for personal or commercial purposes.
+**Personal, Non-Commercial Use License** — Copyright © 2026 Joshua Walen. All
+rights reserved. Not open source: personal, non-commercial use only; no
+modification, redistribution, or commercial use without written permission. See
+the [LICENSE](LICENSE) file for full terms.
 
 ---
 

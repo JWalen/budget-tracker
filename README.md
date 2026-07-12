@@ -1,11 +1,11 @@
-# Budget Tracker - Open Source Financial Management
+# Budget Tracker - Personal Financial Management
 
-[![Version](https://img.shields.io/badge/version-2.4.0-blue.svg)](https://github.com/JWalen/budget-tracker)
-[![License](https://img.shields.io/badge/license-MIT-green.svg)](LICENSE)
+[![Version](https://img.shields.io/badge/version-2.12.0-blue.svg)](https://github.com/JWalen/budget-tracker)
+[![License](https://img.shields.io/badge/license-Personal%20Non--Commercial-orange.svg)](LICENSE)
 [![Node](https://img.shields.io/badge/node-%3E%3D18.0.0-brightgreen.svg)](https://nodejs.org)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.0-blue.svg)](https://www.typescriptlang.org/)
 
-A **complete, self-hosted budget tracking platform** with enterprise features including team collaboration, advanced analytics, multi-currency support, receipt management, and offline capabilities. **100% free and open source** - no subscriptions, no limits, no data sharing.
+A **complete, self-hosted budget tracking platform** with enterprise features including team collaboration, advanced analytics, multi-currency support, receipt management, and offline capabilities. Free for **personal, non-commercial use** — no subscriptions, no limits, no data sharing. Source-available for transparency (see [License](#-license)); not open source.
 
 ![Budget Tracker Dashboard](https://via.placeholder.com/800x400/0ea5e9/ffffff?text=Budget+Tracker+Dashboard)
 
@@ -502,15 +502,13 @@ Built-in performance utilities:
 
 ## 🤝 Contributing
 
-We welcome contributions! Here's how:
+This repository is **source-available for viewing only**. The code is published
+for transparency, not for reuse — it is not open source, and forks, modifications,
+and redistribution are not permitted (see [License](#-license)). Pull requests are
+not accepted. If you'd like to use the code beyond personal, non-commercial use,
+please contact the author.
 
-1. **Fork the repository**
-2. **Create a feature branch** (`git checkout -b feature/amazing-feature`)
-3. **Commit your changes** (`git commit -m 'Add amazing feature'`)
-4. **Push to the branch** (`git push origin feature/amazing-feature`)
-5. **Open a Pull Request**
-
-### Development Guidelines
+### Development Guidelines (for the author's reference)
 
 - Follow existing code style
 - Write tests for new features
@@ -640,7 +638,12 @@ npm install
 
 ## 📄 License
 
-This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+**Personal, Non-Commercial Use License** — Copyright © 2026 Joshua Walen. All
+rights reserved. The source is published for transparency and personal,
+non-commercial use only. You may view the code and run the app for your own
+personal use, but you may **not** modify, redistribute, sublicense, sell, or use
+it for any commercial purpose without written permission. This is **not** an
+open-source license. See the [LICENSE](LICENSE) file for the full terms.
 
 ---
 
@@ -660,21 +663,23 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 - **Documentation:** Check this README and the [docs](./docs) folder
 - **Issues:** [GitHub Issues](https://github.com/JWalen/budget-tracker/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/JWalen/budget-tracker/discussions)
-- **Contributions:** Pull requests welcome!
+- **Licensing / other use:** Contact the author for any use beyond personal, non-commercial use
 
 ---
 
-## 🌟 Why Open Source?
+## 🌟 Why Source-Available?
 
-Budget tracking is personal and sensitive. We believe you should have **complete control** over your financial data:
+Budget tracking is personal and sensitive. You should have **complete control**
+over your financial data:
 
 - ✅ **Your Data, Your Server** - Self-host on your own infrastructure
 - ✅ **No Vendor Lock-in** - Export your data anytime
 - ✅ **Full Transparency** - Inspect the code, know exactly what it does
-- ✅ **Community Driven** - Features built by users, for users
 - ✅ **Privacy First** - No data collection, no tracking, no ads
-- ✅ **Free Forever** - No subscriptions, no upsells, no limits
+- ✅ **Free for personal use** - No subscriptions, no upsells, no limits
+
+The source is published so you can verify what the app does with your data — it
+is **not** open source, and reuse is restricted (see [License](#-license)).
 
 ---
 
