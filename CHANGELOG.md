@@ -1,5 +1,11 @@
 # Changelog
 
+## [2.13.0] - 2026-07-12
+
+### Added
+- **In-app update check (desktop)** — the Electron shell queries the GitHub Releases API on launch (4s after the window loads) and via **File → Check for Updates…**. When a strictly-newer release exists it shows a native dialog offering to download the platform installer (`.dmg`/`.exe`) or open the release notes. Silent self-update isn't possible while the app is unsigned (macOS Squirrel refuses unsigned updates), so this is a check-and-download flow.
+- The desktop shell passes `APP_VERSION` (the real installed version via `app.getVersion()`) to the backend, so the admin update-check reports the correct current version instead of `backend/package.json` (which was stale at 2.8.0). The comparison is now a proper semver check (only flags strictly-newer releases).
+
 ## [2.12.1] - 2026-07-12
 
 ### Fixed

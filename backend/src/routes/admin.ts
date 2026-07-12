@@ -992,12 +992,12 @@ router.delete('/ai/settings/key/:provider', async (req: AuthRequest, res: Respon
 // GET /api/admin/system/updates — Check for application updates
 router.get('/system/updates', async (req: AuthRequest, res: Response) => {
   try {
-    // Read package.json explicitly instead of relying on process.env.npm_package_version
-    // which might be stale or missing in Docker/compiled envs
+    // Prefer the real installed app version (the desktop shell passes it via
+    // APP_VERSION); fall back to package.json for non-desktop deployments.
     const packageJson = require('../../package.json');
-    const currentVersion = packageJson.version || '1.0.0';
+    const currentVersion = process.env.APP_VERSION || packageJson.version || '1.0.0';
     const repo = 'JWalen/budget-tracker'; // Hardcoded correct repo
-    
+
     // Fetch latest release from GitHub
     const headers: Record<string, string> = {
       'Accept': 'application/vnd.github.v3+json',
@@ -1010,12 +1010,19 @@ router.get('/system/updates', async (req: AuthRequest, res: Response) => {
       headers,
       timeout: 5000
     });
-    
+
     const latestVersion = response.data.tag_name.replace(/^v/, '');
-    
-    // Simple semver comparison
-    const hasUpdate = latestVersion !== currentVersion;
-    
+
+    // Proper semver comparison — only flag an update when the release is strictly
+    // newer (a plain !== also fires when the local build is ahead of the release).
+    const parse = (v: string) => String(v).replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
+    const isNewer = (cand: string, cur: string) => {
+      const a = parse(cand), b = parse(cur);
+      for (let i = 0; i < 3; i++) { if ((a[i] || 0) > (b[i] || 0)) return true; if ((a[i] || 0) < (b[i] || 0)) return false; }
+      return false;
+    };
+    const hasUpdate = isNewer(latestVersion, currentVersion);
+
     res.json({
       currentVersion,
       latestVersion,
