@@ -4,6 +4,7 @@ export const changelog = [
     date: '2026-07-12',
     changes: [
       'Desktop app now checks GitHub for updates on launch (and via File → Check for Updates…). When a newer version is available, it tells you and downloads the installer with one click. Note: because the app isn’t code-signed, macOS still requires you to drag the new version into Applications to finish updating.',
+      'Fixed saving and downloading backups in the desktop app — backups now save to a writable folder in the app’s data directory (they previously failed because the app tried to write to a Docker-only path), so they can be created, kept in history, and downloaded.',
     ],
   },
   {

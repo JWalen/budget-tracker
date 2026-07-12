@@ -5,6 +5,7 @@ import { requireEditAccess } from '../middleware/sharing';
 import { LoggerClass } from '../services/logger';
 import * as fs from 'fs/promises';
 import * as path from 'path';
+import * as os from 'os';
 
 const router = Router();
 const logger = new LoggerClass('BackupSchedule');
@@ -511,27 +512,36 @@ export async function saveBackup(filename: string, data: any, storageType: strin
   const jsonData = JSON.stringify(data, null, 2);
   const size = Buffer.byteLength(jsonData);
 
+  // Determine backup directory based on storage type. The desktop app sets
+  // BACKUP_DIR to a writable folder under its data directory; the historical
+  // defaults ('/backups', '/var/backups/budget') are Docker mount points that
+  // are NOT writable on a normal machine, which is why saving previously failed.
   let backupDir: string;
-
-  // Determine backup directory based on storage type
   if (storageType === 'server') {
-    // Server storage - use configured server path or default
-    backupDir = process.env.SERVER_BACKUP_DIR || '/var/backups/budget';
+    backupDir = process.env.SERVER_BACKUP_DIR || process.env.BACKUP_DIR || '/var/backups/budget';
   } else if (storageType === 'local') {
-    // Local storage - use configured local path
-    backupDir = process.env.LOCAL_BACKUP_DIR || '/backups';
+    backupDir = process.env.LOCAL_BACKUP_DIR || process.env.BACKUP_DIR || '/backups';
   } else {
-    // Default to temp directory for other types (will be implemented later)
     backupDir = process.env.BACKUP_DIR || '/tmp/backups';
   }
 
-  // Create directory if it doesn't exist
-  await fs.mkdir(backupDir, { recursive: true });
+  // Write to the chosen directory, but never hard-fail on an unwritable path —
+  // fall back to a guaranteed-writable temp dir so the backup is still saved and
+  // remains downloadable from history.
+  const writeInto = async (dir: string): Promise<string> => {
+    await fs.mkdir(dir, { recursive: true });
+    const p = path.join(dir, filename);
+    await fs.writeFile(p, jsonData);
+    return p;
+  };
 
-  const filePath = path.join(backupDir, filename);
-  await fs.writeFile(filePath, jsonData);
-
-  return { path: filePath, size };
+  try {
+    return { path: await writeInto(backupDir), size };
+  } catch (err) {
+    const fallbackDir = path.join(os.tmpdir(), 'budget-backups');
+    logger.warn(`Backup dir "${backupDir}" not writable (${(err as Error).message}); falling back to ${fallbackDir}`);
+    return { path: await writeInto(fallbackDir), size };
+  }
 }
 
 // Allow-listed columns per restorable table. Column identifiers can never be
