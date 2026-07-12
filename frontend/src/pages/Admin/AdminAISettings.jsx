@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
-import { Power, Save, CheckCircle, AlertCircle, KeyRound, Trash2, Sparkles } from 'lucide-react';
+import { Power, Save, CheckCircle, AlertCircle, KeyRound, Trash2, Sparkles, RefreshCw } from 'lucide-react';
 import { useToast } from '../../context/ToastContext';
+import { api } from '../../api/client';
 
 const DEFAULT_CONFIG = { ai_enabled: 'false', ai_provider: 'claude', ai_model: '' };
 
@@ -44,6 +45,10 @@ export default function AdminAISettings() {
   const [showCustomModel, setShowCustomModel] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  // Models fetched live from the provider, keyed by provider id. Merged into the
+  // curated list so the dropdown reflects exactly what this API key can use.
+  const [fetchedModels, setFetchedModels] = useState({ claude: [], openai: [] });
+  const [fetchingModels, setFetchingModels] = useState(false);
 
   const authHeaders = () => ({ Authorization: `Bearer ${localStorage.getItem('token')}` });
 
@@ -82,6 +87,34 @@ export default function AdminAISettings() {
     } else {
       setShowCustomModel(false);
       setConfig((c) => ({ ...c, ai_model: val }));
+    }
+  };
+
+  // Merge live-fetched models over the curated defaults, de-duplicated by value.
+  const providerModels = (() => {
+    const live = fetchedModels[activeProvider.id] || [];
+    if (live.length === 0) return activeProvider.models;
+    const seen = new Set(live.map((m) => m.value));
+    return [...live, ...activeProvider.models.filter((m) => !seen.has(m.value))];
+  })();
+
+  const handleFetchModels = async () => {
+    if (fetchingModels) return;
+    setFetchingModels(true);
+    try {
+      // Use the just-typed key if present, otherwise the server falls back to the stored key.
+      const typedKey = keyInputs[activeProvider.keyField]?.trim();
+      const { models } = await api.getAiModels(activeProvider.id, typedKey || undefined);
+      if (!models || models.length === 0) {
+        toast.error('No models returned for this key');
+        return;
+      }
+      setFetchedModels((prev) => ({ ...prev, [activeProvider.id]: models }));
+      toast.success(`Found ${models.length} available model${models.length === 1 ? '' : 's'}`);
+    } catch (error) {
+      toast.error(error.message || 'Could not fetch models');
+    } finally {
+      setFetchingModels(false);
     }
   };
 
@@ -184,9 +217,21 @@ export default function AdminAISettings() {
           </div>
 
           <div>
-            <label className="label">Model</label>
+            <div className="flex items-center justify-between mb-1">
+              <label className="label mb-0">Model</label>
+              <button
+                type="button"
+                onClick={handleFetchModels}
+                disabled={fetchingModels}
+                className="text-xs text-primary-600 hover:text-primary-700 flex items-center gap-1 disabled:opacity-50"
+                title="Fetch the models this API key can access"
+              >
+                <RefreshCw className={`w-3 h-3 ${fetchingModels ? 'animate-spin' : ''}`} />
+                {fetchingModels ? 'Fetching…' : 'Fetch available'}
+              </button>
+            </div>
             <select className="input w-full" value={modelSelectValue} onChange={handleModelSelect}>
-              {activeProvider.models.map((m) => (
+              {providerModels.map((m) => (
                 <option key={m.value} value={m.value}>{m.label}</option>
               ))}
               <option value={CUSTOM}>Custom…</option>
@@ -201,7 +246,9 @@ export default function AdminAISettings() {
               />
             )}
             <p className="text-xs text-gray-500 mt-1">
-              Default for this provider: <span className="font-mono">{activeProvider.defaultModel}</span>.
+              {fetchedModels[activeProvider.id]?.length > 0
+                ? `Showing ${fetchedModels[activeProvider.id].length} model(s) available to your key.`
+                : <>Default for this provider: <span className="font-mono">{activeProvider.defaultModel}</span>. Click “Fetch available” to load your key's models.</>}
             </p>
           </div>
         </div>

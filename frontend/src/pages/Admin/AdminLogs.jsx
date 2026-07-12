@@ -49,6 +49,17 @@ export default function AdminLogs() {
     fetchLogs();
   };
 
+  const handleClear = async () => {
+    if (!confirm('Clear all logged errors?')) return;
+    try {
+      await api.clearAdminLogs();
+      setPage(1);
+      fetchLogs();
+    } catch (err) {
+      setError(err.message);
+    }
+  };
+
   const getLevelIcon = (logLevel) => {
     switch (logLevel) {
       case 'error':
@@ -92,17 +103,25 @@ export default function AdminLogs() {
       {/* Header */}
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">System Logs</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">View and search application logs</p>
+          <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Error Log</h1>
+          <p className="text-gray-600 dark:text-gray-400 mt-1">Recent application &amp; AI errors — the place to look when something fails</p>
         </div>
-        <button
-          onClick={handleRefresh}
-          disabled={refreshing}
-          className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
-        >
-          <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
-          <span>Refresh</span>
-        </button>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={handleClear}
+            className="flex items-center space-x-2 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg hover:bg-gray-50 dark:hover:bg-gray-700 text-gray-700 dark:text-gray-200"
+          >
+            <span>Clear</span>
+          </button>
+          <button
+            onClick={handleRefresh}
+            disabled={refreshing}
+            className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
+          >
+            <RefreshCw className={`w-4 h-4 ${refreshing ? 'animate-spin' : ''}`} />
+            <span>Refresh</span>
+          </button>
+        </div>
       </div>
 
       {error && (
@@ -113,7 +132,7 @@ export default function AdminLogs() {
 
       {/* Filters */}
       <div className="card p-4">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           {/* Search */}
           <div className="relative">
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
@@ -124,7 +143,7 @@ export default function AdminLogs() {
                 setSearch(e.target.value);
                 setPage(1);
               }}
-              placeholder="Search logs..."
+              placeholder="Search message, context, path..."
               className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500"
             />
           </div>
@@ -143,26 +162,6 @@ export default function AdminLogs() {
               <option value="">All Levels</option>
               <option value="error">Error</option>
               <option value="warn">Warning</option>
-              <option value="info">Info</option>
-              <option value="debug">Debug</option>
-            </select>
-          </div>
-
-          {/* Date Filter */}
-          <div className="relative">
-            <Calendar className="absolute left-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-gray-400" />
-            <select
-              value={selectedDate}
-              onChange={(e) => {
-                setSelectedDate(e.target.value);
-                setPage(1);
-              }}
-              className="w-full pl-10 pr-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg bg-white dark:bg-gray-800 text-gray-900 dark:text-white focus:ring-2 focus:ring-primary-500 appearance-none"
-            >
-              <option value="">Today</option>
-              {availableDates.map((date) => (
-                <option key={date} value={date}>{date}</option>
-              ))}
             </select>
           </div>
 
@@ -209,38 +208,39 @@ export default function AdminLogs() {
                     {getLevelIcon(log.level)}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center space-x-3 mb-1">
+                    <div className="flex items-center flex-wrap gap-2 mb-1">
                       <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${getLevelBadgeClass(log.level)}`}>
                         {log.level?.toUpperCase()}
                       </span>
+                      {log.context && (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">
+                          {log.context}
+                        </span>
+                      )}
+                      {log.statusCode ? (
+                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-gray-100 dark:bg-gray-700 text-gray-700 dark:text-gray-200">
+                          {log.statusCode}
+                        </span>
+                      ) : null}
                       <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center">
                         <Clock className="w-3 h-3 mr-1" />
                         {formatDate(log.timestamp)}
                       </span>
                     </div>
-                    <p className="text-sm text-gray-900 dark:text-white">
+                    <p className="text-sm text-gray-900 dark:text-white break-words">
                       {log.message}
                     </p>
-                    {log.meta && (
-                      <div className="mt-2 text-xs text-gray-600 dark:text-gray-400">
-                        {Object.entries(log.meta).slice(0, 2).map(([key, value]) => (
-                          <span key={key} className="mr-4">
-                            <span className="font-medium">{key}:</span> {JSON.stringify(value)}
-                          </span>
-                        ))}
-                        {Object.keys(log.meta).length > 2 && (
-                          <span className="text-primary-600 dark:text-primary-400">
-                            +{Object.keys(log.meta).length - 2} more
-                          </span>
-                        )}
-                      </div>
+                    {(log.method || log.path) && (
+                      <p className="mt-1 text-xs text-gray-500 dark:text-gray-400 font-mono break-all">
+                        {log.method} {log.path}
+                      </p>
                     )}
 
-                    {/* Expanded Details */}
-                    {expandedLog === index && log.meta && (
-                      <div className="mt-4 p-3 bg-gray-100 dark:bg-gray-900 rounded-lg">
-                        <pre className="text-xs text-gray-700 dark:text-gray-300 overflow-x-auto">
-                          {JSON.stringify(log.meta, null, 2)}
+                    {/* Expanded detail (stack / provider error) */}
+                    {expandedLog === index && log.detail && (
+                      <div className="mt-3 p-3 bg-gray-100 dark:bg-gray-900 rounded-lg">
+                        <pre className="text-xs text-gray-700 dark:text-gray-300 overflow-x-auto whitespace-pre-wrap">
+                          {log.detail}
                         </pre>
                       </div>
                     )}

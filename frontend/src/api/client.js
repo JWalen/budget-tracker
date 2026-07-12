@@ -828,6 +828,17 @@ export const api = {
     }).then(handleResponse);
   },
 
+  clearAdminLogs: () =>
+    fetch(`${API_URL}/admin/logs`, { method: 'DELETE', headers: headers() }).then(handleResponse),
+
+  // Fetch the models actually available to the configured/entered API key.
+  getAiModels: (provider, apiKey) =>
+    fetch(`${API_URL}/admin/ai/models`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ provider, apiKey }),
+    }).then(handleResponse),
+
   getAdminShares: () =>
     fetch(`${API_URL}/admin/shares`, { headers: headers() }).then(handleResponse),
 

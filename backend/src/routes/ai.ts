@@ -7,9 +7,33 @@ import { handleValidationErrors } from '../middleware/validation';
 import { query } from '../config/database';
 import { LoggerClass } from '../services/logger';
 import { handleRouteError } from '../utils/apiError';
+import { logErrorToDb } from '../services/errorLog';
 
 const logger = new LoggerClass('AI');
 const router = Router();
+
+// Capture the full detail of an AI/provider error to the DB log so admins can see
+// exactly what the provider returned (status, error type, retry-after, message).
+function logAiError(req: AuthRequest, error: any, action: string) {
+  const status = error?.status ?? error?.response?.status;
+  const providerBody = error?.error ?? error?.response?.data;
+  const detail = [
+    error?.stack || error?.message,
+    status ? `providerStatus: ${status}` : '',
+    providerBody ? `providerBody: ${JSON.stringify(providerBody)}` : '',
+    error?.headers?.['retry-after'] ? `retryAfter: ${error.headers['retry-after']}` : '',
+  ].filter(Boolean).join('\n');
+  logErrorToDb({
+    context: 'AI',
+    message: `${action}: ${error?.message || 'failed'}`,
+    detail,
+    statusCode: status || 500,
+    method: req.method,
+    path: req.originalUrl,
+    userId: req.userId ?? null,
+    requestId: (req as any).requestId,
+  });
+}
 
 // AI calls hit a paid external LLM API, so apply a dedicated rate limiter.
 // 100 requests / 5 min per IP leaves ample room for the assistant dashboard
@@ -71,6 +95,7 @@ router.post('/query',
       const result = await AIAssistant.processNaturalQuery(req.userId!, query);
       res.json(result);
     } catch (error: any) {
+      logAiError(req, error, 'AI chat');
       if (error?.status === 429 || AIAssistant.isRateLimitError(error)) {
         return res.status(429).json({ error: error?.message || 'The AI provider rate-limited this request. Please wait a moment and try again.' });
       }
@@ -186,6 +211,7 @@ router.post('/chat',
         timestamp: new Date().toISOString(),
       });
     } catch (error: any) {
+      logAiError(req, error, 'AI chat');
       if (error?.status === 429 || AIAssistant.isRateLimitError(error)) {
         return res.status(429).json({ error: error?.message || 'The AI provider rate-limited this request. Please wait a moment and try again.' });
       }
@@ -379,6 +405,7 @@ Example response format:
       res.json({ suggestions: enrichedSuggestions });
     } catch (error: any) {
       logger.error('AI categorization error:', error);
+      logAiError(req, error, 'AI categorize');
       // Surface a provider rate limit clearly (and as 429) rather than a generic
       // "failed" — so the user knows to wait or switch to a faster model.
       if (error?.status === 429 || AIAssistant.isRateLimitError(error)) {

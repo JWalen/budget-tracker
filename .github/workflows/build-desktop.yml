@@ -58,3 +58,27 @@ jobs:
           name: budget-tracker-${{ matrix.platform }}
           path: electron/release/${{ matrix.artifact }}
           if-no-files-found: error
+
+  # On a version tag, publish the built installers to a GitHub Release so users
+  # can download the .dmg / .exe directly from the Releases page.
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all installers
+        uses: actions/download-artifact@v4
+        with:
+          path: installers
+
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            installers/**/*.dmg
+            installers/**/*.exe
+          fail_on_unmatched_files: false
+          generate_release_notes: true
