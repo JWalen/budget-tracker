@@ -47,3 +47,6 @@ budget_backup*.sql
 # Temporary files
 *.tmp
 *.bak
+
+# Claude Code local settings (machine-specific; may contain tokens)
+.claude/settings.local.json
