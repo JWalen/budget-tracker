@@ -17,7 +17,10 @@ const router = Router();
 // still guarding the paid API from abuse.
 const aiLimiter = rateLimit({
   windowMs: 5 * 60 * 1000, // 5 minutes
-  max: 100,
+  // The agentic tool loop makes several model calls per chat message and the
+  // assistant dashboard fires a burst per load, so keep this generous. Tune with
+  // AI_RATE_LIMIT_MAX. (Skipped entirely in desktop mode — see below.)
+  max: Number(process.env.AI_RATE_LIMIT_MAX) || 300,
   message: { error: 'AI requests are temporarily rate-limited (too many in a short time). Please wait about a minute, then try again.' },
   standardHeaders: true,
   legacyHeaders: false,
@@ -28,7 +31,12 @@ const aiLimiter = rateLimit({
 
 // All routes require authentication
 router.use(authMiddleware);
-router.use(aiLimiter);
+// Apply the AI rate limiter except in desktop mode. It's a single local user with
+// their own API key there, and the agentic tool loop makes several model calls per
+// message — a 100/5min cap tripped normal use (e.g. AI categorize). Hosted keeps it.
+if (!process.env.SERVE_FRONTEND_DIR) {
+  router.use(aiLimiter);
+}
 
 // Check if AI assistant is available
 router.get('/status', async (req: AuthRequest, res: Response) => {
