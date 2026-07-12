@@ -69,7 +69,13 @@ export const createRateLimiter = (windowMs: number = 15 * 60 * 1000, max: number
 
 // Specific rate limiters for different endpoints
 export const authRateLimiter = createRateLimiter(15 * 60 * 1000, 5); // 5 attempts per 15 minutes
-export const apiRateLimiter = createRateLimiter(15 * 60 * 1000, 100); // 100 requests per 15 minutes
+// A single-page app fires many /api calls per screen (a couple of pages plus the
+// AI dashboard easily exceed 100), so the old 100/15min tripped normal use. 1000
+// still stops abuse. Override with API_RATE_LIMIT_MAX.
+export const apiRateLimiter = createRateLimiter(
+  15 * 60 * 1000,
+  Number(process.env.API_RATE_LIMIT_MAX) || 1000
+);
 // A single CSV import costs 2 calls (header-preview + mapped parse), so this is
 // really ~20 imports/hour — enough for multi-account sessions and re-mapping,
 // while still bounding abuse of the parse/matching work.
