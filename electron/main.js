@@ -324,6 +324,13 @@ function startBackend(cfg, pgPort, apiPort, bindHost, tlsFiles) {
     // So the backend's update-check reports the real installed app version
     // instead of its own package.json version.
     APP_VERSION: app.getVersion(),
+    // Write backups to a writable folder under the app's data directory. The
+    // backend's historical defaults ('/backups', '/var/backups/budget') are
+    // Docker mount points that aren't writable here, so saving/downloading
+    // backups failed. This covers all storage types (see saveBackup).
+    BACKUP_DIR: path.join(app.getPath('userData'), 'backups'),
+    LOCAL_BACKUP_DIR: path.join(app.getPath('userData'), 'backups'),
+    SERVER_BACKUP_DIR: path.join(app.getPath('userData'), 'backups'),
   };
   // Server mode: serve HTTPS with the self-signed cert, and mark the session
   // cookie Secure (now that the transport is encrypted).
