@@ -759,6 +759,16 @@ export const api = {
     }).then(handleResponse);
   },
 
+  // Apply accepted AI suggestions and (optionally) save them as auto-rules so the
+  // same merchant is categorized on future imports without calling the AI again.
+  applyAiCategories: (items, createRules = true) => {
+    return fetch(`${API_URL}/ai/apply-categories`, {
+      method: 'POST',
+      headers: headers(),
+      body: JSON.stringify({ items, createRules }),
+    }).then(handleResponse);
+  },
+
   // Sharing
   getShares: () =>
     fetch(`${API_URL}/sharing`, { headers: headers() }).then(handleResponse),

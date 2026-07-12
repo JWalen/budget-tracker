@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.12.0] - 2026-07-12
+
+### Added
+- **AI categorization learns reusable rules** — the `/api/ai/categorize` prompt now also returns a `merchant` (a verbatim substring of the description, validated server-side as an actual substring so the existing substring-based rule engine will match). New `POST /api/ai/apply-categories` applies accepted suggestions and, by default, upserts a `match_rules` row (`target_type='category'`, merchant → category), deduped against existing patterns and within the batch. The Transactions review modal applies via this single endpoint, shows the merchant it will learn, and has a default-on "Save as auto-categorization rules" toggle (an override drops the learned rule). Future imports of the same vendor auto-categorize with no AI call.
+
 ## [2.11.0] - 2026-07-12
 
 Diagnosability + AI configuration pass, plus downloadable desktop installers.

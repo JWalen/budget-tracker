@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.12.0',
+    date: '2026-07-12',
+    changes: [
+      'AI categorization now learns: when you apply the AI’s category suggestions, it saves each merchant as an auto-categorization rule, so the same vendor is categorized automatically on future imports without spending an AI call. On by default (uncheck “Save as auto-categorization rules” to skip), and the rules are editable under Import → Match Rules.',
+    ],
+  },
+  {
     version: '2.11.0',
     date: '2026-07-12',
     changes: [
