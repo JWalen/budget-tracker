@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.13.0',
+    date: '2026-07-12',
+    changes: [
+      'Desktop app now checks GitHub for updates on launch (and via File → Check for Updates…). When a newer version is available, it tells you and downloads the installer with one click. Note: because the app isn’t code-signed, macOS still requires you to drag the new version into Applications to finish updating.',
+    ],
+  },
+  {
     version: '2.12.1',
     date: '2026-07-12',
     changes: [

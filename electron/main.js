@@ -321,6 +321,9 @@ function startBackend(cfg, pgPort, apiPort, bindHost, tlsFiles) {
     SERVE_FRONTEND_DIR: frontendDir,
     LOG_TO_FILE: 'false',
     LOG_TO_CONSOLE: 'true',
+    // So the backend's update-check reports the real installed app version
+    // instead of its own package.json version.
+    APP_VERSION: app.getVersion(),
   };
   // Server mode: serve HTTPS with the self-signed cert, and mark the session
   // cookie Secure (now that the transport is encrypted).
@@ -399,6 +402,88 @@ function createWindow(url) {
   });
   mainWindow.loadURL(url);
   mainWindow.on('closed', () => { mainWindow = null; });
+  // Quietly check GitHub for a newer release shortly after the window loads.
+  if (!isDev) setTimeout(() => checkForUpdates(false), 4000);
+}
+
+// --- updates ---------------------------------------------------------------
+// The app isn't code-signed, so macOS can't silently self-update (Squirrel
+// refuses unsigned updates). Instead we check the GitHub Releases API for a newer
+// version and, if found, let the user download the installer with one click.
+const UPDATE_REPO = 'JWalen/budget-tracker';
+
+function parseVersion(v) {
+  return String(v || '').replace(/^v/, '').split('.').map((n) => parseInt(n, 10) || 0);
+}
+function isNewer(candidate, current) {
+  const a = parseVersion(candidate);
+  const b = parseVersion(current);
+  for (let i = 0; i < 3; i++) {
+    if ((a[i] || 0) > (b[i] || 0)) return true;
+    if ((a[i] || 0) < (b[i] || 0)) return false;
+  }
+  return false;
+}
+
+function fetchLatestRelease() {
+  return new Promise((resolve, reject) => {
+    const req = https.get(
+      {
+        host: 'api.github.com',
+        path: `/repos/${UPDATE_REPO}/releases/latest`,
+        headers: { 'User-Agent': 'Budget-Tracker', Accept: 'application/vnd.github+json' },
+        timeout: 8000,
+      },
+      (res) => {
+        if (res.statusCode !== 200) { res.resume(); return reject(new Error(`GitHub returned ${res.statusCode}`)); }
+        let data = '';
+        res.on('data', (c) => { data += c; });
+        res.on('end', () => { try { resolve(JSON.parse(data)); } catch (e) { reject(e); } });
+      }
+    );
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(new Error('timed out')); });
+  });
+}
+
+// manual=true when triggered from the menu (shows "up to date" / error dialogs);
+// manual=false for the silent background check on launch (stays quiet unless a
+// newer version exists).
+async function checkForUpdates(manual = false) {
+  try {
+    const rel = await fetchLatestRelease();
+    const latest = rel && rel.tag_name ? rel.tag_name.replace(/^v/, '') : null;
+    const current = app.getVersion();
+    if (!latest) {
+      if (manual) dialog.showMessageBox(mainWindow, { type: 'warning', message: 'Could not check for updates', detail: 'No release information was returned. Please try again later.' });
+      return;
+    }
+    if (!isNewer(latest, current)) {
+      if (manual) dialog.showMessageBox(mainWindow, { type: 'info', title: 'Budget Tracker', message: 'You’re up to date', detail: `Budget Tracker ${current} is the latest version.` });
+      return;
+    }
+    // Pick the installer for this platform; fall back to the release page.
+    const wantExt = process.platform === 'win32' ? '.exe' : '.dmg';
+    const asset = (rel.assets || []).find((a) => a.name && a.name.toLowerCase().endsWith(wantExt));
+    const downloadUrl = asset ? asset.browser_download_url : rel.html_url;
+    const installNote = process.platform === 'darwin'
+      ? '\n\nAfter it downloads, open the .dmg and drag Budget Tracker to Applications, replacing the old copy.'
+      : '\n\nAfter it downloads, run the installer to update.';
+    const choice = dialog.showMessageBoxSync(mainWindow, {
+      type: 'info',
+      title: 'Update available',
+      message: `Budget Tracker ${latest} is available`,
+      detail: `You have ${current}.` + installNote,
+      buttons: ['Download', 'Release notes', 'Later'],
+      defaultId: 0,
+      cancelId: 2,
+    });
+    if (choice === 0) shell.openExternal(downloadUrl);
+    else if (choice === 1) shell.openExternal(rel.html_url);
+  } catch (e) {
+    log('update check failed:', e && e.message ? e.message : e);
+    if (manual) dialog.showMessageBox(mainWindow, { type: 'warning', message: 'Could not check for updates', detail: String((e && e.message) || e) });
+  }
 }
 
 // --- setup (mode chooser) --------------------------------------------------
@@ -467,6 +552,7 @@ function buildMenu() {
     {
       label: 'File',
       submenu: [
+        { label: 'Check for Updates…', click: () => checkForUpdates(true) },
         { label: 'Setup…', click: () => reconfigure() },
         { type: 'separator' },
         isMac ? { role: 'close' } : { role: 'quit' },
