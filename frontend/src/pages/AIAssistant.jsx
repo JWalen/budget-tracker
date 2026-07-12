@@ -123,13 +123,19 @@ export default function AIAssistant() {
     try {
       const response = await api.sendAIChat(input);
 
+      let content = formatAIResponse(response.response);
+      const summary = summarizeActions(response.actions);
+      if (summary) content += `\n\n${summary}`;
+
       const assistantMessage = {
         type: 'assistant',
-        content: formatAIResponse(response.response),
+        content,
         timestamp: response.timestamp
       };
 
       setMessages(prev => [...prev, assistantMessage]);
+      // Penny changed data — let other open pages refresh if they're listening.
+      if (response.didAct) window.dispatchEvent(new CustomEvent('penny:acted'));
     } catch (error) {
       const errorMessage = {
         type: 'error',
@@ -140,6 +146,31 @@ export default function AIAssistant() {
     } finally {
       setLoading(false);
     }
+  };
+
+  // Compact, concrete confirmation of the actions Penny actually performed.
+  const summarizeActions = (actions) => {
+    if (!Array.isArray(actions)) return '';
+    const done = actions.filter((a) => a && !a.error);
+    if (!done.length) return '';
+    const lines = done.map((a) => {
+      const r = a.result || {};
+      switch (a.tool) {
+        case 'create_transaction':
+          return `✓ Added ${r.created?.type || 'transaction'} “${r.created?.description}” — $${Number(r.created?.amount || 0).toFixed(2)}`;
+        case 'create_category':
+          return `✓ Created ${r.category?.type || ''} category “${r.category?.name}”`;
+        case 'set_budget':
+          return `✓ Set ${r.budget?.category} budget to $${Number(r.budget?.amount_limit || 0).toFixed(2)}`;
+        case 'categorize_transactions':
+          return `✓ Categorized ${r.updated} transaction(s) as ${r.category}`;
+        case 'create_bill':
+          return `✓ Added bill “${r.bill?.name}” — $${Number(r.bill?.amount || 0).toFixed(2)}`;
+        default:
+          return `✓ ${a.tool}`;
+      }
+    });
+    return lines.join('\n');
   };
 
   const formatAIResponse = (response) => {

@@ -157,21 +157,22 @@ router.post('/chat',
         [userId, message]
       );
 
-      // Process the message with user context + conversation memory.
-      const response = await AIAssistant.processNaturalQuery(userId, message, history);
+      // Tool-enabled chat: Penny can take actions (create transactions, budgets,
+      // categorize, …) and then reply. `actions` lists what she actually did.
+      const { response: assistantText, actions } = await AIAssistant.chatWithTools(userId, message, history);
 
       // Persist the assistant's reply as text so it reloads and feeds memory.
-      const assistantText = typeof response === 'string'
-        ? response
-        : (response?.type === 'ai_response' ? response.response : JSON.stringify(response));
       await query(
         `INSERT INTO ai_chat_messages (user_id, role, content) VALUES ($1, 'assistant', $2)`,
         [userId, assistantText]
       );
 
       res.json({
-        response,
-        timestamp: new Date().toISOString()
+        response: { type: 'ai_response', response: assistantText, actions },
+        actions,
+        // Signal the UI to refresh financial data when Penny changed something.
+        didAct: actions.some((a) => !a.error),
+        timestamp: new Date().toISOString(),
       });
     } catch (error) {
       return handleRouteError(res, error, 'The AI request failed. This is usually an invalid API key or the provider being unreachable — check Admin → AI Configuration.', logger);

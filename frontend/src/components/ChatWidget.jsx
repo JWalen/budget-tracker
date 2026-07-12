@@ -78,12 +78,26 @@ export default function ChatWidget() {
 
     try {
       const response = await api.sendAIChat(input);
+      let content = formatAIResponse(response.response);
+      const done = (response.actions || []).filter((a) => a && !a.error);
+      if (done.length) {
+        content += '\n\n' + done.map((a) => {
+          const r = a.result || {};
+          if (a.tool === 'create_transaction') return `✓ Added ${r.created?.type} “${r.created?.description}” $${Number(r.created?.amount || 0).toFixed(2)}`;
+          if (a.tool === 'create_category') return `✓ Created category “${r.category?.name}”`;
+          if (a.tool === 'set_budget') return `✓ Budget: ${r.budget?.category} $${Number(r.budget?.amount_limit || 0).toFixed(2)}`;
+          if (a.tool === 'categorize_transactions') return `✓ Categorized ${r.updated} as ${r.category}`;
+          if (a.tool === 'create_bill') return `✓ Bill “${r.bill?.name}” $${Number(r.bill?.amount || 0).toFixed(2)}`;
+          return `✓ ${a.tool}`;
+        }).join('\n');
+      }
       const assistantMessage = {
         type: 'assistant',
-        content: formatAIResponse(response.response),
+        content,
         timestamp: response.timestamp
       };
       setMessages(prev => [...prev, assistantMessage]);
+      if (response.didAct) window.dispatchEvent(new CustomEvent('penny:acted'));
     } catch (error) {
       setMessages(prev => [...prev, {
         type: 'error',
