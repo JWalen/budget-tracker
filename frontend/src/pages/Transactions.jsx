@@ -16,6 +16,7 @@ import {
   Sparkles,
   Check,
   Loader2,
+  Search,
 } from 'lucide-react';
 
 import { formatCurrency, formatShortDate, MONTHS } from '../utils/format';
@@ -33,6 +34,9 @@ export default function Transactions() {
   const [sortField, setSortField] = useState('date');
   const [sortDirection, setSortDirection] = useState('desc');
   const [filterAccount, setFilterAccount] = useState('all');
+  // Free-text search. When set, results come from the server across ALL dates
+  // (not just the current month); cleared, it reverts to the month view.
+  const [search, setSearch] = useState('');
   const [selectedTransactions, setSelectedTransactions] = useState(new Set());
   const [bulkAccountId, setBulkAccountId] = useState('');
   const [aiSuggestions, setAiSuggestions] = useState([]);
@@ -108,17 +112,21 @@ export default function Transactions() {
   });
 
   useEffect(() => {
-    loadData();
+    // Debounce so typing in the search box doesn't fire a request per keystroke.
+    const t = setTimeout(loadData, search.trim() ? 250 : 0);
     // Clear any bulk selection when the visible set changes — otherwise a bulk
     // action could apply to now-hidden rows from the previous month/owner.
     setSelectedTransactions(new Set());
-  }, [month, year, activeBudgetOwner?.id]);
+    return () => clearTimeout(t);
+  }, [month, year, activeBudgetOwner?.id, search]);
 
   const loadData = async () => {
     setLoading(true);
     try {
+      // Searching queries across all dates; otherwise scope to the current month.
+      const txParams = search.trim() ? { search: search.trim(), limit: 500 } : { month, year };
       const [txData, catData, accData] = await Promise.all([
-        api.getTransactions({ month, year }),
+        api.getTransactions(txParams),
         api.getCategories(),
         api.getAccounts(),
       ]);
@@ -363,7 +371,29 @@ export default function Transactions() {
       <div className="flex items-center justify-between flex-wrap gap-4">
         <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Transactions</h1>
         <div className="flex items-center gap-4">
-          <div className="flex items-center gap-2">
+          {/* Search — searches description & category across all dates */}
+          <div className="relative">
+            <Search size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none" />
+            <input
+              type="search"
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search transactions…"
+              aria-label="Search transactions"
+              className="input pl-9 pr-8 py-2 w-56"
+            />
+            {search && (
+              <button
+                aria-label="Clear search"
+                onClick={() => setSearch('')}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200"
+              >
+                <X size={16} />
+              </button>
+            )}
+          </div>
+
+          <div className={`flex items-center gap-2 ${search ? 'opacity-40 pointer-events-none' : ''}`} title={search ? 'Clear search to browse by month' : undefined}>
             <button aria-label="Previous month" onClick={goToPrevMonth} className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg">
               <ChevronLeft size={20} />
             </button>
@@ -417,6 +447,17 @@ export default function Transactions() {
               <X size={16} />
             </button>
           </div>
+        </div>
+      )}
+
+      {/* Search-mode indicator */}
+      {search.trim() && !loading && (
+        <div className="text-sm text-gray-600 dark:text-gray-400">
+          {sortedTransactions.length === 0
+            ? <>No transactions match “{search.trim()}”.</>
+            : <>Showing {sortedTransactions.length} result{sortedTransactions.length !== 1 ? 's' : ''} for “{search.trim()}” across all dates.</>}
+          {' '}
+          <button onClick={() => setSearch('')} className="text-primary-600 dark:text-primary-400 hover:underline">Clear</button>
         </div>
       )}
 

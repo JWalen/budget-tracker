@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.14.0] - 2026-07-12
+
+### Added
+- **Transaction search** — `GET /api/transactions` accepts a `search` param that matches `description` or category name (case-insensitive `ILIKE`, capped at 100 chars, fully parameterized). When `search` is present the month scoping is skipped server-side so results span all dates. The Transactions page gains a debounced search box (queries with `limit: 500`), a clear button, a results indicator, and dims the month nav while searching. Covered by integration tests.
+
 ## [2.13.0] - 2026-07-12
 
 ### Added

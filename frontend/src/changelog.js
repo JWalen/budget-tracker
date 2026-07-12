@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.14.0',
+    date: '2026-07-12',
+    changes: [
+      'Search your transactions — a search box on the Transactions page finds matches by description or category across all dates (not just the current month). Clear it to go back to the monthly view.',
+    ],
+  },
+  {
     version: '2.13.0',
     date: '2026-07-12',
     changes: [
