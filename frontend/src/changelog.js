@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.16.5',
+    date: '2026-07-12',
+    changes: [
+      'Fixed restoring a backup — it was expecting an old file format and would reject the JSON backups the app actually downloads. Download and restore now match, so you can reliably back up and restore your data (verified end-to-end).',
+    ],
+  },
+  {
     version: '2.16.4',
     date: '2026-07-12',
     changes: [

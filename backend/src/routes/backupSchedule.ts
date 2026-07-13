@@ -6,7 +6,12 @@ import { LoggerClass } from '../services/logger';
 import * as fs from 'fs/promises';
 import * as path from 'path';
 import * as os from 'os';
+import multer from 'multer';
 import { logErrorToDb } from '../services/errorLog';
+
+// Restore accepts the JSON backup as an uploaded file (matches what the app
+// downloads and avoids the JSON body-size limit).
+const restoreUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 const router = Router();
 const logger = new LoggerClass('BackupSchedule');
@@ -562,7 +567,7 @@ const RESTORE_ALLOWED_COLUMNS: Record<string, Set<string>> = {
     'id', 'user_id', 'name', 'pattern', 'target_type', 'target_id', 'category_id', 'created_at'
   ]),
   transactions: new Set([
-    'id', 'user_id', 'category_id', 'account_id', 'member_id', 'amount', 'description', 'date', 'type', 'created_at'
+    'id', 'user_id', 'category_id', 'account_id', 'transfer_account_id', 'member_id', 'amount', 'description', 'date', 'type', 'created_at'
   ]),
   recurring_transactions: new Set([
     'id', 'user_id', 'category_id', 'amount', 'description', 'type', 'frequency', 'next_date', 'active', 'created_at'
@@ -589,12 +594,21 @@ const RESTORE_ALLOWED_COLUMNS: Record<string, Set<string>> = {
 };
 
 // Restore backup data
-router.post('/restore', requireEditAccess, async (req: AuthRequest, res: Response) => {
-  const backupData = req.body;
+router.post('/restore', restoreUpload.single('file'), requireEditAccess, async (req: AuthRequest, res: Response) => {
+  // The backup arrives as an uploaded JSON file (the download format). Fall back
+  // to a JSON request body for programmatic callers.
+  let backupData: any = req.body;
+  if (req.file) {
+    try {
+      backupData = JSON.parse(req.file.buffer.toString('utf-8'));
+    } catch {
+      return res.status(400).json({ error: 'That file isn’t a valid backup (couldn’t read it as JSON).' });
+    }
+  }
 
   // Validate backup structure
   if (!backupData || !backupData.version || !backupData.data) {
-    return res.status(400).json({ error: 'Invalid backup format' });
+    return res.status(400).json({ error: 'Invalid backup format. Use a backup file downloaded from this app.' });
   }
 
   const userId = req.userId!;
@@ -721,6 +735,12 @@ router.post('/restore', requireEditAccess, async (req: AuthRequest, res: Respons
         }
         if ('account_id' in insert && insert.account_id != null && !ownedAccounts.has(Number(insert.account_id))) {
           insert.account_id = null;
+        }
+        // Transfer destination account gets the same treatment — null it out if the
+        // account no longer exists / isn't the caller's, so a transfer never fails
+        // the restore on a foreign-key violation.
+        if ('transfer_account_id' in insert && insert.transfer_account_id != null && !ownedAccounts.has(Number(insert.transfer_account_id))) {
+          insert.transfer_account_id = null;
         }
         if ('member_id' in insert && insert.member_id != null && !ownedMembers.has(Number(insert.member_id))) {
           insert.member_id = null;

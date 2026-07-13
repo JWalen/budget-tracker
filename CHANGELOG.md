@@ -1,5 +1,13 @@
 # Changelog
 
+## [2.16.5] - 2026-07-12
+
+### Fixed
+- **Restore was broken (format mismatch)** — two `/api/backup/restore` handlers existed; the **SQL** one (`backup.ts`) shadowed the **JSON** one (`backupSchedule.ts`) because it was mounted first. The app downloads **JSON**, so restore always rejected it ("Expected per-user format"). Renamed the legacy SQL restore to `/restore-sql`; the JSON restore now owns `/restore` and reads the uploaded file (multipart) rather than a JSON body (avoids the 5 MB body limit). Added `transfer_account_id` to the restore allow-list **and** the owned-account null-out (so restoring a transfer can't FK-fail). Verified with round-trip integration tests (download → simulate loss → restore → data returns; idempotent; account-linked + transfer restore; invalid-file rejection).
+
+### Known limitation
+- Restore rebuilds core financial data (categories, transactions, budgets, bills, debts, recurring, match rules, pay periods and their children). It does **not** re-create bank accounts or family members — if those still exist they stay linked; on a fresh machine, restored transactions keep their data but their account link is cleared (no crash).
+
 ## [2.16.4] - 2026-07-12
 
 ### Fixed

@@ -266,9 +266,12 @@ router.get('/export', async (req: AuthRequest, res: Response) => {
   }
 });
 
-// ── Per-user restore ─────────────────────────────────────────────────────────
+// ── Per-user restore (legacy .sql format) ────────────────────────────────────
+// The primary /restore lives in backupSchedule.ts and takes the JSON backup that
+// the app downloads. This legacy handler stays at /restore-sql so old .sql
+// exports can still be restored, but it no longer shadows the JSON restore.
 
-router.post('/restore', upload.single('file'), async (req: AuthRequest, res: Response) => {
+router.post('/restore-sql', upload.single('file'), async (req: AuthRequest, res: Response) => {
   const client = await pool.connect();
   try {
     const userId = req.userId!;
