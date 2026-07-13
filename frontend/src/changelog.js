@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.16.1',
+    date: '2026-07-12',
+    changes: [
+      'Fixed the “Update Now” button in Help — it pointed at an old in-app updater that was disabled for security, so it always errored. It now says “Download Update” and opens the latest release so you can grab the new installer.',
+    ],
+  },
+  {
     version: '2.16.0',
     date: '2026-07-12',
     changes: [

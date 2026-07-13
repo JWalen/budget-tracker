@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.16.1] - 2026-07-12
+
+### Fixed
+- **Help → "Update Now" button was broken** — it called `/admin/system/update`, which was disabled for security (it used to `git pull` + rebuild Docker via the host socket) and returns HTTP 410, so the button always errored (with a Docker-oriented message irrelevant to the desktop app). The update modal now shows **"Download Update"**, which opens the release page (`releaseUrl`) so the user can download the new installer. The "check for updates" detection was already correct after the earlier `APP_VERSION` fix.
+
 ## [2.16.0] - 2026-07-12
 
 ### Added
