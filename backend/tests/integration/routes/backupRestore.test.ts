@@ -87,14 +87,19 @@ describe('Backup download → restore round-trip', () => {
       .attach('file', fileBuf, 'backup.json');
     expect(res.status).toBe(200);
 
+    // Restore rebuilds bank_accounts too, so links point at the REMAPPED ids
+    // (looked up by name), not the originals.
+    const checkingId = (await query(`SELECT id FROM bank_accounts WHERE user_id = $1 AND name = 'Checking'`, [userId])).rows[0].id;
+    const savingsId = (await query(`SELECT id FROM bank_accounts WHERE user_id = $1 AND name = 'Savings'`, [userId])).rows[0].id;
+
     const gas = await query(`SELECT account_id FROM transactions WHERE user_id = $1 AND description = 'Gas'`, [userId]);
     expect(gas.rows.length).toBe(1);
-    expect(gas.rows[0].account_id).toBe(accA); // account still exists → link preserved
+    expect(gas.rows[0].account_id).toBe(checkingId);
 
     const xfer = await query(`SELECT account_id, transfer_account_id FROM transactions WHERE user_id = $1 AND type = 'transfer'`, [userId]);
     expect(xfer.rows.length).toBe(1);
-    expect(xfer.rows[0].account_id).toBe(accA);
-    expect(xfer.rows[0].transfer_account_id).toBe(accB);
+    expect(xfer.rows[0].account_id).toBe(checkingId);
+    expect(xfer.rows[0].transfer_account_id).toBe(savingsId);
   });
 
   it('fully restores bank accounts and family members onto a wiped database', async () => {
