@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.17.0] - 2026-07-12
+
+### Added
+- **Restore is now complete.** Previously restore only rebuilt core financial tables; it now also restores **bank_accounts, family_members, account_balances, spending_limits, spending_alerts, allowance_transactions, approval_requests**. The restore deletes children-before-parents, rebuilds parents first, and remaps every foreign key (`account_id`, `transfer_account_id`, `member_id`, `budget_id`, `category_id`, …) through per-table old→new id maps — so a restore onto a fresh database fully reconstructs the data with links intact. Rows whose required parent is missing from a partial backup are skipped rather than failing the whole restore. Comprehensive round-trip test added (accounts + transfer + family member + allowance + spending limit + account balance, restored onto a fully wiped DB).
+
 ## [2.16.5] - 2026-07-12
 
 ### Fixed

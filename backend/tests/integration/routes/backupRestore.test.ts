@@ -97,6 +97,61 @@ describe('Backup download → restore round-trip', () => {
     expect(xfer.rows[0].transfer_account_id).toBe(accB);
   });
 
+  it('fully restores bank accounts and family members onto a wiped database', async () => {
+    // Build a rich dataset: two accounts (one linked to an expense + a transfer),
+    // a family member with an allowance and a spending limit.
+    const a = await query(`INSERT INTO bank_accounts (user_id,name,account_type,balance) VALUES ($1,'Checking','checking',500) RETURNING id`, [userId]);
+    const b = await query(`INSERT INTO bank_accounts (user_id,name,account_type) VALUES ($1,'Savings','savings') RETURNING id`, [userId]);
+    const accA = a.rows[0].id, accB = b.rows[0].id;
+    await query(`INSERT INTO transactions (user_id,category_id,account_id,amount,description,date,type) VALUES ($1,$2,$3,20,'Gas',CURRENT_DATE,'expense')`, [userId, categoryId, accA]);
+    await query(`INSERT INTO transactions (user_id,account_id,transfer_account_id,amount,description,date,type) VALUES ($1,$2,$3,100,'To savings',CURRENT_DATE,'transfer')`, [userId, accA, accB]);
+    const m = await query(`INSERT INTO family_members (user_id,name,role) VALUES ($1,'Kid','child') RETURNING id`, [userId]);
+    const memId = m.rows[0].id;
+    await query(`INSERT INTO allowance_transactions (member_id,amount,next_payment_date) VALUES ($1,10,CURRENT_DATE)`, [memId]);
+    await query(`INSERT INTO spending_limits (member_id,category_id,limit_amount,period) VALUES ($1,$2,50,'weekly')`, [memId, categoryId]);
+    await query(`INSERT INTO account_balances (account_id,balance,date) VALUES ($1,500,CURRENT_DATE)`, [accA]);
+
+    const backup = await createUserBackup(userId);
+    const fileBuf = Buffer.from(JSON.stringify(backup), 'utf-8');
+
+    // Wipe EVERYTHING (fresh-machine simulation), children before parents.
+    await query(`DELETE FROM account_balances ab USING bank_accounts ba WHERE ab.account_id=ba.id AND ba.user_id=$1`, [userId]);
+    await query(`DELETE FROM spending_limits sl USING family_members fm WHERE sl.member_id=fm.id AND fm.user_id=$1`, [userId]);
+    await query(`DELETE FROM allowance_transactions at USING family_members fm WHERE at.member_id=fm.id AND fm.user_id=$1`, [userId]);
+    await query('DELETE FROM transactions WHERE user_id=$1', [userId]);
+    await query('DELETE FROM bank_accounts WHERE user_id=$1', [userId]);
+    await query('DELETE FROM family_members WHERE user_id=$1', [userId]);
+    await query('DELETE FROM categories WHERE user_id=$1', [userId]);
+
+    const res = await request(app)
+      .post('/api/backup/restore')
+      .set('Authorization', `Bearer ${token}`)
+      .attach('file', fileBuf, 'backup.json');
+    expect(res.status).toBe(200);
+
+    // Accounts back
+    const accts = await query('SELECT name FROM bank_accounts WHERE user_id=$1 ORDER BY name', [userId]);
+    expect(accts.rows.map((r: any) => r.name)).toEqual(['Checking', 'Savings']);
+    // Family member + its children back
+    const mem = await query('SELECT id, name FROM family_members WHERE user_id=$1', [userId]);
+    expect(mem.rows.length).toBe(1);
+    const newMemId = mem.rows[0].id;
+    const allow = await query('SELECT amount FROM allowance_transactions WHERE member_id=$1', [newMemId]);
+    expect(allow.rows.length).toBe(1);
+    const lim = await query('SELECT limit_amount FROM spending_limits WHERE member_id=$1', [newMemId]);
+    expect(lim.rows.length).toBe(1);
+    // Transfer restored and re-linked to the NEW account ids (remapped, not the old ones)
+    const xfer = await query(`SELECT t.account_id, t.transfer_account_id FROM transactions t WHERE t.user_id=$1 AND t.type='transfer'`, [userId]);
+    expect(xfer.rows.length).toBe(1);
+    const checkingId = (await query(`SELECT id FROM bank_accounts WHERE user_id=$1 AND name='Checking'`, [userId])).rows[0].id;
+    const savingsId = (await query(`SELECT id FROM bank_accounts WHERE user_id=$1 AND name='Savings'`, [userId])).rows[0].id;
+    expect(xfer.rows[0].account_id).toBe(checkingId);
+    expect(xfer.rows[0].transfer_account_id).toBe(savingsId);
+    // account_balances re-linked
+    const bal = await query(`SELECT ab.balance FROM account_balances ab WHERE ab.account_id=$1`, [checkingId]);
+    expect(bal.rows.length).toBe(1);
+  });
+
   it('rejects a file that is not a valid backup', async () => {
     const res = await request(app)
       .post('/api/backup/restore')

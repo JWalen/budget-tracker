@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.17.0',
+    date: '2026-07-12',
+    changes: [
+      'Restore is now complete — it brings back everything in your backup, including bank accounts and family members (with their allowances and spending limits), not just transactions and budgets. Restoring onto a fresh machine fully rebuilds your data with all the links intact.',
+    ],
+  },
+  {
     version: '2.16.5',
     date: '2026-07-12',
     changes: [

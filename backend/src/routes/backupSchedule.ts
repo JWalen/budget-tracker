@@ -591,6 +591,32 @@ const RESTORE_ALLOWED_COLUMNS: Record<string, Set<string>> = {
   pay_period_bills: new Set([
     'id', 'pay_period_id', 'bill_id', 'month', 'year', 'amount_override', 'created_at'
   ]),
+  bank_accounts: new Set([
+    'id', 'user_id', 'name', 'account_type', 'account_number_last4', 'institution',
+    'balance', 'is_active', 'color', 'created_at', 'updated_at'
+  ]),
+  family_members: new Set([
+    'id', 'user_id', 'name', 'role', 'email', 'birth_date', 'allowance_amount',
+    'allowance_frequency', 'spending_limit', 'avatar_color', 'is_active', 'created_at', 'updated_at'
+  ]),
+  account_balances: new Set([
+    'id', 'account_id', 'balance', 'date', 'created_at'
+  ]),
+  spending_limits: new Set([
+    'id', 'member_id', 'category_id', 'budget_id', 'limit_amount', 'period',
+    'current_spent', 'reset_date', 'created_at', 'updated_at'
+  ]),
+  spending_alerts: new Set([
+    'id', 'user_id', 'member_id', 'category_id', 'budget_id', 'alert_type',
+    'threshold_amount', 'current_amount', 'message', 'is_read', 'created_at'
+  ]),
+  allowance_transactions: new Set([
+    'id', 'member_id', 'amount', 'next_payment_date', 'last_payment_date', 'is_active', 'created_at'
+  ]),
+  approval_requests: new Set([
+    'id', 'member_id', 'requested_by', 'approved_by', 'transaction_data', 'status',
+    'reason', 'requested_at', 'responded_at', 'expires_at'
+  ]),
 };
 
 // Restore backup data
@@ -619,38 +645,31 @@ router.post('/restore', restoreUpload.single('file'), requireEditAccess, async (
   try {
     await client.query('BEGIN');
 
-    // Delete existing user data (in reverse order of foreign key dependencies)
+    // Delete existing user data, children before parents so foreign keys never
+    // block a delete. Tables reached only through a parent are deleted with a
+    // join; the rest are scoped directly by user_id.
+    await client.query(`DELETE FROM account_balances ab USING bank_accounts ba WHERE ab.account_id = ba.id AND ba.user_id = $1`, [userId]);
+    await client.query(`DELETE FROM spending_limits sl USING family_members fm WHERE sl.member_id = fm.id AND fm.user_id = $1`, [userId]);
+    await client.query(`DELETE FROM allowance_transactions at USING family_members fm WHERE at.member_id = fm.id AND fm.user_id = $1`, [userId]);
+    await client.query(`DELETE FROM approval_requests ar USING family_members fm WHERE ar.member_id = fm.id AND fm.user_id = $1`, [userId]);
+    await client.query(`DELETE FROM pay_period_bills ppb USING pay_periods pp WHERE ppb.pay_period_id = pp.id AND pp.user_id = $1`, [userId]);
+    await client.query(`DELETE FROM bill_payments bp USING bills b WHERE bp.bill_id = b.id AND b.user_id = $1`, [userId]);
+
     const deleteTables = [
-      'pay_period_bills',
-      'bill_payments',
-      'pay_periods',
+      'spending_alerts',
+      'transactions',
+      'recurring_transactions',
+      'budgets',
       'debts',
       'bills',
-      'budgets',
-      'recurring_transactions',
-      'transactions',
+      'pay_periods',
       'match_rules',
-      'categories'
+      'categories',
+      'bank_accounts',
+      'family_members',
     ];
-
     for (const table of deleteTables) {
-      if (table === 'pay_period_bills') {
-        await client.query(
-          `DELETE FROM pay_period_bills ppb
-           USING pay_periods pp
-           WHERE ppb.pay_period_id = pp.id AND pp.user_id = $1`,
-          [userId]
-        );
-      } else if (table === 'bill_payments') {
-        await client.query(
-          `DELETE FROM bill_payments bp
-           USING bills b
-           WHERE bp.bill_id = b.id AND b.user_id = $1`,
-          [userId]
-        );
-      } else {
-        await client.query(`DELETE FROM ${table} WHERE user_id = $1`, [userId]);
-      }
+      await client.query(`DELETE FROM ${table} WHERE user_id = $1`, [userId]);
     }
 
     // Restore data from backup.
@@ -659,44 +678,56 @@ router.post('/restore', restoreUpload.single('file'), requireEditAccess, async (
     // trusting them let an attacker's backup collide with (and ON CONFLICT-overwrite)
     // another user's rows, and also left the table's sequence behind the inserted ids.
     // Instead every row is INSERTed fresh with a DB-generated id, and foreign keys are
-    // remapped through per-table old->new id maps built as we go. References to tables
-    // that are NOT part of a per-user backup (bank_accounts, family_members) are verified
-    // to belong to the caller and nulled out otherwise.
+    // remapped through per-table old->new id maps built as we go.
     //
-    // Order matters: parents before the children that reference them.
+    // Order matters: every parent is restored before the children that reference it.
     const restoreOrder = [
+      'bank_accounts',
+      'family_members',
       'categories',
+      'budgets',
       'bills',
       'pay_periods',
       'transactions',
       'recurring_transactions',
-      'budgets',
       'debts',
       'match_rules',
       'bill_payments',
       'pay_period_bills',
+      'account_balances',
+      'spending_limits',
+      'spending_alerts',
+      'allowance_transactions',
+      'approval_requests',
     ];
 
-    // old id -> new id, per parent table
+    // old id -> new id, per parent table (any table whose id is referenced elsewhere).
     const idMap: Record<string, Map<number, number>> = {
+      bank_accounts: new Map(),
+      family_members: new Map(),
       categories: new Map(),
+      budgets: new Map(),
       bills: new Map(),
       pay_periods: new Map(),
       transactions: new Map(),
     };
 
-    // Ownership sets for tables referenced but not restored here.
-    const ownedAccounts = new Set<number>(
-      (await client.query('SELECT id FROM bank_accounts WHERE user_id = $1', [userId])).rows.map(r => r.id)
-    );
-    const ownedMembers = new Set<number>(
-      (await client.query('SELECT id FROM family_members WHERE user_id = $1', [userId])).rows.map(r => r.id)
-    );
-
     const remap = (map: Map<number, number>, oldVal: any): number | null => {
       if (oldVal == null) return null;
       const mapped = map.get(Number(oldVal));
       return mapped == null ? null : mapped;
+    };
+
+    // Child tables whose parent FK(s) are NOT NULL — skip a row if any required
+    // parent didn't come back (a corrupt/partial backup), rather than fail the
+    // whole restore on a foreign-key violation.
+    const requiredParents: Record<string, string[]> = {
+      bill_payments: ['bill_id'],
+      pay_period_bills: ['pay_period_id', 'bill_id'],
+      account_balances: ['account_id'],
+      spending_limits: ['member_id'],
+      allowance_transactions: ['member_id'],
+      approval_requests: ['member_id'],
     };
 
     for (const table of restoreOrder) {
@@ -721,31 +752,23 @@ router.post('/restore', restoreUpload.single('file'), requireEditAccess, async (
         // Force ownership to the caller.
         if (hasUserId) insert.user_id = userId;
 
-        // Remap foreign keys through the id maps / ownership checks.
+        // Remap every foreign key through the parent id maps built as we go.
         if ('category_id' in insert) insert.category_id = remap(idMap.categories, insert.category_id);
+        if ('budget_id' in insert) insert.budget_id = remap(idMap.budgets, insert.budget_id);
         if ('transaction_id' in insert) insert.transaction_id = remap(idMap.transactions, insert.transaction_id);
-        if ('bill_id' in insert) {
-          insert.bill_id = remap(idMap.bills, insert.bill_id);
-          // bill_id is the required parent for these child tables — skip orphans.
-          if (insert.bill_id == null) continue;
+        if ('account_id' in insert) insert.account_id = remap(idMap.bank_accounts, insert.account_id);
+        if ('transfer_account_id' in insert) insert.transfer_account_id = remap(idMap.bank_accounts, insert.transfer_account_id);
+        if ('member_id' in insert) insert.member_id = remap(idMap.family_members, insert.member_id);
+        if ('bill_id' in insert) insert.bill_id = remap(idMap.bills, insert.bill_id);
+        if ('pay_period_id' in insert) insert.pay_period_id = remap(idMap.pay_periods, insert.pay_period_id);
+
+        // Approval requests: the acting users are always the caller.
+        if (table === 'approval_requests') {
+          insert.requested_by = userId;
+          if ('approved_by' in insert && insert.approved_by != null) insert.approved_by = userId;
         }
-        if ('pay_period_id' in insert) {
-          insert.pay_period_id = remap(idMap.pay_periods, insert.pay_period_id);
-          if (insert.pay_period_id == null) continue;
-        }
-        if ('account_id' in insert && insert.account_id != null && !ownedAccounts.has(Number(insert.account_id))) {
-          insert.account_id = null;
-        }
-        // Transfer destination account gets the same treatment — null it out if the
-        // account no longer exists / isn't the caller's, so a transfer never fails
-        // the restore on a foreign-key violation.
-        if ('transfer_account_id' in insert && insert.transfer_account_id != null && !ownedAccounts.has(Number(insert.transfer_account_id))) {
-          insert.transfer_account_id = null;
-        }
-        if ('member_id' in insert && insert.member_id != null && !ownedMembers.has(Number(insert.member_id))) {
-          insert.member_id = null;
-        }
-        // match_rules.target_id only remaps when it points at a bill we just restored.
+
+        // match_rules.target_id points at either a bill or category we just restored.
         if (table === 'match_rules' && 'target_id' in insert) {
           if (row.target_type === 'bill') {
             insert.target_id = remap(idMap.bills, insert.target_id);
@@ -753,6 +776,10 @@ router.post('/restore', restoreUpload.single('file'), requireEditAccess, async (
             insert.target_id = remap(idMap.categories, insert.target_id);
           }
         }
+
+        // Skip a child whose required parent(s) didn't survive remapping.
+        const reqCols = requiredParents[table];
+        if (reqCols && reqCols.some((c) => insert[c] == null)) continue;
 
         const columns = Object.keys(insert);
         if (columns.length === 0) continue;
