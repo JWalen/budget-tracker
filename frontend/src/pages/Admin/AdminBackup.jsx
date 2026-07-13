@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { Link } from 'react-router-dom';
 import { api } from '../../api/client';
 import { useToast } from '../../context/ToastContext';
 import { formatDate } from '../../utils/format';
@@ -9,10 +10,8 @@ import {
 
 export default function AdminBackup() {
   const toast = useToast();
-  const [backups, setBackups] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
-  const [creating, setCreating] = useState(false);
   const [cleaning, setCleaning] = useState(false);
   const [activity, setActivity] = useState(null);
   const [config, setConfig] = useState(null);
@@ -24,14 +23,12 @@ export default function AdminBackup() {
   const fetchData = async () => {
     try {
       setError(null);
-      const [backupsData, activityData, configData, transactionsData] = await Promise.all([
-        api.getAdminBackups(),
+      const [activityData, configData, transactionsData] = await Promise.all([
         api.getAdminActivity(),
         api.getAdminConfig(),
         api.getAdminTransactionsOverview()
       ]);
 
-      setBackups(backupsData.backups || []);
       setActivity(activityData);
       setConfig(configData);
       setTransactionOverview(transactionsData);
@@ -45,22 +42,6 @@ export default function AdminBackup() {
   useEffect(() => {
     fetchData();
   }, []);
-
-  const handleCreateBackup = async () => {
-    if (creating) return;
-    if (!window.confirm('Create a new database backup?')) return;
-
-    setCreating(true);
-    try {
-      const result = await api.createAdminBackup();
-      toast.success(`Backup created: ${result.filename} (${(result.size / 1024).toFixed(2)} KB)${result.encrypted ? ' — Encrypted' : ''}`);
-      fetchData();
-    } catch (err) {
-      toast.error('Failed to create backup: ' + err.message);
-    } finally {
-      setCreating(false);
-    }
-  };
 
   const cleanupLabels = {
     logs: 'old log files',
@@ -87,32 +68,6 @@ export default function AdminBackup() {
     }
   };
 
-  const handleDownloadBackup = async (backup) => {
-    try {
-      // Backend exposes a full admin backup export; there is no per-file
-      // download endpoint, so this streams a fresh full backup.
-      const { blob, filename } = await api.adminExportBackup();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename || backup.filename || 'budget-full-backup.sql';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    } catch (err) {
-      toast.error('Failed to download backup: ' + err.message);
-    }
-  };
-
-  const formatBytes = (bytes) => {
-    if (bytes === 0) return '0 Bytes';
-    const k = 1024;
-    const sizes = ['Bytes', 'KB', 'MB', 'GB'];
-    const i = Math.floor(Math.log(bytes) / Math.log(k));
-    return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
-  };
-
   if (loading) {
     return (
       <div className="flex justify-center items-center h-64">
@@ -127,7 +82,7 @@ export default function AdminBackup() {
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-2xl font-bold text-gray-900 dark:text-white">System Management</h1>
-          <p className="text-gray-600 dark:text-gray-400 mt-1">Database backups and maintenance</p>
+          <p className="text-gray-600 dark:text-gray-400 mt-1">System info & maintenance</p>
         </div>
         <div className="flex space-x-3">
           <button
@@ -136,14 +91,6 @@ export default function AdminBackup() {
           >
             <Trash2 className="w-4 h-4" />
             <span>Cleanup</span>
-          </button>
-          <button
-            onClick={handleCreateBackup}
-            disabled={creating}
-            className="flex items-center space-x-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700 disabled:opacity-50"
-          >
-            <Database className={`w-4 h-4 ${creating ? 'animate-spin' : ''}`} />
-            <span>{creating ? 'Creating...' : 'Create Backup'}</span>
           </button>
         </div>
       </div>
@@ -252,56 +199,21 @@ export default function AdminBackup() {
         </div>
       )}
 
-      {/* Backups */}
-      <div className="card">
-        <div className="p-6 border-b border-gray-200 dark:border-gray-700">
-          <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Database Backups</h3>
+      {/* Backups moved to their own page */}
+      <div className="card p-6 flex items-center justify-between gap-4 flex-wrap">
+        <div className="flex items-center gap-3">
+          <div className="p-2 bg-primary-100 dark:bg-primary-900/30 rounded-lg">
+            <Archive className="w-5 h-5 text-primary-600" />
+          </div>
+          <div>
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">Backups</h3>
+            <p className="text-sm text-gray-600 dark:text-gray-400">Create, download, restore, and schedule backups — all in one place.</p>
+          </div>
         </div>
-        <div className="divide-y divide-gray-200 dark:divide-gray-700">
-          {backups.length === 0 ? (
-            <div className="p-8 text-center">
-              <Archive className="w-12 h-12 mx-auto text-gray-400 mb-4" />
-              <p className="text-gray-500 dark:text-gray-400">No backups found</p>
-            </div>
-          ) : (
-            backups.map((backup) => (
-              <div key={backup.filename} className="p-4 flex items-center justify-between hover:bg-gray-50 dark:hover:bg-gray-800">
-                <div className="flex items-center space-x-3">
-                  <div className="flex-shrink-0">
-                    <HardDrive className="w-5 h-5 text-gray-400" />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium text-gray-900 dark:text-white">
-                      {backup.filename}
-                    </p>
-                    <div className="flex items-center space-x-4 mt-1">
-                      <span className="text-xs text-gray-500 dark:text-gray-400">
-                        {formatBytes(backup.size)}
-                      </span>
-                      <span className="text-xs text-gray-500 dark:text-gray-400 flex items-center">
-                        <Clock className="w-3 h-3 mr-1" />
-                        {formatDate(backup.created)}
-                      </span>
-                      {backup.encrypted && (
-                        <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-green-100 dark:bg-green-900 text-green-800 dark:text-green-200">
-                          <Shield className="w-3 h-3 mr-1" />
-                          Encrypted
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                </div>
-                <button aria-label="Download backup"
-                  className="p-2 text-gray-600 dark:text-gray-400 hover:text-primary-600 dark:hover:text-primary-400"
-                  onClick={() => handleDownloadBackup(backup)}
-                  title="Download full backup"
-                >
-                  <Download className="w-4 h-4" />
-                </button>
-              </div>
-            ))
-          )}
-        </div>
+        <Link to="/backups" className="flex items-center gap-2 px-4 py-2 bg-primary-600 text-white rounded-lg hover:bg-primary-700">
+          <HardDrive className="w-4 h-4" />
+          <span>Go to Backups</span>
+        </Link>
       </div>
 
       {/* Transaction Overview */}

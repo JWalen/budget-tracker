@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.16.2',
+    date: '2026-07-12',
+    changes: [
+      'Simplified backups — there’s now one place for everything: the Backups page. The duplicate backup/restore controls that were also on the Settings and Admin pages now just link to it, so it’s no longer confusing where to go.',
+    ],
+  },
+  {
     version: '2.16.1',
     date: '2026-07-12',
     changes: [

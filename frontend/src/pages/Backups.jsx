@@ -303,29 +303,36 @@ export default function Backups() {
             onClick={() => performBackup(true)}
             className="btn-secondary flex items-center gap-2"
             disabled={backupInProgress}
+            title="Download a backup file now to keep offline or move to another computer"
           >
             <Download size={20} />
-            <span>Download Backup</span>
+            <span>Download a copy</span>
           </button>
           <button
             onClick={() => performBackup(false)}
             className="btn-primary flex items-center gap-2"
             disabled={backupInProgress}
+            title="Create a backup and keep it here (shows in history below)"
           >
             {backupInProgress ? (
               <>
                 <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
-                <span>Creating...</span>
+                <span>Backing up…</span>
               </>
             ) : (
               <>
                 <Save size={20} />
-                <span>Save to {storageConfig.type === 'server' ? 'Server' : storageConfig.type}</span>
+                <span>Back Up Now</span>
               </>
             )}
           </button>
         </div>
       </div>
+
+      {/* One-line orientation so it's clear this is the single place for backups */}
+      <p className="text-sm text-gray-600 dark:text-gray-400 -mt-2">
+        Back up all your data here. <strong>Back Up Now</strong> saves a backup you can restore later; <strong>Download a copy</strong> gives you a file to keep offline or move to another computer. Set up automatic backups with <strong>Schedule</strong>.
+      </p>
 
       {/* Current Storage Config */}
       <div className="card">

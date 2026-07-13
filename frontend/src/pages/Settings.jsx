@@ -1,8 +1,9 @@
 import { useState } from 'react';
+import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
 import { useToast } from '../context/ToastContext';
-import { Shield, ShieldCheck, ShieldOff, Key, X, Download, Upload, AlertTriangle } from 'lucide-react';
+import { Shield, ShieldCheck, ShieldOff, Key, X, Download, Upload, AlertTriangle, HardDrive } from 'lucide-react';
 
 export default function Settings() {
   const { user, refreshUser } = useAuth();
@@ -25,11 +26,6 @@ export default function Settings() {
   const [newPassword, setNewPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
 
-  // Backup/restore state
-  const [backupLoading, setBackupLoading] = useState(false);
-  const [restoreLoading, setRestoreLoading] = useState(false);
-  const [restoreFile, setRestoreFile] = useState(null);
-  const [showRestoreConfirm, setShowRestoreConfirm] = useState(false);
 
   const handleSetupMfa = async () => {
     setLoading(true);
@@ -101,52 +97,6 @@ export default function Settings() {
     }
   };
 
-  const handleExportBackup = async () => {
-    setBackupLoading(true);
-    try {
-      const { blob, filename } = await api.exportBackup();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = filename;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-      toast.success('Backup downloaded successfully!');
-    } catch (err) {
-      toast.error(err.message || 'Failed to export backup');
-    } finally {
-      setBackupLoading(false);
-    }
-  };
-
-  const handleRestoreFileSelect = (e) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      setRestoreFile(file);
-      setShowRestoreConfirm(true);
-    }
-    e.target.value = '';
-  };
-
-  const handleRestoreBackup = async () => {
-    if (!restoreFile) return;
-    setRestoreLoading(true);
-    try {
-      const formData = new FormData();
-      formData.append('backup', restoreFile);
-      const result = await api.restoreBackup(formData);
-      toast.success(`Backup restored successfully! ${result.totalRestored ?? 0} items imported.`);
-      setShowRestoreConfirm(false);
-      setRestoreFile(null);
-    } catch (err) {
-      toast.error(err.message || 'Failed to restore backup. Please check the file format and try again.');
-    } finally {
-      setRestoreLoading(false);
-    }
-  };
-
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold text-gray-900 dark:text-gray-100">Settings</h1>
@@ -214,55 +164,20 @@ export default function Settings() {
         </div>
       </div>
 
-      {/* Data Section */}
+      {/* Data & Backups — now a single home on the Backups page */}
       <div className="card">
         <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4 flex items-center gap-2">
-          <Download className="w-5 h-5" />
-          Data
+          <HardDrive className="w-5 h-5" />
+          Data & Backups
         </h2>
-
-        <div className="space-y-4">
-          {/* Export Backup */}
-          <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
-            <div className="flex items-center gap-3">
-              <Download className="w-6 h-6 text-blue-600" />
-              <div>
-                <p className="font-medium text-gray-900 dark:text-gray-100">Export Backup</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Download all your data as a .sql backup file
-                </p>
-              </div>
-            </div>
-            <button
-              onClick={handleExportBackup}
-              className="btn-primary text-sm"
-              disabled={backupLoading}
-            >
-              {backupLoading ? 'Downloading...' : 'Download'}
-            </button>
-          </div>
-
-          {/* Restore Backup */}
-          <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-lg">
-            <div className="flex items-center gap-3">
-              <Upload className="w-6 h-6 text-gray-400 dark:text-gray-500" />
-              <div>
-                <p className="font-medium text-gray-900 dark:text-gray-100">Restore Backup</p>
-                <p className="text-sm text-gray-500 dark:text-gray-400">
-                  Import data from a previously exported backup file
-                </p>
-              </div>
-            </div>
-            <label className="btn-secondary text-sm cursor-pointer">
-              Choose File
-              <input
-                type="file"
-                accept=".sql"
-                onChange={handleRestoreFileSelect}
-                className="hidden"
-              />
-            </label>
-          </div>
+        <div className="flex items-center justify-between p-4 bg-gray-50 dark:bg-gray-900 rounded-lg gap-4 flex-wrap">
+          <p className="text-sm text-gray-600 dark:text-gray-400">
+            Backing up, downloading, restoring, and scheduling backups all live on the Backups page.
+          </p>
+          <Link to="/backups" className="btn-primary text-sm flex items-center gap-2 whitespace-nowrap">
+            <HardDrive className="w-4 h-4" />
+            Go to Backups
+          </Link>
         </div>
       </div>
 
@@ -280,60 +195,6 @@ export default function Settings() {
           </p>
         </div>
       </div>
-
-      {/* Restore Confirmation Modal */}
-      {showRestoreConfirm && restoreFile && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-gray-800 rounded-xl shadow-xl max-w-md w-full">
-            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-              <h2 className="text-lg font-semibold">Restore Backup</h2>
-              <button aria-label="Close"
-                onClick={() => {
-                  setShowRestoreConfirm(false);
-                  setRestoreFile(null);
-                }}
-                className="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-lg"
-              >
-                <X size={20} />
-              </button>
-            </div>
-
-            <div className="p-4 space-y-4">
-              <div className="p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-lg flex gap-3">
-                <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-amber-800 dark:text-amber-300">
-                  This will add data from the backup file to your existing data. Existing records will not be deleted or overwritten.
-                </p>
-              </div>
-
-              <div className="p-3 bg-gray-50 dark:bg-gray-900 rounded-lg text-sm">
-                <p><span className="text-gray-500 dark:text-gray-400">File:</span> {restoreFile.name}</p>
-                <p><span className="text-gray-500 dark:text-gray-400">Size:</span> {(restoreFile.size / 1024).toFixed(1)} KB</p>
-              </div>
-
-              <div className="flex gap-3">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setShowRestoreConfirm(false);
-                    setRestoreFile(null);
-                  }}
-                  className="flex-1 btn-secondary"
-                >
-                  Cancel
-                </button>
-                <button
-                  onClick={handleRestoreBackup}
-                  disabled={restoreLoading}
-                  className="flex-1 btn-primary"
-                >
-                  {restoreLoading ? 'Restoring...' : 'Restore'}
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* MFA Setup Modal */}
       {showMfaSetup && mfaData && (

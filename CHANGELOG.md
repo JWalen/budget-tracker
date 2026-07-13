@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.16.2] - 2026-07-12
+
+### Changed
+- **Backups consolidated to one page** — backup/restore controls appeared in three places (the Backups page, Settings → Data, and Admin → System Management), which was confusing. The Backups page (`/backups`) is now the single home; Settings and the admin page show a short "Go to Backups" pointer instead. The Backups page got clearer button labels ("Back Up Now" / "Download a copy") and a one-line explanation. Removed the now-dead export/restore handlers and modal from Settings, and the duplicate backup list/create from the admin page.
+
 ## [2.16.1] - 2026-07-12
 
 ### Fixed
