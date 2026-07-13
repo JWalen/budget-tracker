@@ -3,12 +3,34 @@ import { Link } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import { api } from '../api/client';
 import { useToast } from '../context/ToastContext';
-import { Shield, ShieldCheck, ShieldOff, Key, X, Download, Upload, AlertTriangle, HardDrive } from 'lucide-react';
+import { Shield, ShieldCheck, ShieldOff, Key, X, Download, Upload, AlertTriangle, HardDrive, RefreshCw } from 'lucide-react';
+import { APP_VERSION } from '../version';
 
 export default function Settings() {
   const { user, refreshUser } = useAuth();
   const toast = useToast();
   const [loading, setLoading] = useState(false);
+  const [checkingUpdate, setCheckingUpdate] = useState(false);
+
+  // Check GitHub for a newer release. If one exists, open the release page so the
+  // user can download the installer (the desktop app can't self-install unsigned).
+  const handleCheckUpdate = async () => {
+    if (checkingUpdate) return;
+    setCheckingUpdate(true);
+    try {
+      const data = await api.checkUpdates();
+      if (data.hasUpdate) {
+        const go = window.confirm(`Version ${data.latestVersion} is available (you have ${data.currentVersion}). Open the download page?`);
+        if (go) window.open(data.releaseUrl || 'https://github.com/JWalen/budget-tracker/releases/latest', '_blank', 'noopener,noreferrer');
+      } else {
+        toast.success(`You're on the latest version (v${data.currentVersion || APP_VERSION}).`);
+      }
+    } catch (err) {
+      toast.error(err.message || 'Could not check for updates');
+    } finally {
+      setCheckingUpdate(false);
+    }
+  };
 
   // MFA setup state
   const [showMfaSetup, setShowMfaSetup] = useState(false);
@@ -194,6 +216,30 @@ export default function Settings() {
             <span className="font-medium">{user?.email}</span>
           </p>
         </div>
+      </div>
+
+      {/* About & Updates */}
+      <div className="card">
+        <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100 mb-4">About</h2>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="text-sm">
+            <p className="font-medium text-gray-900 dark:text-gray-100">Budget Tracker</p>
+            <p className="text-gray-500 dark:text-gray-400">Version {APP_VERSION}</p>
+          </div>
+          {user?.is_admin && (
+            <button
+              onClick={handleCheckUpdate}
+              disabled={checkingUpdate}
+              className="btn-secondary text-sm flex items-center gap-2 disabled:opacity-50"
+            >
+              <RefreshCw className={`w-4 h-4 ${checkingUpdate ? 'animate-spin' : ''}`} />
+              {checkingUpdate ? 'Checking…' : 'Check for Updates'}
+            </button>
+          )}
+        </div>
+        <p className="text-xs text-gray-500 dark:text-gray-400 mt-3">
+          The desktop app also checks automatically on launch, and you can check anytime from the <strong>File → Check for Updates…</strong> menu.
+        </p>
       </div>
 
       {/* MFA Setup Modal */}

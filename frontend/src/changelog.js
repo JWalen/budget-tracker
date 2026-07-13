@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.16.3',
+    date: '2026-07-12',
+    changes: [
+      'Moved “Check for Updates” out of the Help page to Settings → About (with the app version), where it belongs. The desktop app still checks automatically on launch and via File → Check for Updates…. Removed the old in-app updater UI that no longer worked.',
+    ],
+  },
+  {
     version: '2.16.2',
     date: '2026-07-12',
     changes: [

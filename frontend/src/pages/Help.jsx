@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect } from 'react';
 import {
   BookOpen,
   DollarSign,
@@ -25,7 +25,6 @@ import {
   CheckCircle,
   Loader2
 } from 'lucide-react';
-import { api } from '../api/client';
 
 // Help content sections
 const helpSections = [
@@ -477,14 +476,6 @@ export default function Help() {
   const [selectedSection, setSelectedSection] = useState('getting-started');
   const [searchQuery, setSearchQuery] = useState('');
   const [filteredSections, setFilteredSections] = useState(helpSections);
-  const [checkingUpdate, setCheckingUpdate] = useState(false);
-
-  // Update modal state
-  const [updateModal, setUpdateModal] = useState(null); // null = closed, object = update info
-  const [updateStatus, setUpdateStatus] = useState('idle'); // idle | updating | complete | error | reconnecting
-  const [updateLogs, setUpdateLogs] = useState([]);
-  const [updateError, setUpdateError] = useState(null);
-  const logEndRef = useRef(null);
 
   useEffect(() => {
     if (searchQuery) {
@@ -498,129 +489,6 @@ export default function Help() {
       setFilteredSections(helpSections);
     }
   }, [searchQuery]);
-
-  // Auto-scroll logs
-  useEffect(() => {
-    if (logEndRef.current) {
-      logEndRef.current.scrollIntoView({ behavior: 'smooth' });
-    }
-  }, [updateLogs]);
-
-  const handleCheckUpdate = async () => {
-    setCheckingUpdate(true);
-    try {
-      const data = await api.checkUpdates();
-      if (data.hasUpdate) {
-        setUpdateModal(data);
-        setUpdateStatus('idle');
-        setUpdateLogs([]);
-        setUpdateError(null);
-      } else {
-        alert(`You are on the latest version (v${data.currentVersion})`);
-      }
-    } catch (err) {
-      console.error(err);
-      alert('Failed to check for updates');
-    } finally {
-      setCheckingUpdate(false);
-    }
-  };
-
-  const pollHealth = useCallback(async () => {
-    const maxAttempts = 60;
-    for (let i = 0; i < maxAttempts; i++) {
-      await new Promise(r => setTimeout(r, 3000));
-      try {
-        const resp = await fetch('/api/health', { signal: AbortSignal.timeout(3000) });
-        if (resp.ok) {
-          window.location.reload();
-          return;
-        }
-      } catch {
-        // Server still restarting
-      }
-    }
-    setUpdateStatus('error');
-    setUpdateError('Timed out waiting for the server to restart. Please refresh the page manually.');
-  }, []);
-
-  const handlePerformUpdate = async () => {
-    setUpdateStatus('updating');
-    setUpdateLogs([]);
-    setUpdateError(null);
-
-    try {
-      const response = await api.performUpdate();
-      if (!response.ok && !response.body) {
-        throw new Error('Failed to start update');
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        const chunk = decoder.decode(value, { stream: true });
-        const lines = chunk.split('\n').filter(line => line.trim());
-
-        for (const line of lines) {
-          try {
-            const data = JSON.parse(line);
-            if (data.type === 'error') {
-              setUpdateStatus('error');
-              setUpdateError(data.message);
-              setUpdateLogs(prev => [...prev, { type: 'error', message: data.message }]);
-              return;
-            } else if (data.type === 'complete') {
-              setUpdateLogs(prev => [...prev, { type: 'complete', message: data.message }]);
-              setUpdateStatus('reconnecting');
-              pollHealth();
-              return;
-            } else {
-              setUpdateLogs(prev => [...prev, { type: 'progress', message: data.message }]);
-            }
-          } catch {
-            // Non-JSON line, show as progress
-            setUpdateLogs(prev => [...prev, { type: 'progress', message: line }]);
-          }
-        }
-      }
-
-      // Stream ended without complete message — backend likely restarted
-      setUpdateStatus('reconnecting');
-      setUpdateLogs(prev => [...prev, { type: 'progress', message: 'Connection lost. Waiting for server to restart...' }]);
-      pollHealth();
-    } catch (err) {
-      // Connection error likely means backend is restarting
-      if (updateStatus === 'updating') {
-        setUpdateStatus('reconnecting');
-        setUpdateLogs(prev => [...prev, { type: 'progress', message: 'Connection lost. Waiting for server to restart...' }]);
-        pollHealth();
-      } else {
-        setUpdateStatus('error');
-        setUpdateError(err.message || 'Failed to perform update');
-      }
-    }
-  };
-
-  const closeModal = () => {
-    if (updateStatus === 'updating' || updateStatus === 'reconnecting') return; // Don't close during update
-    setUpdateModal(null);
-    setUpdateStatus('idle');
-    setUpdateLogs([]);
-    setUpdateError(null);
-  };
-
-  // In-app self-update was removed for security (it git-pulled + rebuilt via the
-  // host Docker socket). Instead, open the GitHub release so the user can download
-  // the new installer — the correct path for the desktop app.
-  const handleDownloadUpdate = () => {
-    const url = updateModal?.releaseUrl || 'https://github.com/JWalen/budget-tracker/releases/latest';
-    window.open(url, '_blank', 'noopener,noreferrer');
-    closeModal();
-  };
 
   const currentSection = helpSections.find(s => s.id === selectedSection) || helpSections[0];
 
@@ -783,17 +651,6 @@ export default function Help() {
                 );
               })}
             </nav>
-
-            <div className="mt-6 pt-6 border-t border-gray-200 dark:border-gray-700">
-              <button
-                onClick={handleCheckUpdate}
-                disabled={checkingUpdate}
-                className="w-full flex items-center gap-3 px-3 py-2 rounded-lg text-sm font-medium text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700 transition-colors"
-              >
-                <RefreshCw className={`w-4 h-4 ${checkingUpdate ? 'animate-spin' : ''}`} />
-                <span>{checkingUpdate ? 'Checking...' : 'Check for Updates'}</span>
-              </button>
-            </div>
           </div>
         </div>
 
@@ -857,129 +714,6 @@ export default function Help() {
           </div>
         </div>
       </div>
-
-      {/* Update Modal */}
-      {updateModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" onClick={closeModal}>
-          <div
-            className="bg-white dark:bg-gray-800 rounded-xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col"
-            onClick={e => e.stopPropagation()}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-700">
-              <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                {updateStatus === 'idle' ? 'Update Available' : 'Updating...'}
-              </h2>
-              {(updateStatus === 'idle' || updateStatus === 'error') && (
-                <button aria-label="Close" onClick={closeModal} className="text-gray-400 hover:text-gray-600 dark:hover:text-gray-300">
-                  <X size={20} />
-                </button>
-              )}
-            </div>
-
-            {/* Body */}
-            <div className="p-4 overflow-y-auto flex-1">
-              {updateStatus === 'idle' && (
-                <>
-                  <div className="flex items-center gap-3 mb-4">
-                    <div className="px-3 py-1 bg-gray-100 dark:bg-gray-700 rounded-full text-sm text-gray-600 dark:text-gray-300">
-                      v{updateModal.currentVersion}
-                    </div>
-                    <ChevronRight size={16} className="text-gray-400" />
-                    <div className="px-3 py-1 bg-primary-100 dark:bg-primary-900/30 rounded-full text-sm font-medium text-primary-700 dark:text-primary-300">
-                      v{updateModal.latestVersion}
-                    </div>
-                  </div>
-
-                  {updateModal.releaseNotes && (
-                    <div className="mb-4">
-                      <h3 className="text-sm font-medium text-gray-700 dark:text-gray-300 mb-2">Release Notes</h3>
-                      <div className="text-sm text-gray-600 dark:text-gray-400 bg-gray-50 dark:bg-gray-900/50 rounded-lg p-3 max-h-48 overflow-y-auto whitespace-pre-wrap">
-                        {updateModal.releaseNotes}
-                      </div>
-                    </div>
-                  )}
-
-                  <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm text-blue-800 dark:text-blue-200 flex gap-2">
-                    <Download size={16} className="flex-shrink-0 mt-0.5" />
-                    <span>This opens the download page for the new version. Download the installer and open it to update (on Mac, drag it into Applications, replacing the old copy).</span>
-                  </div>
-                </>
-              )}
-
-              {(updateStatus === 'updating' || updateStatus === 'reconnecting' || updateStatus === 'complete' || updateStatus === 'error') && (
-                <div className="bg-gray-900 rounded-lg p-3 font-mono text-xs max-h-64 overflow-y-auto">
-                  {updateLogs.map((log, i) => (
-                    <div
-                      key={i}
-                      className={`mb-1 ${
-                        log.type === 'error'
-                          ? 'text-red-400'
-                          : log.type === 'complete'
-                          ? 'text-green-400'
-                          : 'text-gray-300'
-                      }`}
-                    >
-                      {log.type === 'error' && '✗ '}
-                      {log.type === 'complete' && '✓ '}
-                      {log.message}
-                    </div>
-                  ))}
-                  {updateStatus === 'reconnecting' && (
-                    <div className="text-blue-400 flex items-center gap-2 mt-1">
-                      <Loader2 size={12} className="animate-spin" />
-                      Waiting for server to come back online...
-                    </div>
-                  )}
-                  <div ref={logEndRef} />
-                </div>
-              )}
-
-              {updateStatus === 'error' && updateError && (
-                <div className="mt-3 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg text-sm text-red-800 dark:text-red-200">
-                  <p className="font-medium mb-1">Update failed</p>
-                  <p>{updateError}</p>
-                  <p className="mt-2 text-xs opacity-75">
-                    You can try updating manually by running: <code className="bg-red-100 dark:bg-red-900/40 px-1 rounded">git pull && docker compose up --build -d</code>
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {/* Footer */}
-            <div className="flex justify-end gap-3 p-4 border-t border-gray-200 dark:border-gray-700">
-              {updateStatus === 'idle' && (
-                <>
-                  <button onClick={closeModal} className="btn btn-secondary">
-                    Later
-                  </button>
-                  <button onClick={handleDownloadUpdate} className="btn btn-primary flex items-center gap-2">
-                    <Download size={16} />
-                    Download Update
-                  </button>
-                </>
-              )}
-              {updateStatus === 'updating' && (
-                <button disabled className="btn btn-primary opacity-50 cursor-not-allowed flex items-center gap-2">
-                  <Loader2 size={16} className="animate-spin" />
-                  Updating...
-                </button>
-              )}
-              {updateStatus === 'reconnecting' && (
-                <button disabled className="btn btn-primary opacity-50 cursor-not-allowed flex items-center gap-2">
-                  <Loader2 size={16} className="animate-spin" />
-                  Restarting...
-                </button>
-              )}
-              {updateStatus === 'error' && (
-                <button onClick={closeModal} className="btn btn-secondary">
-                  Close
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }

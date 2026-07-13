@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.16.3] - 2026-07-12
+
+### Changed
+- **Moved "Check for Updates" out of Help into Settings → About.** The Help-page update control was misplaced, redundant with the native desktop updater (File → Check for Updates… + launch auto-check), and broken for non-admins (the `/admin/system/updates` endpoint is admin-only). Settings now has an **About** card showing the app version and — for admins — a "Check for Updates" button that opens the release page if a newer version exists (toast if up to date). Removed all the dead in-app-updater code from Help (button, modal, streaming/self-update handlers, state) and the `Data` backup section leftovers.
+
 ## [2.16.2] - 2026-07-12
 
 ### Changed
