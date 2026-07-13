@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.17.2] - 2026-07-12
+
+### Fixed
+- **"Check for Updates" (Settings → About) still timed out** after the fetch switch — the real cause was the packaged backend's Node preferring IPv6 and stalling on the route to `api.github.com` (the Electron main process's `File → Check for Updates` uses Chromium's network stack and was unaffected). Added `dns.setDefaultResultOrder('ipv4first')` at backend startup so all outbound requests prefer IPv4 and don't hang.
+
 ## [2.17.1] - 2026-07-12
 
 ### Fixed

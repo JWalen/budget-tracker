@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.17.2',
+    date: '2026-07-12',
+    changes: [
+      'Really fixed “Check for Updates” in Settings — it was hanging on an IPv6 network stall in the app’s backend. The backend now prefers IPv4, so the update check returns promptly.',
+    ],
+  },
+  {
     version: '2.17.1',
     date: '2026-07-12',
     changes: [

@@ -1,3 +1,11 @@
+// Prefer IPv4 when resolving hostnames. In the packaged desktop app (Electron's
+// forked Node), outbound fetch/undici could hang on a stalled IPv6 route to hosts
+// like api.github.com — which made "Check for Updates" time out even though the
+// Electron main process (Chromium stack) reached the same host fine. IPv4-first
+// avoids the stall. Harmless elsewhere.
+import dns from 'dns';
+try { dns.setDefaultResultOrder('ipv4first'); } catch { /* older node */ }
+
 import express, { Request, Response, NextFunction } from 'express';
 import path from 'path';
 import cors from 'cors';
