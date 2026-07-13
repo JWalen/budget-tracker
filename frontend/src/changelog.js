@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.16.4',
+    date: '2026-07-12',
+    changes: [
+      'Fixed the “Check for Updates” button spinning forever when the check stalled — it now times out after a few seconds with a clear message instead of hanging.',
+    ],
+  },
+  {
     version: '2.16.3',
     date: '2026-07-12',
     changes: [

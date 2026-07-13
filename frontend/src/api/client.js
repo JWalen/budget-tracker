@@ -778,7 +778,12 @@ export const api = {
 
   // Admin endpoints
   checkUpdates: () =>
-    fetch(`${API_URL}/admin/system/updates`, { headers: headers() }).then(handleResponse),
+    // Hard timeout so the "Check for Updates" button can't spin forever if the
+    // backend or the upstream GitHub call stalls.
+    fetch(`${API_URL}/admin/system/updates`, {
+      headers: headers(),
+      signal: AbortSignal.timeout(12000),
+    }).then(handleResponse),
 
   performUpdate: () =>
     fetch(`${API_URL}/admin/system/update`, {

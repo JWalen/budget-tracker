@@ -26,7 +26,10 @@ export default function Settings() {
         toast.success(`You're on the latest version (v${data.currentVersion || APP_VERSION}).`);
       }
     } catch (err) {
-      toast.error(err.message || 'Could not check for updates');
+      const msg = err?.name === 'TimeoutError' || /abort|timed out/i.test(err?.message || '')
+        ? 'Update check timed out. Check your connection and try again.'
+        : (err?.message || 'Could not check for updates');
+      toast.error(msg);
     } finally {
       setCheckingUpdate(false);
     }

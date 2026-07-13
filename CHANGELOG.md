@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.16.4] - 2026-07-12
+
+### Fixed
+- **"Check for Updates" could spin forever** — the `checkUpdates` fetch had no timeout, so if the request stalled the button span indefinitely. Added a 12s `AbortSignal.timeout`; on timeout the handler shows "Update check timed out. Check your connection and try again." and the spinner clears.
+
 ## [2.16.3] - 2026-07-12
 
 ### Changed
