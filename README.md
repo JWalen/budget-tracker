@@ -65,37 +65,33 @@ A **complete, self-hosted budget tracking platform** with enterprise features in
 - ✅ **TypeScript** - Type-safe backend
 - ✅ **Comprehensive Tests** - Integration test suite
 - ✅ **CI/CD Pipeline** - GitHub Actions automation
-- ✅ **Docker Support** - Easy deployment
+- ✅ **Cross-Platform Desktop App** - macOS & Windows, no setup
 
 ## 🚀 Quick Start
 
-### Prerequisites
+### Option 1: Download the app (recommended)
 
-- **Node.js** 18+ ([Download](https://nodejs.org))
-- **PostgreSQL** 15+ ([Download](https://www.postgresql.org/download/))
-- **Docker** (recommended) ([Download](https://www.docker.com/))
+Budget Tracker ships as a **desktop app with an embedded database — no setup, no
+Docker, no separate PostgreSQL required.** Grab the latest installer from the
+[**Releases**](https://github.com/JWalen/budget-tracker/releases) page:
 
-### Option 1: Docker (Recommended - 5 Minutes)
+- **macOS** (Apple Silicon): `Budget Tracker-<version>-arm64.dmg`
+- **Windows**: `Budget Tracker Setup <version>.exe`
+
+On first launch it sets up its own database and walks you through Standalone /
+Server / Client setup. (The app isn't code-signed yet — see the notes on the
+Releases page for the one-time "open anyway" step.)
+
+### Option 2: Run from source (developers)
+
+Prerequisites: **Node.js 18+** and a local **PostgreSQL 15+** for the backend/tests.
 
 ```bash
-# Clone repository
 git clone https://github.com/JWalen/budget-tracker.git
-cd budget-tracker
-
-# Start all services (PostgreSQL, Backend, Frontend)
-docker compose up --build
-
-# Access application
-# Frontend: http://localhost:3456
-# Backend API: http://localhost:5050
-# API Docs: http://localhost:5050/api-docs
-
-# Create your first account at http://localhost:3456/register
+cd budget-tracker/electron && npm install && npm start   # launches the desktop app in dev
 ```
 
-That's it! All database tables are automatically created on first startup.
-
-### Option 2: Manual Setup
+### Option 3: Manual backend/frontend setup
 
 ```bash
 # Clone repository
@@ -210,7 +206,7 @@ budget-tracker/
 ├── database/              # SQL migrations
 ├── load-tests/           # k6 load testing
 ├── .github/workflows/    # CI/CD pipelines
-└── docker-compose.yml   # Docker orchestration
+└── electron/           # Desktop app shell (Electron + embedded Postgres)
 ```
 
 ---
@@ -377,23 +373,17 @@ FRONTEND_URL=https://yourdomain.com
 VITE_API_URL=https://api.yourdomain.com
 ```
 
-### Docker Production Deployment
+### Sharing across devices
 
-```bash
-# Build production images
-docker compose -f docker-compose.prod.yml build
+To use one dataset from multiple devices, run the desktop app in **Server** mode
+on one machine (it hosts the data over encrypted HTTPS) and **Client** mode on the
+others — chosen from the first-run setup screen (or **File → Setup**). No Docker or
+separate server required.
 
-# Start services
-docker compose -f docker-compose.prod.yml up -d
+### Cloud Deployment Options (legacy / self-host)
 
-# View logs
-docker compose -f docker-compose.prod.yml logs -f
-
-# Scale backend (load balancing)
-docker compose -f docker-compose.prod.yml up -d --scale backend=3
-```
-
-### Cloud Deployment Options
+> The project is distributed as a desktop app; the container/cloud notes below are
+> retained only as a reference for anyone self-hosting the source.
 
 #### AWS
 - **Frontend:** S3 + CloudFront CDN
@@ -548,7 +538,7 @@ npm test -- --watch
 ### Current Version: 2.4.0 ✅
 - Complete self-hosted platform
 - All core features implemented
-- Production-ready with Docker deployment
+- Distributed as a desktop app (macOS & Windows installers)
 
 ### Future Enhancements
 
@@ -704,7 +694,7 @@ This project includes:
 - ✅ **75+ API Endpoints** - Complete RESTful API
 - ✅ **20+ Database Tables** - Comprehensive data model
 - ✅ **Full Test Coverage** - Integration test suite
-- ✅ **Production-Ready** - Docker deployment included
+- ✅ **Desktop App** - Installable on macOS & Windows
 - ✅ **Complete Documentation** - API docs with Swagger
 - ✅ **Modern Stack** - React 18, TypeScript, PostgreSQL
 - ✅ **Performance Optimized** - Redis caching, efficient queries

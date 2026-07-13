@@ -4,31 +4,40 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Build & Run Commands
 
-```bash
-# Full stack
-docker compose up --build        # Start all services (postgres, backend, frontend)
-docker compose build frontend    # Verify frontend compiles (quick check after changes)
-docker compose build backend     # Verify backend compiles
+The app ships as an **Electron desktop app** with embedded PostgreSQL (no Docker).
 
-# Frontend only (from frontend/)
+```bash
+# Frontend (from frontend/)
 npm run dev                      # Vite dev server on :3000 (proxies /api to backend:5000)
 npm run build                    # Production build to dist/
 
-# Backend only (from backend/)
-npm run dev                      # ts-node-dev with hot-reload
+# Backend (from backend/)
+npm run dev                      # ts-node-dev with hot-reload (needs a local Postgres; set DATABASE_URL)
 npm run build                    # TypeScript compile to dist/
 npm start                        # Run compiled JS (dist/index.js)
+npm test                         # Jest integration tests (needs a Postgres; CI runs a service)
+
+# Desktop app (from electron/)
+npm start                        # Launch the Electron app in dev (spins up embedded Postgres)
+npm run dist:mac                 # Build the macOS .dmg (electron-builder)
+npm run dist:win                 # Build the Windows .exe
 ```
 
-**Docker ports (host:container):** Frontend → 3456:80, Backend API → 5050:5000, PostgreSQL → 5433:5432
+Tagging `v*` triggers `.github/workflows/build-desktop.yml`, which builds the
+Mac/Windows installers and publishes them to a GitHub Release.
 
 ## Architecture
 
-### Three-service Docker Compose app
+**Frontend** (React 18 + Vite + Tailwind) — built to static files, served by the
+backend in the desktop app (same origin, relative `/api`).
+**Backend** (Express + TypeScript) — direct SQL via the `pg` pool, no ORM.
+**Database** (PostgreSQL 15) — **embedded** (`embedded-postgres`) in the desktop
+app, data under the app's userData dir; base schema in `database/init.sql`, additive
+bootstrap in `backend/src/db/schema.sql`.
 
-**Frontend** (React 18 + Vite + Tailwind) → Nginx in production, proxies `/api` to backend
-**Backend** (Express + TypeScript) → Direct SQL via `pg` pool, no ORM
-**Database** (PostgreSQL 15) → Schema in `database/init.sql`
+The Electron shell (`electron/main.js`) starts the embedded Postgres and the
+compiled backend, then loads the served frontend. Deployment modes (Standalone /
+Server / Client) are chosen on first run.
 
 ### Backend structure
 
@@ -110,56 +119,19 @@ removed; household membership is managed via `/api/organizations`.
 
 ## Security Considerations
 
-### Preventing Unauthorized Admin Access
+The desktop app is self-contained, so the old Docker/hosted concerns (exposed DB
+port, shared default credentials) don't apply. What's in place today:
 
-The current development setup exposes several security vulnerabilities that should be addressed before production deployment:
+- **Per-install secrets** — `electron/main.js` generates a random DB password,
+  JWT secret, refresh secret, and encryption key on first run (stored `0600` in
+  userData); no shared defaults ship.
+- **Embedded Postgres binds loopback** in Standalone mode; **Server mode** serves
+  HTTPS with a self-signed cert that clients pin (see `main.js` cert-error handler).
+- **Auth**: JWT (HS256 pinned, issuer/audience/type), bcryptjs (cost 12), optional
+  TOTP MFA; refresh tokens hashed at rest; login lockout (skipped in desktop).
+- **Rate limiting** on hosted deployments (all limiters skipped in desktop mode —
+  single local user).
+- **Admin actions & errors** are recorded to the `error_logs` table (Admin → Error Log).
 
-**Current vulnerabilities:**
-1. **Database port exposed** (5433:5432) — Anyone with network access can connect directly to PostgreSQL
-2. **Default credentials** — Using simple passwords like `budget_pass`
-3. **No database audit logging** — Admin changes aren't tracked
-
-**Production security measures to implement:**
-
-1. **Remove database port exposure** from `docker-compose.yml`:
-   ```yaml
-   # Remove or comment out this line in production:
-   # ports:
-   #   - "5433:5432"
-   ```
-
-2. **Use environment variables** for credentials:
-   ```yaml
-   environment:
-     POSTGRES_PASSWORD: ${DB_PASSWORD}  # Use .env file
-   ```
-
-3. **Implement audit logging** for admin actions:
-   - Create an `admin_audit_log` table to track all admin privilege changes
-   - Add backend middleware to log when admin endpoints are accessed
-   - Monitor for suspicious patterns (multiple failed admin attempts, etc.)
-
-4. **Add rate limiting** on sensitive endpoints:
-   - Limit login attempts to prevent brute force
-   - Restrict admin API calls to prevent abuse
-
-5. **Implement proper admin management**:
-   - Add a "super admin" role that's the only one who can grant admin privileges
-   - Add two-factor authentication requirement for admin accounts
-   - Create an admin panel UI for managing admin privileges (instead of direct DB access)
-
-6. **Database security**:
-   - Use strong, randomly generated passwords (minimum 20 characters)
-   - Enable SSL/TLS for database connections
-   - Implement row-level security policies in PostgreSQL
-   - Regular automated backups with encryption
-
-7. **Network isolation**:
-   - Keep database in a private network, only accessible by the backend
-   - Use a firewall to restrict access
-   - Consider using a bastion host for emergency DB access
-
-**Emergency admin recovery** (for legitimate scenarios):
-- Keep a secure, offline record of the database root password
-- Document a clear process for admin recovery that requires multiple approvals
-- Consider implementing a "break glass" emergency access system with full audit trails
+The `database/init.sql` default credentials (`budget_user`/`budget_pass`) are for a
+local dev Postgres only; the desktop app never uses them.
