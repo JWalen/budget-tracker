@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.17.4] - 2026-07-12
+
+### Changed
+- **In-app Help rewritten and brought current.** The Help page now has 19 sections covering every current feature and workflow: Getting Started (incl. desktop Standalone/Server/Client setup), Dashboard, Transactions (income/expense/**transfer**, search-across-all-dates, inline category creation, bulk actions), Accounts & Transfers, Categories, AI Assistant & Auto-Categorization (Penny, learned rules), Bank Import, Match Rules, Bills vs Recurring, Pay Periods, Budgets, Debts, Reports & Analytics, Calendar, Receipts & Multi-Currency, Households (sharing), Backups & Restore, Settings/Security/Updates, and Tips. The "getting around" guide matches the real sidebar groups.
+
 ## [2.17.3] - 2026-07-12
 
 ### Fixed

@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.17.4',
+    date: '2026-07-12',
+    changes: [
+      'Rewrote the in-app Help to match the current app — new sections for Accounts & Transfers, the AI Assistant & auto-categorization, Match Rules, Households, Backups & Restore, Multi-Currency/Receipts, and Settings/Updates, plus refreshed guidance throughout.',
+    ],
+  },
+  {
     version: '2.17.3',
     date: '2026-07-12',
     changes: [
