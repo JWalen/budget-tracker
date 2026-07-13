@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.17.1] - 2026-07-12
+
+### Fixed
+- **"Check for Updates" timed out in the desktop app.** The backend update-check used `axios`, whose `timeout` didn't abort a stalled DNS/connect in the packaged Electron-forked Node, so the request hung until the client's 12s abort. Switched the GitHub call to native `fetch` + `AbortSignal.timeout(6000)` (the same stack the working AI calls use), so the endpoint always returns within a few seconds.
+
 ## [2.17.0] - 2026-07-12
 
 ### Added

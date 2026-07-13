@@ -1,5 +1,4 @@
 import { Router, Response } from 'express';
-import axios from 'axios';
 import bcrypt from 'bcryptjs';
 import { query } from '../config/database';
 import { authMiddleware, AuthRequest } from '../middleware/auth';
@@ -1006,10 +1005,18 @@ router.get('/system/updates', async (req: AuthRequest, res: Response) => {
     if (process.env.GITHUB_TOKEN) {
       headers['Authorization'] = `Bearer ${process.env.GITHUB_TOKEN}`;
     }
-    const response = await axios.get(`https://api.github.com/repos/${repo}/releases/latest`, {
+    // Use native fetch (not axios): in the packaged desktop backend, axios's
+    // `timeout` didn't always abort a stalled DNS/connect, so the request could
+    // hang indefinitely. AbortSignal.timeout aborts the whole operation.
+    const ghResp = await fetch(`https://api.github.com/repos/${repo}/releases/latest`, {
       headers,
-      timeout: 5000
+      signal: AbortSignal.timeout(6000),
     });
+    if (!ghResp.ok) {
+      throw new Error(`GitHub returned ${ghResp.status}`);
+    }
+    const release: any = await ghResp.json();
+    const response = { data: release };
 
     const latestVersion = response.data.tag_name.replace(/^v/, '');
 

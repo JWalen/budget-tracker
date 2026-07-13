@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.17.1',
+    date: '2026-07-12',
+    changes: [
+      'Fixed “Check for Updates” timing out in the desktop app — the update check now uses a reliable network call that can’t hang, so it returns a result quickly.',
+    ],
+  },
+  {
     version: '2.17.0',
     date: '2026-07-12',
     changes: [
