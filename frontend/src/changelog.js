@@ -1,5 +1,12 @@
 export const changelog = [
   {
+    version: '2.17.3',
+    date: '2026-07-12',
+    changes: [
+      'Fixed “Check for Updates” in Settings for real — it now runs through the same reliable path as the File → Check for Updates menu, so it returns promptly instead of timing out.',
+    ],
+  },
+  {
     version: '2.17.2',
     date: '2026-07-12',
     changes: [

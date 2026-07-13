@@ -400,7 +400,11 @@ function createWindow(url) {
     minHeight: 600,
     backgroundColor: '#0f172a',
     title: 'Budget Tracker',
-    webPreferences: { contextIsolation: true, nodeIntegration: false },
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      preload: path.join(__dirname, 'main-preload.js'),
+    },
   });
   // Open external links in the system browser, not inside the app window.
   mainWindow.webContents.setWindowOpenHandler(({ url: u }) => {
@@ -513,6 +517,25 @@ function registerSetupIpc() {
   ipcMain.handle('setup:choose', (_e, choice) => {
     if (pendingSetupResolve) { const r = pendingSetupResolve; pendingSetupResolve = null; r(choice || null); }
     return true;
+  });
+
+  // The main window's "Check for Updates" (Settings → About) calls this so the
+  // check runs in the main process (reliable), not through the backend.
+  ipcMain.handle('desktop:check-updates', async () => {
+    try {
+      const rel = await fetchLatestRelease();
+      const latest = rel && rel.tag_name ? rel.tag_name.replace(/^v/, '') : null;
+      const current = app.getVersion();
+      return {
+        ok: true,
+        currentVersion: current,
+        latestVersion: latest,
+        hasUpdate: latest ? isNewer(latest, current) : false,
+        releaseUrl: (rel && rel.html_url) || 'https://github.com/JWalen/budget-tracker/releases/latest',
+      };
+    } catch (e) {
+      return { ok: false, error: (e && e.message) || 'Could not check for updates' };
+    }
   });
 }
 

@@ -18,7 +18,16 @@ export default function Settings() {
     if (checkingUpdate) return;
     setCheckingUpdate(true);
     try {
-      const data = await api.checkUpdates();
+      // In the desktop app, check via the Electron main process (reliable network
+      // stack) rather than the backend. Fall back to the API for the web version.
+      let data;
+      if (window.budgetDesktop?.checkForUpdates) {
+        const r = await window.budgetDesktop.checkForUpdates();
+        if (!r || r.ok === false) throw new Error((r && r.error) || 'Could not check for updates');
+        data = r;
+      } else {
+        data = await api.checkUpdates();
+      }
       if (data.hasUpdate) {
         const go = window.confirm(`Version ${data.latestVersion} is available (you have ${data.currentVersion}). Open the download page?`);
         if (go) window.open(data.releaseUrl || 'https://github.com/JWalen/budget-tracker/releases/latest', '_blank', 'noopener,noreferrer');

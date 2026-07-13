@@ -1,5 +1,10 @@
 # Changelog
 
+## [2.17.3] - 2026-07-12
+
+### Fixed
+- **Settings → About "Check for Updates" now uses the Electron main process** (via a new `main-preload.js` + `desktop:check-updates` IPC) — the same reliable network path as `File → Check for Updates`. The request no longer goes through the bundled backend (whose Node networking stalled on the route to GitHub), so it returns promptly. The web build still falls back to the backend endpoint.
+
 ## [2.17.2] - 2026-07-12
 
 ### Fixed
