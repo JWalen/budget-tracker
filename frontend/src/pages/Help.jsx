@@ -613,6 +613,15 @@ export default function Help() {
     setUpdateError(null);
   };
 
+  // In-app self-update was removed for security (it git-pulled + rebuilt via the
+  // host Docker socket). Instead, open the GitHub release so the user can download
+  // the new installer — the correct path for the desktop app.
+  const handleDownloadUpdate = () => {
+    const url = updateModal?.releaseUrl || 'https://github.com/JWalen/budget-tracker/releases/latest';
+    window.open(url, '_blank', 'noopener,noreferrer');
+    closeModal();
+  };
+
   const currentSection = helpSections.find(s => s.id === selectedSection) || helpSections[0];
 
   // Convert markdown-style content to JSX
@@ -891,9 +900,9 @@ export default function Help() {
                     </div>
                   )}
 
-                  <div className="p-3 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg text-sm text-amber-800 dark:text-amber-200 flex gap-2">
-                    <AlertTriangle size={16} className="flex-shrink-0 mt-0.5" />
-                    <span>The app will restart during the update. This will briefly disconnect all users.</span>
+                  <div className="p-3 bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg text-sm text-blue-800 dark:text-blue-200 flex gap-2">
+                    <Download size={16} className="flex-shrink-0 mt-0.5" />
+                    <span>This opens the download page for the new version. Download the installer and open it to update (on Mac, drag it into Applications, replacing the old copy).</span>
                   </div>
                 </>
               )}
@@ -942,10 +951,11 @@ export default function Help() {
               {updateStatus === 'idle' && (
                 <>
                   <button onClick={closeModal} className="btn btn-secondary">
-                    Cancel
+                    Later
                   </button>
-                  <button onClick={handlePerformUpdate} className="btn btn-primary">
-                    Update Now
+                  <button onClick={handleDownloadUpdate} className="btn btn-primary flex items-center gap-2">
+                    <Download size={16} />
+                    Download Update
                   </button>
                 </>
               )}
