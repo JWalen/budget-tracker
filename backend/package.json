@@ -33,7 +33,7 @@
     "helmet": "^8.1.0",
     "ioredis": "^5.9.2",
     "jsonwebtoken": "^9.0.2",
-    "multer": "^2.0.2",
+    "multer": "^2.5.0",
     "node-cache": "^5.1.2",
     "nodemailer": "^6.10.1",
     "openai": "^4.104.0",
